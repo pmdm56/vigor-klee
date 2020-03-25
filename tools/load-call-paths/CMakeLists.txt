@@ -6,13 +6,15 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-add_subdirectory(gen-random-bout)
-add_subdirectory(kleaver)
-add_subdirectory(klee)
-add_subdirectory(klee-replay)
-add_subdirectory(klee-stats)
-add_subdirectory(ktest-tool)
-add_subdirectory(ktest-dehavoc)
-add_subdirectory(stitch-perf-contract)
-add_subdirectory(check-call-path-compatibility)
-add_subdirectory(load-call-paths)
+add_executable(load-call-paths
+  load-call-paths.cpp
+)
+
+set(KLEE_LIBS
+  kleaverExpr
+  kleeCore
+)
+
+target_link_libraries(load-call-paths ${KLEE_LIBS})
+
+install(TARGETS load-call-paths RUNTIME DESTINATION bin)
