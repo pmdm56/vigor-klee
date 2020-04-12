@@ -24,27 +24,26 @@
 #define DEBUG
 
 namespace {
-llvm::cl::opt<std::string> InputCallPathFile(llvm::cl::desc("<call path>"),
-                                             llvm::cl::Positional,
-                                             llvm::cl::Required);
+llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
+                                               llvm::cl::Positional,
+                                               llvm::cl::OneOrMore);
 }
 
 typedef struct {
   std::string function_name;
-  std::map<std::string, std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr>>>
-      extra_vars;
+  std::map<std::string, std::pair<klee::ref<klee::Expr>,
+                                  klee::ref<klee::Expr> > > extra_vars;
 } call_t;
 
 typedef struct {
   klee::ConstraintManager constraints;
   std::vector<call_t> calls;
   std::map<std::string, const klee::Array *> arrays;
-  std::map<std::string, klee::ref<klee::Expr>> initial_extra_vars;
 } call_path_t;
 
 call_path_t *load_call_path(std::string file_name,
                             std::vector<std::string> expressions_str,
-                            std::deque<klee::ref<klee::Expr>> &expressions) {
+                            std::deque<klee::ref<klee::Expr> > &expressions) {
   std::ifstream call_path_file(file_name);
   assert(call_path_file.is_open() && "Unable to open call path file.");
 
@@ -59,10 +58,13 @@ call_path_t *load_call_path(std::string file_name,
   } state = STATE_INIT;
 
   std::string kQuery;
-  std::vector<klee::ref<klee::Expr>> exprs;
+  std::vector<klee::ref<klee::Expr> > exprs;
   std::set<std::string> declared_arrays;
 
   int parenthesis_level = 0;
+  std::string current_extra_var;
+  std::string current_extra_var_expr_str;
+  std::vector<std::string> current_extra_var_exprs_str;
 
   while (!call_path_file.eof()) {
     std::string line;
@@ -77,13 +79,21 @@ call_path_t *load_call_path(std::string file_name,
 
     case STATE_KQUERY: {
       if (line == ";;-- Calls --") {
-        assert(kQuery.substr(kQuery.length() - 2) == "])");
-        kQuery = kQuery.substr(0, kQuery.length() - 2) + "\n";
+        if (kQuery.substr(kQuery.length() - 2) == "])") {
+          kQuery = kQuery.substr(0, kQuery.length() - 2) + "\n";
 
-        for (auto eit : expressions_str) {
-          kQuery += "\n         " + eit;
+          for (auto eit : expressions_str) {
+            kQuery += "\n         " + eit;
+          }
+          kQuery += "])";
+        } else if (kQuery.substr(kQuery.length() - 6) == "false)") {
+          kQuery = kQuery.substr(0, kQuery.length() - 1) + " [\n";
+
+          for (auto eit : expressions_str) {
+            kQuery += "\n         " + eit;
+          }
+          kQuery += "])";
         }
-        kQuery += "])";
 
         llvm::MemoryBuffer *MB = llvm::MemoryBuffer::getMemBuffer(kQuery);
         klee::ExprBuilder *Builder = klee::createDefaultExprBuilder();
@@ -133,6 +143,9 @@ call_path_t *load_call_path(std::string file_name,
         std::string preamble = line.substr(0, delim);
         line = line.substr(delim + 1);
 
+        current_extra_var.clear();
+        current_extra_var_exprs_str.clear();
+
         if (preamble == "extra") {
           while (line[0] == ' ') {
             line = line.substr(1);
@@ -140,15 +153,12 @@ call_path_t *load_call_path(std::string file_name,
 
           delim = line.find("&");
           assert(delim != std::string::npos);
-          std::string name = line.substr(0, delim);
+          current_extra_var = line.substr(0, delim);
+          line = line.substr(delim + 1);
 
-          assert(exprs.size() >= 2 && "Not enough expression in kQuery.");
-          call_path->calls.back().extra_vars[name] =
-              std::make_pair(exprs[0], exprs[1]);
-          if (!call_path->initial_extra_vars.count(name)) {
-            call_path->initial_extra_vars[name] = exprs[0];
-          }
-          exprs.erase(exprs.begin(), exprs.begin() + 2);
+          delim = line.find("[");
+          assert(delim != std::string::npos);
+          line = line.substr(delim + 1);
         } else {
           call_path->calls.emplace_back();
 
@@ -158,31 +168,82 @@ call_path_t *load_call_path(std::string file_name,
         }
 
         for (char c : line) {
+          current_extra_var_expr_str += c;
           if (c == '(') {
+            if (parenthesis_level == 0) {
+              current_extra_var_expr_str = "(";
+            }
             parenthesis_level++;
           } else if (c == ')') {
             parenthesis_level--;
             assert(parenthesis_level >= 0);
+
+            if (parenthesis_level == 0) {
+              current_extra_var_exprs_str.push_back(current_extra_var_expr_str);
+            }
           }
         }
 
         if (parenthesis_level > 0) {
           state = STATE_CALLS_MULTILINE;
+        } else {
+          if (!current_extra_var.empty()) {
+            assert(current_extra_var_exprs_str.size() == 2 &&
+                   "Too many expression in extra variable.");
+            if (current_extra_var_exprs_str[0] != "(...)") {
+              assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
+              call_path->calls.back().extra_vars[current_extra_var].first =
+                  exprs[0];
+              exprs.erase(exprs.begin(), exprs.begin() + 1);
+            }
+            if (current_extra_var_exprs_str[1] != "(...)") {
+              assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
+              call_path->calls.back().extra_vars[current_extra_var].second =
+                  exprs[0];
+              exprs.erase(exprs.begin(), exprs.begin() + 1);
+            }
+          }
         }
       }
     } break;
 
     case STATE_CALLS_MULTILINE: {
+      current_extra_var_expr_str += " ";
       for (char c : line) {
+        current_extra_var_expr_str += c;
         if (c == '(') {
+          if (parenthesis_level == 0) {
+            current_extra_var_expr_str = "(";
+          }
           parenthesis_level++;
         } else if (c == ')') {
           parenthesis_level--;
           assert(parenthesis_level >= 0);
+
+          if (parenthesis_level == 0) {
+            current_extra_var_exprs_str.push_back(current_extra_var_expr_str);
+          }
         }
       }
 
       if (parenthesis_level == 0) {
+        if (!current_extra_var.empty()) {
+          assert(current_extra_var_exprs_str.size() == 2 &&
+                 "Too many expression in extra variable.");
+          if (current_extra_var_exprs_str[0] != "(...)") {
+            assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
+            call_path->calls.back().extra_vars[current_extra_var].first =
+                exprs[0];
+            exprs.erase(exprs.begin(), exprs.begin() + 1);
+          }
+          if (current_extra_var_exprs_str[1] != "(...)") {
+            assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
+            call_path->calls.back().extra_vars[current_extra_var].second =
+                exprs[0];
+            exprs.erase(exprs.begin(), exprs.begin() + 1);
+          }
+        }
+
         state = STATE_CALLS;
       }
 
@@ -193,7 +254,9 @@ call_path_t *load_call_path(std::string file_name,
       continue;
     } break;
 
-    default: { assert(false && "Invalid call path file."); } break;
+    default: {
+      assert(false && "Invalid call path file.");
+    } break;
     }
   }
 
@@ -203,10 +266,15 @@ call_path_t *load_call_path(std::string file_name,
 int main(int argc, char **argv, char **envp) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
-  std::vector<std::string> expressions_str;
-  std::deque<klee::ref<klee::Expr>> expressions;
-  call_path_t *call_path = load_call_path(
-      InputCallPathFile, expressions_str, expressions);
+  std::vector<call_path_t *> call_paths;
+
+  for (auto file : InputCallPathFiles) {
+    std::cerr << "Loading: " << file << std::endl;
+
+    std::vector<std::string> expressions_str;
+    std::deque<klee::ref<klee::Expr> > expressions;
+    call_paths.push_back(load_call_path(file, expressions_str, expressions));
+  }
 
   return 0;
 }
