@@ -276,5 +276,31 @@ int main(int argc, char **argv, char **envp) {
     call_paths.push_back(load_call_path(file, expressions_str, expressions));
   }
 
+  for (unsigned i = 0; i < call_paths.size(); i++) {
+    std::cout << "Call Path " << i << std::endl;
+    std::cout << "  Assuming:" << std::endl;
+    for (auto constraint : call_paths[i]->constraints) {
+      constraint->dump();
+    }
+    std::cout << "  Calls:" << std::endl;
+    for (auto call : call_paths[i]->calls) {
+      std::cout << "    Function: " << call.function_name << std::endl;
+      if (!call.extra_vars.empty()) {
+        std::cout << "      With Extra Vars:" << std::endl;
+        for (auto extra_var : call.extra_vars) {
+          std::cout << "        " << extra_var.first << ":" << std::endl;
+          if (!extra_var.second.first.isNull()) {
+            std::cout << "          Before:" << std::endl;
+            extra_var.second.first->dump();
+          }
+          if (!extra_var.second.second.isNull()) {
+            std::cout << "          After:" << std::endl;
+            extra_var.second.second->dump();
+          }
+        }
+      }
+    }
+  }
+
   return 0;
 }
