@@ -263,6 +263,76 @@ call_path_t *load_call_path(std::string file_name,
   return call_path;
 }
 
+void call_path_extract_proto(call_path_t *call_path)
+{
+  std::vector<klee::ref<klee::Expr>> chunks;
+  klee::ExprBuilder *exprBuilder;
+  klee::Solver *solver;
+  klee::ConstraintManager constraints;
+
+  llvm::raw_ostream &os = llvm::outs();
+
+  unsigned layer = 1;
+  for (auto call : call_path->calls) {
+    std::cout << call.function_name << std::endl;
+    if (call.function_name == "packet_borrow_next_chunk") {
+      layer++;
+      if (
+        call.extra_vars.count("the_chunk") &&
+        !call.extra_vars["the_chunk"].second.isNull())
+      {
+        chunks.push_back(call.extra_vars["the_chunk"].second);
+      }
+    }
+  }
+
+  solver = klee::createCoreSolver(klee::Z3_SOLVER);
+  assert(solver);
+
+  solver = createCexCachingSolver(solver);
+  solver = createCachingSolver(solver);
+  solver = createIndependentSolver(solver);
+
+  std::cout << "constraints " << call_path->constraints.size() << std::endl;
+
+  for (auto cnstr : call_path->constraints)
+  {
+    constraints.addConstraint(cnstr);
+
+    std::cout << "\ncnstr" << std::endl;
+    cnstr.get()->print(os);
+  }
+
+  exprBuilder = klee::createDefaultExprBuilder();
+
+  klee::ref<klee::Expr> proto_expr = exprBuilder->Extract(chunks.at(0), 12*8, 16);
+  klee::Query sat_query(constraints, proto_expr);
+  klee::ref<klee::ConstantExpr> result;
+
+  assert(solver->getValue(sat_query, result));
+
+  std::cout << "extract 0, 12, 16" << std::endl;
+  proto_expr->print(os);
+  std::cout << std::endl;
+
+  result->print(os);
+  std::cout << std::endl;
+
+  uint64_t proto = result.get()->getZExtValue(klee::Expr::Int16);
+  std::cout << "result " << proto << std::endl;
+
+  switch (proto)
+  {
+    case 0x0008: std::cout << "IPv4" << std::endl; break;
+    case 0xDD86: std::cout << "IPv6" << std::endl; break;
+    case 0x0081: std::cout << "VLAN" << std::endl; break;
+    default: assert("unknown l2 protocol" && false);
+  }
+
+
+  std::cout << "layer " << layer << std::endl;
+}
+
 int main(int argc, char **argv, char **envp) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
@@ -275,6 +345,8 @@ int main(int argc, char **argv, char **envp) {
     std::deque<klee::ref<klee::Expr> > expressions;
     call_paths.push_back(load_call_path(file, expressions_str, expressions));
   }
+
+  call_path_extract_proto(call_paths.at(0));
 
   return 0;
 }
