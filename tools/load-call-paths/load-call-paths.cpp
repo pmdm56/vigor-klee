@@ -23,6 +23,8 @@
 
 #define DEBUG
 
+#define UINT_16_SWAP_ENDIANNESS(p) ( (((p) & 0xff) << 8) | ((p) >> 8 & 0xff) )
+
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::Positional,
@@ -263,28 +265,144 @@ call_path_t *load_call_path(std::string file_name,
   return call_path;
 }
 
+void expr_inspector(klee::expr::ExprHandle expr)
+{
+  llvm::raw_ostream &os = llvm::outs();
+
+  std::cout << "+++ inspecting:" << std::endl;
+  expr->print(os);
+
+  std::cout << "\nkind:" << std::endl;
+  expr->printKind(os, expr->getKind());
+  std::cout << std::endl;
+  klee::ReadExpr *read;
+
+  switch (expr->getKind())
+  {
+    case klee::Expr::Kind::Concat:
+      std::cout << "ReadLSB" << std::endl;
+      
+      std::cout << "left" << std::endl;
+      expr->getKid(0)->print(os);
+      std::cout << std::endl;
+
+      std::cout << "num kids: " << expr->getKid(0)->getNumKids() << std::endl;
+
+      std::cout << "right" << std::endl;
+      expr->getKid(1)->print(os);
+      std::cout << std::endl;
+
+      break;
+
+    case klee::Expr::Kind::Read:
+      read = cast<klee::ReadExpr>(expr);
+      
+      
+      std::cout << "index:" << std::endl;
+      read->index->print(os);
+      std::cout << std::endl;
+
+      std::cout << "update list head index:" << std::endl;
+      if (read->updates.root == nullptr) std::cout << "nullptr" << std::endl;
+      else {
+        // TODO: finish this, i got the packet_chunks here!
+        std::cout << "size " << read->updates.root->getName() << std::endl;
+      }
+      std::cout << std::endl;
+
+      break;
+
+    default:
+      break;
+  }
+  
+  for (unsigned i = 0; i < expr->getNumKids(); i++)
+    expr_inspector(expr->getKid(i));
+}
+
+void mem_access_process(klee::expr::ExprHandle access, klee::ConstraintManager constraints)
+{
+  klee::ref<klee::ConstantExpr> result;
+  llvm::raw_ostream &os = llvm::outs();
+
+  klee::Solver *solver = klee::createCoreSolver(klee::Z3_SOLVER);
+
+  solver               = createCexCachingSolver(solver);
+  solver               = createCachingSolver(solver);
+  solver               = createIndependentSolver(solver);
+
+  //klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
+  //klee::expr::ExprHandle expr = exprBuilder->And(access, klee::ExprBuilder::True());
+
+  /*
+  klee::ConstraintManager constraints;
+  for (auto cnstr : cnstrs)
+    constraints.addConstraint(cnstr);
+  */
+
+  klee::Query sat_query = klee::Query(constraints, access);
+  assert(solver->getValue(sat_query, result) && "mem_access_process solver->getValue");
+  
+  std::cout << "\n==================================" << std::endl;
+  std::cout << "mem access solver" << std::endl;
+  std::cout << "expr:" << std::endl;
+  expr_inspector(access);
+
+  std::cout << "\nresult:" << std::endl;
+  result->print(os);
+
+  std::cout << "\n" << std::endl;
+}
+
 void call_path_extract_proto(call_path_t *call_path)
 {
   std::vector<klee::ref<klee::Expr>> chunks;
-  klee::ExprBuilder *exprBuilder;
-  klee::Solver *solver;
-  klee::ConstraintManager constraints;
+  std::vector<klee::ref<klee::Expr>> mem_access;
+  klee::ExprBuilder                  *exprBuilder;
+  klee::Solver                       *solver;
+  klee::ConstraintManager            constraints;
 
   llvm::raw_ostream &os = llvm::outs();
 
   unsigned layer = 1;
   for (auto call : call_path->calls) {
     std::cout << call.function_name << std::endl;
+    
     if (call.function_name == "packet_borrow_next_chunk") {
+      std::cout << "  * grabbing chunk info" << std::endl;
+
       layer++;
-      if (
-        call.extra_vars.count("the_chunk") &&
-        !call.extra_vars["the_chunk"].second.isNull())
-      {
-        chunks.push_back(call.extra_vars["the_chunk"].second);
-      }
+     
+      assert(call.extra_vars.count("the_chunk"));
+      assert(!call.extra_vars["the_chunk"].second.isNull());
+     
+      chunks.push_back(call.extra_vars["the_chunk"].second);
+    }
+
+    else if (call.extra_vars.count("the_key")) {
+      std::cout << "  * grabbing mem access info" << std::endl;
+      assert(!call.extra_vars["the_key"].first.isNull());
+      mem_access.push_back(call.extra_vars["the_key"].first);
+
+      mem_access_process(call.extra_vars["the_key"].first, call_path->constraints);
     }
   }
+
+  // printing the grabbed result
+  std::cout << "\n*********** CHUNKS ***********" << std::endl;
+  for (auto chunk : chunks)
+  {
+    chunk->print(os);
+    std::cout << std::endl;
+  }
+
+  std::cout << "\n*********** MEM ACCESSERS ***********" << std::endl;
+  for (auto ma : mem_access)
+  {
+    ma->print(os);
+    std::cout << std::endl;
+  }
+  std::cout << std::endl;
 
   solver = klee::createCoreSolver(klee::Z3_SOLVER);
   assert(solver);
@@ -293,15 +411,8 @@ void call_path_extract_proto(call_path_t *call_path)
   solver = createCachingSolver(solver);
   solver = createIndependentSolver(solver);
 
-  std::cout << "constraints " << call_path->constraints.size() << std::endl;
-
   for (auto cnstr : call_path->constraints)
-  {
     constraints.addConstraint(cnstr);
-
-    std::cout << "\ncnstr" << std::endl;
-    cnstr.get()->print(os);
-  }
 
   exprBuilder = klee::createDefaultExprBuilder();
 
@@ -311,24 +422,15 @@ void call_path_extract_proto(call_path_t *call_path)
 
   assert(solver->getValue(sat_query, result));
 
-  std::cout << "extract 0, 12, 16" << std::endl;
-  proto_expr->print(os);
-  std::cout << std::endl;
-
-  result->print(os);
-  std::cout << std::endl;
-
   uint64_t proto = result.get()->getZExtValue(klee::Expr::Int16);
-  std::cout << "result " << proto << std::endl;
 
-  switch (proto)
+  switch (UINT_16_SWAP_ENDIANNESS(proto))
   {
-    case 0x0008: std::cout << "IPv4" << std::endl; break;
-    case 0xDD86: std::cout << "IPv6" << std::endl; break;
-    case 0x0081: std::cout << "VLAN" << std::endl; break;
+    case 0x0800: std::cout << "IPv4" << std::endl; break;
+    case 0x86DD: std::cout << "IPv6" << std::endl; break;
+    case 0x8100: std::cout << "VLAN" << std::endl; break;
     default: assert("unknown l2 protocol" && false);
   }
-
 
   std::cout << "layer " << layer << std::endl;
 }
