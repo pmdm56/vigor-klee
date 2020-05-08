@@ -20,6 +20,7 @@
 #include <klee/Constraints.h>
 #include <klee/Solver.h>
 #include <vector>
+#include <algorithm>
 
 #define DEBUG
 
@@ -265,174 +266,310 @@ call_path_t *load_call_path(std::string file_name,
   return call_path;
 }
 
-void expr_inspector(klee::expr::ExprHandle expr)
+uint64_t evaluate_expr(klee::expr::ExprHandle expr, klee::Expr::Width width, klee::ConstraintManager constraints)
 {
-  llvm::raw_ostream &os = llvm::outs();
-
-  std::cout << "+++ inspecting:" << std::endl;
-  expr->print(os);
-
-  std::cout << "\nkind:" << std::endl;
-  expr->printKind(os, expr->getKind());
-  std::cout << std::endl;
-  klee::ReadExpr *read;
-
-  switch (expr->getKind())
-  {
-    case klee::Expr::Kind::Concat:
-      std::cout << "ReadLSB" << std::endl;
-      
-      std::cout << "left" << std::endl;
-      expr->getKid(0)->print(os);
-      std::cout << std::endl;
-
-      std::cout << "num kids: " << expr->getKid(0)->getNumKids() << std::endl;
-
-      std::cout << "right" << std::endl;
-      expr->getKid(1)->print(os);
-      std::cout << std::endl;
-
-      break;
-
-    case klee::Expr::Kind::Read:
-      read = cast<klee::ReadExpr>(expr);
-      
-      
-      std::cout << "index:" << std::endl;
-      read->index->print(os);
-      std::cout << std::endl;
-
-      std::cout << "update list head index:" << std::endl;
-      if (read->updates.root == nullptr) std::cout << "nullptr" << std::endl;
-      else {
-        // TODO: finish this, i got the packet_chunks here!
-        std::cout << "size " << read->updates.root->getName() << std::endl;
-      }
-      std::cout << std::endl;
-
-      break;
-
-    default:
-      break;
-  }
-  
-  for (unsigned i = 0; i < expr->getNumKids(); i++)
-    expr_inspector(expr->getKid(i));
-}
-
-void mem_access_process(klee::expr::ExprHandle access, klee::ConstraintManager constraints)
-{
-  klee::ref<klee::ConstantExpr> result;
-  llvm::raw_ostream &os = llvm::outs();
-
   klee::Solver *solver = klee::createCoreSolver(klee::Z3_SOLVER);
-
-  solver               = createCexCachingSolver(solver);
-  solver               = createCachingSolver(solver);
-  solver               = createIndependentSolver(solver);
-
-  //klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
-  //klee::expr::ExprHandle expr = exprBuilder->And(access, klee::ExprBuilder::True());
-
-  /*
-  klee::ConstraintManager constraints;
-  for (auto cnstr : cnstrs)
-    constraints.addConstraint(cnstr);
-  */
-
-  klee::Query sat_query = klee::Query(constraints, access);
-  assert(solver->getValue(sat_query, result) && "mem_access_process solver->getValue");
-  
-  std::cout << "\n==================================" << std::endl;
-  std::cout << "mem access solver" << std::endl;
-  std::cout << "expr:" << std::endl;
-  expr_inspector(access);
-
-  std::cout << "\nresult:" << std::endl;
-  result->print(os);
-
-  std::cout << "\n" << std::endl;
-}
-
-void call_path_extract_proto(call_path_t *call_path)
-{
-  std::vector<klee::ref<klee::Expr>> chunks;
-  std::vector<klee::ref<klee::Expr>> mem_access;
-  klee::ExprBuilder                  *exprBuilder;
-  klee::Solver                       *solver;
-  klee::ConstraintManager            constraints;
-
-  llvm::raw_ostream &os = llvm::outs();
-
-  unsigned layer = 1;
-  for (auto call : call_path->calls) {
-    std::cout << call.function_name << std::endl;
-    
-    if (call.function_name == "packet_borrow_next_chunk") {
-      std::cout << "  * grabbing chunk info" << std::endl;
-
-      layer++;
-     
-      assert(call.extra_vars.count("the_chunk"));
-      assert(!call.extra_vars["the_chunk"].second.isNull());
-     
-      chunks.push_back(call.extra_vars["the_chunk"].second);
-    }
-
-    else if (call.extra_vars.count("the_key")) {
-      std::cout << "  * grabbing mem access info" << std::endl;
-      assert(!call.extra_vars["the_key"].first.isNull());
-      mem_access.push_back(call.extra_vars["the_key"].first);
-
-      mem_access_process(call.extra_vars["the_key"].first, call_path->constraints);
-    }
-  }
-
-  // printing the grabbed result
-  std::cout << "\n*********** CHUNKS ***********" << std::endl;
-  for (auto chunk : chunks)
-  {
-    chunk->print(os);
-    std::cout << std::endl;
-  }
-
-  std::cout << "\n*********** MEM ACCESSERS ***********" << std::endl;
-  for (auto ma : mem_access)
-  {
-    ma->print(os);
-    std::cout << std::endl;
-  }
-  std::cout << std::endl;
-
-  solver = klee::createCoreSolver(klee::Z3_SOLVER);
   assert(solver);
 
   solver = createCexCachingSolver(solver);
   solver = createCachingSolver(solver);
   solver = createIndependentSolver(solver);
 
-  for (auto cnstr : call_path->constraints)
-    constraints.addConstraint(cnstr);
-
-  exprBuilder = klee::createDefaultExprBuilder();
-
-  klee::ref<klee::Expr> proto_expr = exprBuilder->Extract(chunks.at(0), 12*8, 16);
-  klee::Query sat_query(constraints, proto_expr);
+  klee::Query sat_query(constraints, expr);
   klee::ref<klee::ConstantExpr> result;
 
   assert(solver->getValue(sat_query, result));
 
-  uint64_t proto = result.get()->getZExtValue(klee::Expr::Int16);
+  return result.get()->getZExtValue(width);
+}
 
-  switch (UINT_16_SWAP_ENDIANNESS(proto))
+std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, klee::ConstraintManager constraints)
+{
+  std::vector<unsigned> bytes;
+
+  if (expr->getRight()->getKind() == klee::Expr::Kind::Concat)
   {
-    case 0x0800: std::cout << "IPv4" << std::endl; break;
-    case 0x86DD: std::cout << "IPv6" << std::endl; break;
-    case 0x8100: std::cout << "VLAN" << std::endl; break;
-    default: assert("unknown l2 protocol" && false);
+    klee::ConcatExpr *right = cast<klee::ConcatExpr>(expr->getRight());
+    std::vector<unsigned> right_bytes = readLSB_byte_indexes(right, constraints);
+    bytes.insert(bytes.end(), right_bytes.begin(), right_bytes.end());
+  } else if (expr->getRight()->getKind() == klee::Expr::Read)
+  {
+    klee::ReadExpr *right = cast<klee::ReadExpr>(expr->getRight());
+    uint64_t index = evaluate_expr(right->index, right->index->getWidth(), constraints);
+    bytes.push_back(index);
+  } else {
+    assert(false && "Unknown expression on readLSB_byte_indexes");
   }
 
-  std::cout << "layer " << layer << std::endl;
+  if (expr->getLeft()->getKind() == klee::Expr::Kind::Concat)
+  {
+    klee::ConcatExpr *left = cast<klee::ConcatExpr>(expr->getLeft());
+    std::vector<unsigned> left_bytes = readLSB_byte_indexes(left, constraints);
+    bytes.insert(bytes.end(), left_bytes.begin(), left_bytes.end());
+  } else if (expr->getLeft()->getKind() == klee::Expr::Read)
+  {
+    klee::ReadExpr *left = cast<klee::ReadExpr>(expr->getLeft());
+    uint64_t index = evaluate_expr(left->index, left->index->getWidth(), constraints);
+    bytes.push_back(index);
+  } else {
+    assert(false && "Unknown expression on readLSB_byte_indexes");
+  }
+
+  return bytes;
+}
+
+unsigned readLSB_byte_index(klee::ConcatExpr *expr, klee::ConstraintManager constraints)
+{
+  std::vector<unsigned> bytes_read = readLSB_byte_indexes(expr, constraints);
+  return *std::min_element(bytes_read.begin(), bytes_read.end());
+}
+
+bool has_packet(klee::expr::ExprHandle expr, klee::ConstraintManager constraints, std::vector<unsigned> &bytes_read)
+{
+  switch (expr->getKind())
+  {
+    case klee::Expr::Kind::Concat:
+    {
+      klee::ConcatExpr *concat = cast<klee::ConcatExpr>(expr);
+      return has_packet(concat->getLeft(), constraints, bytes_read) &&
+        has_packet(concat->getRight(), constraints, bytes_read);
+    }
+
+    case klee::Expr::Kind::Read:
+    {
+      klee::ReadExpr *read = cast<klee::ReadExpr>(expr);
+      
+      uint64_t index = evaluate_expr(read->index, read->index->getWidth(), constraints);
+      bytes_read.push_back(index);
+
+      if (read->updates.root == nullptr) return false;
+      if (read->updates.root->getName() != "packet_chunks") return false;
+      
+      return true;
+    }
+
+    default:
+      for (unsigned i = 0; i < expr->getNumKids(); i++)
+        if (has_packet(expr->getKid(i), constraints, bytes_read)) return true;
+      return false;
+  }
+}
+
+struct mem_access_snapshot {
+  struct {
+    klee::ref<klee::Expr> packet_chunk;
+    unsigned offset;
+    unsigned layer;
+    unsigned proto;
+  } state;
+
+  struct {
+    klee::ref<klee::Expr> expr;
+  } mem_access;
+
+  mem_access_snapshot() {
+    mem_access.expr    = nullptr;
+    state.packet_chunk = nullptr;
+    state.offset       = 0;
+    state.layer        = 0;
+    state.proto        = 0;
+  }
+
+  mem_access_snapshot(klee::ref<klee::Expr> _packet_chunk) {
+    state.packet_chunk = _packet_chunk;
+    mem_access.expr    = nullptr;
+    state.offset       = 0;
+    state.layer        = 0;
+    state.proto        = 0;
+  }
+};
+
+void proto_from_packet_chunk(
+  klee::expr::ExprHandle  packet_chunk,
+  klee::ConstraintManager constraints,
+  unsigned                layer,
+  unsigned                &proto
+)
+{
+  klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();;
+  klee::Solver *solver = klee::createCoreSolver(klee::Z3_SOLVER);
+
+  solver = createCexCachingSolver(solver);
+  solver = createCachingSolver(solver);
+  solver = createIndependentSolver(solver);
+
+  switch (layer) {
+    case 3:
+    {
+      klee::ref<klee::Expr> proto_expr = exprBuilder->Extract(packet_chunk, 12*8, klee::Expr::Int16);
+      klee::Query sat_query(constraints, proto_expr);
+      klee::ref<klee::ConstantExpr> result;
+
+      assert(solver->getValue(sat_query, result));
+
+      uint64_t proto = result.get()->getZExtValue(klee::Expr::Int16);
+
+      switch (UINT_16_SWAP_ENDIANNESS(proto))
+      {
+        case 0x0800: std::cout << "IPv4" << std::endl; proto = 0x0800; break;
+        case 0x86DD: std::cout << "IPv6" << std::endl; proto = 0x86DD; break;
+        case 0x8100: std::cout << "VLAN" << std::endl; proto = 0x8100; break;
+        default: assert("unknown l2 protocol" && false);
+      }
+
+      break;
+    }
+
+    default:
+      std::cout
+        << "Not implemented: only layer 2, and trying to parse layer "
+        << layer << std::endl;
+      assert(false);
+  }
+}
+
+void offset_from_packet_chunk(
+  klee::expr::ExprHandle  packet_chunk,
+  klee::ConstraintManager constraints,
+  unsigned                &offset
+)
+{
+  llvm::raw_ostream &os = llvm::outs();
+
+  std::cout << "packet chunk" << std::endl;
+  packet_chunk->print(os);
+
+  std::cout << std::endl;
+  klee::Expr::printKind(os, packet_chunk->getKind());
+  std::cout << std::endl;
+
+  klee::ConcatExpr *concat = cast<klee::ConcatExpr>(packet_chunk);
+
+  std::cout << std::endl;
+  concat->getLeft()->print(os);
+  std::cout << std::endl;
+
+  std::cout << std::endl;
+  concat->getRight()->print(os);
+  std::cout << std::endl;
+
+  offset = readLSB_byte_index(concat, constraints);
+
+  std::cout << "min " << offset << std::endl;
+}
+
+void packet_borrow_next_chunk_snapshot(
+  klee::expr::ExprHandle           packet_chunk,
+  klee::ConstraintManager          constraints,
+  std::vector<mem_access_snapshot> &snapshots
+)
+{
+  mem_access_snapshot snapshot(packet_chunk);
+
+  if (snapshots.size() == 0)
+    snapshot.state.layer = 2;
+  else {
+    snapshot.state.layer = snapshots.back().state.layer + 1;
+    proto_from_packet_chunk(
+      snapshots.back().state.packet_chunk,
+      constraints,
+      snapshot.state.layer,
+      snapshot.state.proto);
+  }
+
+  offset_from_packet_chunk(
+    snapshot.state.packet_chunk,
+    constraints,
+    snapshot.state.offset
+  );
+
+  snapshots.push_back(snapshot);  
+}
+
+void mem_access_process(
+  klee::expr::ExprHandle           mem_access,
+  klee::ConstraintManager          constraints,
+  std::vector<mem_access_snapshot> &snapshots
+)
+{
+  std::vector<unsigned> bytes_read;
+
+  if (!has_packet(mem_access, constraints, bytes_read))
+  {
+    mem_access_snapshot snapshot;
+    snapshot.mem_access.expr = mem_access;
+    snapshots.push_back(snapshot);
+    return;
+  }
+
+  mem_access_snapshot &snapshot = snapshots.back();
+  snapshot.mem_access.expr = mem_access;
+
+  for (auto byte_read : bytes_read)
+  {
+    unsigned field_offset = byte_read - snapshot.state.offset;
+    std::cout << "read field byte " << field_offset << std::endl;
+  }
+}
+
+void parse_call_path(call_path_t *call_path)
+{
+  std::vector<mem_access_snapshot> snapshots;
+  llvm::raw_ostream &os = llvm::outs();
+
+  for (auto call : call_path->calls) {
+    std::cout << call.function_name << std::endl;
+    
+    if (call.function_name == "packet_borrow_next_chunk") {
+      std::cout << "  * grabbing chunk info" << std::endl;
+
+      assert(call.extra_vars.count("the_chunk"));
+      assert(!call.extra_vars["the_chunk"].second.isNull());
+
+      packet_borrow_next_chunk_snapshot(
+        call.extra_vars["the_chunk"].second,
+        call_path->constraints,
+        snapshots
+      );
+    }
+
+    else if (call.extra_vars.count("the_key")) {
+      std::cout << "  * grabbing mem access info" << std::endl;
+      
+      assert(!call.extra_vars["the_key"].first.isNull());
+
+      mem_access_process(
+        call.extra_vars["the_key"].first,
+        call_path->constraints,
+        snapshots);
+    }
+  }
+
+  std::cout << "\n*********** SNAPSHOTS ***********" << std::endl;
+  for (auto snapshot : snapshots)
+  {
+    std::cout << "=== SNAPSHOT ===" << std::endl;
+    if (!snapshot.mem_access.expr.isNull())
+    {
+      std::cout << "mem_access" << std::endl;
+
+      std::cout << std::endl;
+      snapshot.mem_access.expr->print(os);
+      std::cout << std::endl;
+    }
+
+    if (!snapshot.state.packet_chunk.isNull())
+    {
+      std::cout << "packet_chunk" << std::endl;
+
+      std::cout << std::endl;
+      snapshot.state.packet_chunk->print(os);
+      std::cout << std::endl;
+    }
+
+    std::cout << "layer" << snapshot.state.layer << std::endl;
+    std::cout << "offset" << snapshot.state.offset << std::endl;
+  }
 }
 
 int main(int argc, char **argv, char **envp) {
@@ -448,7 +585,7 @@ int main(int argc, char **argv, char **envp) {
     call_paths.push_back(load_call_path(file, expressions_str, expressions));
   }
 
-  call_path_extract_proto(call_paths.at(0));
+  parse_call_path(call_paths.at(0));
 
   return 0;
 }
