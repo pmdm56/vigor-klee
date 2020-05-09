@@ -22,6 +22,27 @@
 #include <vector>
 #include <algorithm>
 
+
+// term colors
+// src: https://stackoverflow.com/questions/9158150/colored-output-in-c/9158263
+#define RESET   "\033[0m"
+#define BLACK   "\033[30m"      /* Black */
+#define RED     "\033[31m"      /* Red */
+#define GREEN   "\033[32m"      /* Green */
+#define YELLOW  "\033[33m"      /* Yellow */
+#define BLUE    "\033[34m"      /* Blue */
+#define MAGENTA "\033[35m"      /* Magenta */
+#define CYAN    "\033[36m"      /* Cyan */
+#define WHITE   "\033[37m"      /* White */
+#define BOLDBLACK   "\033[1m\033[30m"      /* Bold Black */
+#define BOLDRED     "\033[1m\033[31m"      /* Bold Red */
+#define BOLDGREEN   "\033[1m\033[32m"      /* Bold Green */
+#define BOLDYELLOW  "\033[1m\033[33m"      /* Bold Yellow */
+#define BOLDBLUE    "\033[1m\033[34m"      /* Bold Blue */
+#define BOLDMAGENTA "\033[1m\033[35m"      /* Bold Magenta */
+#define BOLDCYAN    "\033[1m\033[36m"      /* Bold Cyan */
+#define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
+
 #define DEBUG
 
 #define UINT_16_SWAP_ENDIANNESS(p) ( (((p) & 0xff) << 8) | ((p) >> 8 & 0xff) )
@@ -283,44 +304,75 @@ uint64_t evaluate_expr(klee::expr::ExprHandle expr, klee::Expr::Width width, kle
   return result.get()->getZExtValue(width);
 }
 
+std::vector<unsigned> readLSB_byte_indexes(klee::ReadExpr *expr, klee::ConstraintManager constraints)
+{
+  std::vector<unsigned> bytes;
+  uint64_t index = evaluate_expr(expr->index, expr->index->getWidth(), constraints);
+  bytes.push_back(index);
+  return bytes;
+}
+
 std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, klee::ConstraintManager constraints)
 {
   std::vector<unsigned> bytes;
+  std::vector<unsigned> right_bytes, left_bytes;
 
   if (expr->getRight()->getKind() == klee::Expr::Kind::Concat)
   {
     klee::ConcatExpr *right = cast<klee::ConcatExpr>(expr->getRight());
-    std::vector<unsigned> right_bytes = readLSB_byte_indexes(right, constraints);
-    bytes.insert(bytes.end(), right_bytes.begin(), right_bytes.end());
+    right_bytes = readLSB_byte_indexes(right, constraints);
   } else if (expr->getRight()->getKind() == klee::Expr::Read)
   {
     klee::ReadExpr *right = cast<klee::ReadExpr>(expr->getRight());
-    uint64_t index = evaluate_expr(right->index, right->index->getWidth(), constraints);
-    bytes.push_back(index);
+    right_bytes = readLSB_byte_indexes(right, constraints);
   } else {
     assert(false && "Unknown expression on readLSB_byte_indexes");
   }
+
+  bytes.insert(bytes.end(), right_bytes.begin(), right_bytes.end());
 
   if (expr->getLeft()->getKind() == klee::Expr::Kind::Concat)
   {
     klee::ConcatExpr *left = cast<klee::ConcatExpr>(expr->getLeft());
-    std::vector<unsigned> left_bytes = readLSB_byte_indexes(left, constraints);
-    bytes.insert(bytes.end(), left_bytes.begin(), left_bytes.end());
+    left_bytes = readLSB_byte_indexes(left, constraints);
   } else if (expr->getLeft()->getKind() == klee::Expr::Read)
   {
     klee::ReadExpr *left = cast<klee::ReadExpr>(expr->getLeft());
-    uint64_t index = evaluate_expr(left->index, left->index->getWidth(), constraints);
-    bytes.push_back(index);
+    left_bytes = readLSB_byte_indexes(left, constraints);
   } else {
     assert(false && "Unknown expression on readLSB_byte_indexes");
   }
 
+  bytes.insert(bytes.end(), left_bytes.begin(), left_bytes.end());
+
   return bytes;
 }
 
-unsigned readLSB_byte_index(klee::ConcatExpr *expr, klee::ConstraintManager constraints)
+unsigned readLSB_byte_index(klee::expr::ExprHandle expr, klee::ConstraintManager constraints)
 {
-  std::vector<unsigned> bytes_read = readLSB_byte_indexes(expr, constraints);
+  std::vector<unsigned> bytes_read;
+
+  switch (expr->getKind())
+  {
+    case klee::Expr::Kind::Read: 
+    {
+      klee::ReadExpr *read = cast<klee::ReadExpr>(expr);
+      bytes_read = readLSB_byte_indexes(read, constraints);
+      break;
+    }
+
+    case klee::Expr::Kind::Concat:
+    {
+      klee::ConcatExpr *concat = cast<klee::ConcatExpr>(expr);
+      bytes_read = readLSB_byte_indexes(concat, constraints);
+      break;
+    }
+
+    default:
+      std::cout << "cast missing" << std::endl;
+  }
+
+  
   return *std::min_element(bytes_read.begin(), bytes_read.end());
 }
 
@@ -357,14 +409,15 @@ bool has_packet(klee::expr::ExprHandle expr, klee::ConstraintManager constraints
 
 struct mem_access_snapshot {
   struct {
-    klee::ref<klee::Expr> packet_chunk;
+    klee::expr::ExprHandle packet_chunk;
     unsigned offset;
     unsigned layer;
     unsigned proto;
   } state;
 
   struct {
-    klee::ref<klee::Expr> expr;
+    klee::expr::ExprHandle expr;
+    std::vector<unsigned> packet_fields_deps;
   } mem_access;
 
   mem_access_snapshot() {
@@ -375,7 +428,7 @@ struct mem_access_snapshot {
     state.proto        = 0;
   }
 
-  mem_access_snapshot(klee::ref<klee::Expr> _packet_chunk) {
+  mem_access_snapshot(klee::expr::ExprHandle _packet_chunk) {
     state.packet_chunk = _packet_chunk;
     mem_access.expr    = nullptr;
     state.offset       = 0;
@@ -422,9 +475,11 @@ void proto_from_packet_chunk(
 
     default:
       std::cout
-        << "Not implemented: only layer 2, and trying to parse layer "
-        << layer << std::endl;
-      assert(false);
+        << RED
+        << "[WARNING] Not implemented: only layer 3, and trying to parse layer "
+        << layer
+        << RESET
+        << std::endl;
   }
 }
 
@@ -434,28 +489,7 @@ void offset_from_packet_chunk(
   unsigned                &offset
 )
 {
-  llvm::raw_ostream &os = llvm::outs();
-
-  std::cout << "packet chunk" << std::endl;
-  packet_chunk->print(os);
-
-  std::cout << std::endl;
-  klee::Expr::printKind(os, packet_chunk->getKind());
-  std::cout << std::endl;
-
-  klee::ConcatExpr *concat = cast<klee::ConcatExpr>(packet_chunk);
-
-  std::cout << std::endl;
-  concat->getLeft()->print(os);
-  std::cout << std::endl;
-
-  std::cout << std::endl;
-  concat->getRight()->print(os);
-  std::cout << std::endl;
-
-  offset = readLSB_byte_index(concat, constraints);
-
-  std::cout << "min " << offset << std::endl;
+  offset = readLSB_byte_index(packet_chunk, constraints);
 }
 
 void packet_borrow_next_chunk_snapshot(
@@ -506,10 +540,7 @@ void mem_access_process(
   snapshot.mem_access.expr = mem_access;
 
   for (auto byte_read : bytes_read)
-  {
-    unsigned field_offset = byte_read - snapshot.state.offset;
-    std::cout << "read field byte " << field_offset << std::endl;
-  }
+    snapshot.mem_access.packet_fields_deps.push_back(byte_read - snapshot.state.offset);
 }
 
 void parse_call_path(call_path_t *call_path)
@@ -518,10 +549,10 @@ void parse_call_path(call_path_t *call_path)
   llvm::raw_ostream &os = llvm::outs();
 
   for (auto call : call_path->calls) {
-    std::cout << call.function_name << std::endl;
+    std::cout << "[CALL] " << call.function_name << std::endl;
     
     if (call.function_name == "packet_borrow_next_chunk") {
-      std::cout << "  * grabbing chunk info" << std::endl;
+      std::cout << "  grabbing chunk info" << std::endl;
 
       assert(call.extra_vars.count("the_chunk"));
       assert(!call.extra_vars["the_chunk"].second.isNull());
@@ -534,7 +565,7 @@ void parse_call_path(call_path_t *call_path)
     }
 
     else if (call.extra_vars.count("the_key")) {
-      std::cout << "  * grabbing mem access info" << std::endl;
+      std::cout << "  grabbing mem access info" << std::endl;
       
       assert(!call.extra_vars["the_key"].first.isNull());
 
@@ -548,12 +579,11 @@ void parse_call_path(call_path_t *call_path)
   std::cout << "\n*********** SNAPSHOTS ***********" << std::endl;
   for (auto snapshot : snapshots)
   {
-    std::cout << "=== SNAPSHOT ===" << std::endl;
+    std::cout << "\n=== SNAPSHOT ===" << std::endl;
     if (!snapshot.mem_access.expr.isNull())
     {
       std::cout << "mem_access" << std::endl;
 
-      std::cout << std::endl;
       snapshot.mem_access.expr->print(os);
       std::cout << std::endl;
     }
@@ -562,13 +592,15 @@ void parse_call_path(call_path_t *call_path)
     {
       std::cout << "packet_chunk" << std::endl;
 
-      std::cout << std::endl;
       snapshot.state.packet_chunk->print(os);
       std::cout << std::endl;
     }
 
-    std::cout << "layer" << snapshot.state.layer << std::endl;
-    std::cout << "offset" << snapshot.state.offset << std::endl;
+    std::cout << "layer " << snapshot.state.layer << std::endl;
+    std::cout << "offset " << snapshot.state.offset << std::endl;
+
+    for (auto dep : snapshot.mem_access.packet_fields_deps)
+      std::cout << "packet field offset " << dep << std::endl;
   }
 }
 
