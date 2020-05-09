@@ -21,7 +21,7 @@
 #include <klee/Solver.h>
 #include <vector>
 #include <algorithm>
-
+#include <iomanip>
 
 // term colors
 // src: https://stackoverflow.com/questions/9158150/colored-output-in-c/9158263
@@ -415,13 +415,15 @@ struct mem_access_snapshot {
     unsigned proto;
   } state;
 
-  struct {
+  struct mem_access_t {
     klee::expr::ExprHandle expr;
     std::vector<unsigned> packet_fields_deps;
-  } mem_access;
+    std::string interface;
+  };
+
+  std::vector<mem_access_snapshot::mem_access_t> mem_accesses;
 
   mem_access_snapshot() {
-    mem_access.expr    = nullptr;
     state.packet_chunk = nullptr;
     state.offset       = 0;
     state.layer        = 0;
@@ -430,10 +432,24 @@ struct mem_access_snapshot {
 
   mem_access_snapshot(klee::expr::ExprHandle _packet_chunk) {
     state.packet_chunk = _packet_chunk;
-    mem_access.expr    = nullptr;
     state.offset       = 0;
     state.layer        = 0;
     state.proto        = 0;
+  }
+
+  void add_mem_access(std::string interface, klee::expr::ExprHandle expr)
+  {
+    mem_access_snapshot::mem_access_t ma;
+    ma.expr = expr;
+    ma.interface = interface;
+    mem_accesses.push_back(ma);
+  }
+
+  void append_dep_to_back(unsigned dep)
+  {
+    if (mem_accesses.size() == 0)
+      assert(false && "add_deps error: empty list");
+    mem_accesses.back().packet_fields_deps.push_back(dep);
   }
 };
 
@@ -460,16 +476,7 @@ void proto_from_packet_chunk(
 
       assert(solver->getValue(sat_query, result));
 
-      uint64_t proto = result.get()->getZExtValue(klee::Expr::Int16);
-
-      switch (UINT_16_SWAP_ENDIANNESS(proto))
-      {
-        case 0x0800: std::cout << "IPv4" << std::endl; proto = 0x0800; break;
-        case 0x86DD: std::cout << "IPv6" << std::endl; proto = 0x86DD; break;
-        case 0x8100: std::cout << "VLAN" << std::endl; proto = 0x8100; break;
-        default: assert("unknown l2 protocol" && false);
-      }
-
+      proto = UINT_16_SWAP_ENDIANNESS(result.get()->getZExtValue(klee::Expr::Int16));
       break;
     }
 
@@ -521,26 +528,27 @@ void packet_borrow_next_chunk_snapshot(
 }
 
 void mem_access_process(
-  klee::expr::ExprHandle           mem_access,
+  std::string                      interface,
+  klee::expr::ExprHandle           expr,
   klee::ConstraintManager          constraints,
   std::vector<mem_access_snapshot> &snapshots
 )
 {
   std::vector<unsigned> bytes_read;
-
-  if (!has_packet(mem_access, constraints, bytes_read))
+  
+  if (!has_packet(expr, constraints, bytes_read))
   {
     mem_access_snapshot snapshot;
-    snapshot.mem_access.expr = mem_access;
+    snapshot.add_mem_access(interface, expr);
     snapshots.push_back(snapshot);
     return;
   }
 
   mem_access_snapshot &snapshot = snapshots.back();
-  snapshot.mem_access.expr = mem_access;
+  snapshot.add_mem_access(interface, expr);
 
   for (auto byte_read : bytes_read)
-    snapshot.mem_access.packet_fields_deps.push_back(byte_read - snapshot.state.offset);
+    snapshot.append_dep_to_back(byte_read - snapshot.state.offset);
 }
 
 void parse_call_path(call_path_t *call_path)
@@ -570,6 +578,7 @@ void parse_call_path(call_path_t *call_path)
       assert(!call.extra_vars["the_key"].first.isNull());
 
       mem_access_process(
+        call.function_name,
         call.extra_vars["the_key"].first,
         call_path->constraints,
         snapshots);
@@ -579,28 +588,47 @@ void parse_call_path(call_path_t *call_path)
   std::cout << "\n*********** SNAPSHOTS ***********" << std::endl;
   for (auto snapshot : snapshots)
   {
-    std::cout << "\n=== SNAPSHOT ===" << std::endl;
-    if (!snapshot.mem_access.expr.isNull())
-    {
-      std::cout << "mem_access" << std::endl;
+    std::cout << "\n========== SNAPSHOT ==========" << std::endl;
 
-      snapshot.mem_access.expr->print(os);
-      std::cout << std::endl;
-    }
+    std::cout << std::endl;
+    std::cout << "STATE:" << std::endl;
 
     if (!snapshot.state.packet_chunk.isNull())
     {
-      std::cout << "packet_chunk" << std::endl;
+      std::cout << std::endl;
+      std::cout << "packet_chunk:" << std::endl;
 
       snapshot.state.packet_chunk->print(os);
       std::cout << std::endl;
+      
+      std::cout << "layer: " << snapshot.state.layer << std::endl;
+      std::cout << "proto: 0x"
+        << std::setfill('0') << std::setw(4)
+        << std::hex << snapshot.state.proto << std::dec << std::endl;
+      std::cout << "offset: " << snapshot.state.offset << std::endl;
     }
 
-    std::cout << "layer " << snapshot.state.layer << std::endl;
-    std::cout << "offset " << snapshot.state.offset << std::endl;
+    
+    std::cout << std::endl;
+    std::cout << "MEMORY ACCESSES (" << snapshot.mem_accesses.size() << "):" << std::endl;
 
-    for (auto dep : snapshot.mem_access.packet_fields_deps)
-      std::cout << "packet field offset " << dep << std::endl;
+    for (auto mem_access : snapshot.mem_accesses)
+    {
+      std::cout << std::endl;
+
+      std::cout << "interface: " << mem_access.interface << std::endl;
+
+      if (!mem_access.expr.isNull())
+      {
+        std::cout << "mem_access:" << std::endl;
+
+        mem_access.expr->print(os);
+        std::cout << std::endl;
+      }
+
+      for (auto dep : mem_access.packet_fields_deps)
+        std::cout << "packet field offset: " << dep << std::endl;
+    }
   }
 }
 
