@@ -407,57 +407,95 @@ bool has_packet(klee::expr::ExprHandle expr, klee::ConstraintManager constraints
   }
 }
 
-struct mem_access_snapshot {
-  struct {
-    klee::expr::ExprHandle packet_chunk;
-    unsigned offset;
-    unsigned layer;
-    unsigned proto;
-  } state;
+struct chunk_state {
+  klee::expr::ExprHandle expr;
+  unsigned offset;
+  unsigned layer;
+  std::pair<unsigned, bool> proto;
+  std::vector<unsigned> packet_fields_deps;
 
-  struct mem_access_t {
-    klee::expr::ExprHandle expr;
-    std::vector<unsigned> packet_fields_deps;
-    std::string interface;
-  };
-
-  std::vector<mem_access_snapshot::mem_access_t> mem_accesses;
-
-  mem_access_snapshot() {
-    state.packet_chunk = nullptr;
-    state.offset       = 0;
-    state.layer        = 0;
-    state.proto        = 0;
+  chunk_state() {
+    proto.second = false;
   }
 
-  mem_access_snapshot(klee::expr::ExprHandle _packet_chunk) {
-    state.packet_chunk = _packet_chunk;
-    state.offset       = 0;
-    state.layer        = 0;
-    state.proto        = 0;
+  chunk_state(klee::expr::ExprHandle _expr) {
+    expr = _expr;
+    proto.second = false;
   }
 
-  void add_mem_access(std::string interface, klee::expr::ExprHandle expr)
-  {
-    mem_access_snapshot::mem_access_t ma;
-    ma.expr = expr;
-    ma.interface = interface;
-    mem_accesses.push_back(ma);
-  }
-
-  void append_dep_to_back(unsigned dep)
-  {
-    if (mem_accesses.size() == 0)
-      assert(false && "add_deps error: empty list");
-    mem_accesses.back().packet_fields_deps.push_back(dep);
+  void add_proto(unsigned _proto) {
+    std::pair<unsigned, bool> new_proto(_proto, true);
+    proto.swap(new_proto);
   }
 };
 
-void proto_from_packet_chunk(
-  klee::expr::ExprHandle  packet_chunk,
+struct mem_access {
+  klee::expr::ExprHandle expr;
+  std::string interface;
+  std::pair<chunk_state, bool> chunk;
+
+
+  mem_access(std::string _interface, klee::expr::ExprHandle _expr) {
+    chunk.second = false;
+    interface = _interface;
+    expr = _expr;
+  }
+
+  void add_chunk(chunk_state _chunk)
+  {
+    std::pair<chunk_state, bool> new_chunk(_chunk, true);
+    chunk.swap(new_chunk);
+  }
+
+  void append_dep(unsigned dep)
+  {
+    if (!chunk.second) {
+      std::cout
+        << RED
+        << "[ERROR] no chunk stored, can't add dependency."
+        << RESET
+        << std::endl;
+      exit(1);
+    }
+
+    chunk.first.packet_fields_deps.push_back(dep - chunk.first.offset);
+  }
+
+  void print()
+  {
+    llvm::raw_ostream &os = llvm::outs();
+
+    std::cout << "interface: " << interface << std::endl;
+    std::cout << "expr:" << std::endl;
+    expr->print(os);
+    std::cout << std::endl;
+
+    if (!chunk.second) return;
+
+    std::cout << "chunk:" << std::endl;
+    chunk.first.expr->print(os);
+    std::cout << std::endl;
+
+    std::cout << "layer: " << chunk.first.layer << std::endl;
+    std::cout << "offset: " << chunk.first.offset << std::endl;
+
+    if (chunk.first.proto.second) {
+      std::cout << "proto: 0x"
+        << std::setfill('0') << std::setw(4)
+        << std::hex << chunk.first.proto.first << std::dec << std::endl;
+      
+      for (unsigned dep : chunk.first.packet_fields_deps)
+        std::cout << "dep offset field " << dep << std::endl;
+    }
+
+  }
+
+};
+
+void proto_from_chunk(
+  chunk_state             prev_chunk,
   klee::ConstraintManager constraints,
-  unsigned                layer,
-  unsigned                &proto
+  chunk_state             &chunk
 )
 {
   klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();;
@@ -467,16 +505,18 @@ void proto_from_packet_chunk(
   solver = createCachingSolver(solver);
   solver = createIndependentSolver(solver);
 
-  switch (layer) {
+  switch (chunk.layer) {
     case 3:
     {
-      klee::ref<klee::Expr> proto_expr = exprBuilder->Extract(packet_chunk, 12*8, klee::Expr::Int16);
+      klee::ref<klee::Expr> proto_expr = exprBuilder->Extract(prev_chunk.expr, 12*8, klee::Expr::Int16);
       klee::Query sat_query(constraints, proto_expr);
       klee::ref<klee::ConstantExpr> result;
 
       assert(solver->getValue(sat_query, result));
 
-      proto = UINT_16_SWAP_ENDIANNESS(result.get()->getZExtValue(klee::Expr::Int16));
+      unsigned proto = result.get()->getZExtValue(klee::Expr::Int16);
+      chunk.add_proto(UINT_16_SWAP_ENDIANNESS(proto));
+
       break;
     }
 
@@ -484,77 +524,67 @@ void proto_from_packet_chunk(
       std::cout
         << RED
         << "[WARNING] Not implemented: only layer 3, and trying to parse layer "
-        << layer
+        << chunk.layer
         << RESET
         << std::endl;
   }
 }
 
-void offset_from_packet_chunk(
-  klee::expr::ExprHandle  packet_chunk,
+void offset_from_chunk(
   klee::ConstraintManager constraints,
-  unsigned                &offset
+  chunk_state             &chunk
 )
 {
-  offset = readLSB_byte_index(packet_chunk, constraints);
+  chunk.offset = readLSB_byte_index(chunk.expr, constraints);
 }
 
-void packet_borrow_next_chunk_snapshot(
-  klee::expr::ExprHandle           packet_chunk,
+void store_chunk(
+  klee::expr::ExprHandle           chunk_expr,
   klee::ConstraintManager          constraints,
-  std::vector<mem_access_snapshot> &snapshots
+  std::vector<chunk_state>         &chunks
 )
 {
-  mem_access_snapshot snapshot(packet_chunk);
+  chunk_state chunk(chunk_expr);
 
-  if (snapshots.size() == 0)
-    snapshot.state.layer = 2;
+  if (chunks.size() == 0)
+    chunk.layer = 2;
   else {
-    snapshot.state.layer = snapshots.back().state.layer + 1;
-    proto_from_packet_chunk(
-      snapshots.back().state.packet_chunk,
-      constraints,
-      snapshot.state.layer,
-      snapshot.state.proto);
+    chunk.layer = chunks.back().layer + 1;
+    proto_from_chunk(chunks.back(), constraints, chunk);
   }
 
-  offset_from_packet_chunk(
-    snapshot.state.packet_chunk,
-    constraints,
-    snapshot.state.offset
-  );
+  offset_from_chunk(constraints, chunk);
 
-  snapshots.push_back(snapshot);  
+  chunks.push_back(chunk);
 }
 
 void mem_access_process(
-  std::string                      interface,
-  klee::expr::ExprHandle           expr,
-  klee::ConstraintManager          constraints,
-  std::vector<mem_access_snapshot> &snapshots
+  std::string             interface,
+  klee::expr::ExprHandle  expr,
+  klee::ConstraintManager constraints,
+  chunk_state             current_chunk,
+  std::vector<mem_access> &mem_accesses
 )
 {
   std::vector<unsigned> bytes_read;
   
-  if (!has_packet(expr, constraints, bytes_read))
-  {
-    mem_access_snapshot snapshot;
-    snapshot.add_mem_access(interface, expr);
-    snapshots.push_back(snapshot);
-    return;
-  }
+  mem_access ma(interface, expr);
+  mem_accesses.push_back(ma);
 
-  mem_access_snapshot &snapshot = snapshots.back();
-  snapshot.add_mem_access(interface, expr);
+  if (!has_packet(expr, constraints, bytes_read))
+    return;
+
+  mem_access &last_ma = mem_accesses.back();
+  last_ma.add_chunk(current_chunk);
 
   for (auto byte_read : bytes_read)
-    snapshot.append_dep_to_back(byte_read - snapshot.state.offset);
+    last_ma.append_dep(byte_read);
 }
 
-void parse_call_path(call_path_t *call_path)
+std::vector<mem_access> parse_call_path(call_path_t *call_path)
 {
-  std::vector<mem_access_snapshot> snapshots;
-  llvm::raw_ostream &os = llvm::outs();
+  std::vector<mem_access> mem_accesses;
+  std::vector<chunk_state> chunks;
 
   for (auto call : call_path->calls) {
     std::cout << "[CALL] " << call.function_name << std::endl;
@@ -565,10 +595,10 @@ void parse_call_path(call_path_t *call_path)
       assert(call.extra_vars.count("the_chunk"));
       assert(!call.extra_vars["the_chunk"].second.isNull());
 
-      packet_borrow_next_chunk_snapshot(
+      store_chunk(
         call.extra_vars["the_chunk"].second,
         call_path->constraints,
-        snapshots
+        chunks
       );
     }
 
@@ -581,71 +611,42 @@ void parse_call_path(call_path_t *call_path)
         call.function_name,
         call.extra_vars["the_key"].first,
         call_path->constraints,
-        snapshots);
+        chunks.back(),
+        mem_accesses);
     }
   }
 
-  std::cout << "\n*********** SNAPSHOTS ***********" << std::endl;
-  for (auto snapshot : snapshots)
-  {
-    std::cout << "\n========== SNAPSHOT ==========" << std::endl;
-
-    std::cout << std::endl;
-    std::cout << "STATE:" << std::endl;
-
-    if (!snapshot.state.packet_chunk.isNull())
-    {
-      std::cout << std::endl;
-      std::cout << "packet_chunk:" << std::endl;
-
-      snapshot.state.packet_chunk->print(os);
-      std::cout << std::endl;
-      
-      std::cout << "layer: " << snapshot.state.layer << std::endl;
-      std::cout << "proto: 0x"
-        << std::setfill('0') << std::setw(4)
-        << std::hex << snapshot.state.proto << std::dec << std::endl;
-      std::cout << "offset: " << snapshot.state.offset << std::endl;
-    }
-
-    
-    std::cout << std::endl;
-    std::cout << "MEMORY ACCESSES (" << snapshot.mem_accesses.size() << "):" << std::endl;
-
-    for (auto mem_access : snapshot.mem_accesses)
-    {
-      std::cout << std::endl;
-
-      std::cout << "interface: " << mem_access.interface << std::endl;
-
-      if (!mem_access.expr.isNull())
-      {
-        std::cout << "mem_access:" << std::endl;
-
-        mem_access.expr->print(os);
-        std::cout << std::endl;
-      }
-
-      for (auto dep : mem_access.packet_fields_deps)
-        std::cout << "packet field offset: " << dep << std::endl;
-    }
-  }
+  return mem_accesses;
 }
 
 int main(int argc, char **argv, char **envp) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   std::vector<call_path_t *> call_paths;
+  std::vector< std::pair<std::string, mem_access> > mem_accesses;
 
   for (auto file : InputCallPathFiles) {
     std::cerr << "Loading: " << file << std::endl;
 
     std::vector<std::string> expressions_str;
     std::deque<klee::ref<klee::Expr> > expressions;
-    call_paths.push_back(load_call_path(file, expressions_str, expressions));
+    
+    call_path_t *call_path = load_call_path(file, expressions_str, expressions);
+    std::vector<mem_access> mas = parse_call_path(call_path);
+
+    for (auto ma : mas)
+    {
+      std::pair<std::string, mem_access> file_ma(file, ma);
+      mem_accesses.push_back(file_ma);
+    }
   }
 
-  parse_call_path(call_paths.at(0));
+  for (auto ma : mem_accesses)
+  {
+    std::cout << "\n=========== MEMORY ACCESS ===========" << std::endl;
+    std::cout << "file: " << ma.first << std::endl;
+    ma.second.print();
+  }
 
   return 0;
 }
