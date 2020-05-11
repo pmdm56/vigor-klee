@@ -287,15 +287,12 @@ call_path_t *load_call_path(std::string file_name,
   return call_path;
 }
 
-uint64_t evaluate_expr(klee::expr::ExprHandle expr, klee::Expr::Width width, klee::ConstraintManager constraints)
+uint64_t evaluate_expr(
+  klee::expr::ExprHandle expr,
+  klee::Expr::Width width,
+  klee::ConstraintManager constraints,
+  klee::Solver *solver)
 {
-  klee::Solver *solver = klee::createCoreSolver(klee::Z3_SOLVER);
-  assert(solver);
-
-  solver = createCexCachingSolver(solver);
-  solver = createCachingSolver(solver);
-  solver = createIndependentSolver(solver);
-
   klee::Query sat_query(constraints, expr);
   klee::ref<klee::ConstantExpr> result;
 
@@ -304,15 +301,23 @@ uint64_t evaluate_expr(klee::expr::ExprHandle expr, klee::Expr::Width width, kle
   return result.get()->getZExtValue(width);
 }
 
-std::vector<unsigned> readLSB_byte_indexes(klee::ReadExpr *expr, klee::ConstraintManager constraints)
+std::vector<unsigned> readLSB_byte_indexes(
+  klee::ReadExpr *expr,
+  klee::ConstraintManager constraints,
+  klee::Solver *solver
+)
 {
   std::vector<unsigned> bytes;
-  uint64_t index = evaluate_expr(expr->index, expr->index->getWidth(), constraints);
+  uint64_t index = evaluate_expr(expr->index, expr->index->getWidth(), constraints, solver);
   bytes.push_back(index);
   return bytes;
 }
 
-std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, klee::ConstraintManager constraints)
+std::vector<unsigned> readLSB_byte_indexes(
+  klee::ConcatExpr *expr,
+  klee::ConstraintManager constraints,
+  klee::Solver *solver
+)
 {
   std::vector<unsigned> bytes;
   std::vector<unsigned> right_bytes, left_bytes;
@@ -320,11 +325,11 @@ std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, klee::Constra
   if (expr->getRight()->getKind() == klee::Expr::Kind::Concat)
   {
     klee::ConcatExpr *right = cast<klee::ConcatExpr>(expr->getRight());
-    right_bytes = readLSB_byte_indexes(right, constraints);
+    right_bytes = readLSB_byte_indexes(right, constraints, solver);
   } else if (expr->getRight()->getKind() == klee::Expr::Read)
   {
     klee::ReadExpr *right = cast<klee::ReadExpr>(expr->getRight());
-    right_bytes = readLSB_byte_indexes(right, constraints);
+    right_bytes = readLSB_byte_indexes(right, constraints, solver);
   } else {
     assert(false && "Unknown expression on readLSB_byte_indexes");
   }
@@ -334,11 +339,11 @@ std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, klee::Constra
   if (expr->getLeft()->getKind() == klee::Expr::Kind::Concat)
   {
     klee::ConcatExpr *left = cast<klee::ConcatExpr>(expr->getLeft());
-    left_bytes = readLSB_byte_indexes(left, constraints);
+    left_bytes = readLSB_byte_indexes(left, constraints, solver);
   } else if (expr->getLeft()->getKind() == klee::Expr::Read)
   {
     klee::ReadExpr *left = cast<klee::ReadExpr>(expr->getLeft());
-    left_bytes = readLSB_byte_indexes(left, constraints);
+    left_bytes = readLSB_byte_indexes(left, constraints, solver);
   } else {
     assert(false && "Unknown expression on readLSB_byte_indexes");
   }
@@ -351,6 +356,7 @@ std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, klee::Constra
 void readLSB_parse(
   klee::expr::ExprHandle expr,
   klee::ConstraintManager constraints,
+  klee::Solver *solver,
   unsigned &offset,
   unsigned &size // bits
   )
@@ -362,7 +368,7 @@ void readLSB_parse(
     case klee::Expr::Kind::Read: 
     {
       klee::ReadExpr *read = cast<klee::ReadExpr>(expr);
-      bytes_read = readLSB_byte_indexes(read, constraints);
+      bytes_read = readLSB_byte_indexes(read, constraints, solver);
       size = read->getWidth();
       break;
     }
@@ -370,35 +376,39 @@ void readLSB_parse(
     case klee::Expr::Kind::Concat:
     {
       klee::ConcatExpr *concat = cast<klee::ConcatExpr>(expr);
-      bytes_read = readLSB_byte_indexes(concat, constraints);
+      bytes_read = readLSB_byte_indexes(concat, constraints, solver);
       size = concat->getWidth();
       break;
     }
 
     default:
-      std::cout << "cast missing" << std::endl;
+      std::cerr << "cast missing" << std::endl;
   }
 
   
   offset = *std::min_element(bytes_read.begin(), bytes_read.end());
 }
 
-bool has_packet(klee::expr::ExprHandle expr, klee::ConstraintManager constraints, std::vector<unsigned> &bytes_read)
+bool has_packet(
+  klee::expr::ExprHandle expr,
+  klee::ConstraintManager constraints,
+  klee::Solver *solver,
+  std::vector<unsigned> &bytes_read)
 {
   switch (expr->getKind())
   {
     case klee::Expr::Kind::Concat:
     {
       klee::ConcatExpr *concat = cast<klee::ConcatExpr>(expr);
-      return has_packet(concat->getLeft(), constraints, bytes_read) &&
-        has_packet(concat->getRight(), constraints, bytes_read);
+      return has_packet(concat->getLeft(), constraints, solver, bytes_read) &&
+        has_packet(concat->getRight(), constraints, solver, bytes_read);
     }
 
     case klee::Expr::Kind::Read:
     {
       klee::ReadExpr *read = cast<klee::ReadExpr>(expr);
       
-      uint64_t index = evaluate_expr(read->index, read->index->getWidth(), constraints);
+      uint64_t index = evaluate_expr(read->index, read->index->getWidth(), constraints, solver);
       bytes_read.push_back(index);
 
       if (read->updates.root == nullptr) return false;
@@ -409,7 +419,7 @@ bool has_packet(klee::expr::ExprHandle expr, klee::ConstraintManager constraints
 
     default:
       for (unsigned i = 0; i < expr->getNumKids(); i++)
-        if (has_packet(expr->getKid(i), constraints, bytes_read)) return true;
+        if (has_packet(expr->getKid(i), constraints, solver, bytes_read)) return true;
       return false;
   }
 }
@@ -495,7 +505,7 @@ struct mem_access {
   void append_dep(unsigned dep)
   {
     if (!chunk.second) {
-      std::cout
+      std::cerr
         << RED
         << "[ERROR] no chunk stored, can't add dependency."
         << RESET
@@ -508,27 +518,27 @@ struct mem_access {
 
   void print()
   {
-    std::cout << "interface: " << interface << std::endl;
+    std::cerr << "interface: " << interface << std::endl;
     
-    std::cout << "expr:        " << std::endl;
-    std::cout << expr_to_string(expr) << std::endl;
+    std::cerr << "expr:        " << std::endl;
+    std::cerr << expr_to_string(expr) << std::endl;
 
     if (!chunk.second) return;
 
-    std::cout << "chunk:       " << std::endl;
-    std::cout << expr_to_string(chunk.first.expr) << std::endl;
+    std::cerr << "chunk:       " << std::endl;
+    std::cerr << expr_to_string(chunk.first.expr) << std::endl;
 
     for (auto appended : chunk.first.exprs_appended) {
-      std::cout << "appended:    " << std::endl;
-      std::cout << expr_to_string(appended) << std::endl;
+      std::cerr << "appended:    " << std::endl;
+      std::cerr << expr_to_string(appended) << std::endl;
     }
 
-    std::cout << "layer:       " << chunk.first.layer << std::endl;
-    std::cout << "offset:      " << chunk.first.offset << std::endl;
-    std::cout << "borrowed:    " << chunk.first.borrowed << std::endl;
+    std::cerr << "layer:       " << chunk.first.layer << std::endl;
+    std::cerr << "offset:      " << chunk.first.offset << std::endl;
+    std::cerr << "borrowed:    " << chunk.first.borrowed << std::endl;
 
     if (chunk.first.proto.second) {
-      std::cout << "proto:       0x"
+      std::cerr << "proto:       0x"
         << std::setfill('0')
         << std::setw(4)
         << std::hex
@@ -536,11 +546,24 @@ struct mem_access {
         << std::dec
         << std::endl;
       
-      std::cout << "dependencies:" << std::endl;
+      std::cerr << "dependencies:" << std::endl;
       for (unsigned dep : chunk.first.packet_fields_deps)
-        std::cout << "          byte " << dep << std::endl;
+        std::cerr << "          byte " << dep << std::endl;
     }
 
+  }
+
+  void report() {
+    std::cout << "BEGIN" << std::endl;
+
+    if (chunk.first.proto.second) {
+      std::cout << "layer  " << chunk.first.layer << std::endl;
+      std::cout << "proto  " << chunk.first.proto.first.code << std::endl;
+      for (unsigned dep : chunk.first.packet_fields_deps)
+        std::cout << "dep    " << dep << std::endl;
+    }
+
+    std::cout << "END" << std::endl;
   }
 
 };
@@ -548,17 +571,13 @@ struct mem_access {
 void proto_from_chunk(
   chunk_state             prev_chunk,
   klee::ConstraintManager constraints,
+  klee::Solver            *solver,
   chunk_state             &chunk
 )
 {
   unsigned proto;
 
   klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();;
-  klee::Solver *solver = klee::createCoreSolver(klee::Z3_SOLVER);
-
-  solver = createCexCachingSolver(solver);
-  solver = createCachingSolver(solver);
-  solver = createIndependentSolver(solver);
 
   if (chunk.layer == 3) {
     klee::ref<klee::Expr> proto_expr =
@@ -590,7 +609,7 @@ void proto_from_chunk(
 
       chunk.add_proto(proto, ihl <= 5);
     } else {
-      std::cout
+      std::cerr
       << MAGENTA
       << "[WARNING] Layer 3 protocol not in set { IP, VLAN }"
       << RESET
@@ -609,7 +628,7 @@ void proto_from_chunk(
 
     chunk.add_proto(proto, true);
   } else {
-    std::cout
+    std::cerr
       << RED
       << "[WARNING] Not implemented: trying to parse layer "
       << chunk.layer
@@ -621,21 +640,22 @@ void proto_from_chunk(
 }
 
 void store_chunk(
-  klee::expr::ExprHandle           chunk_expr,
-  klee::ConstraintManager          constraints,
-  std::vector<chunk_state>         &chunks
+  klee::expr::ExprHandle   chunk_expr,
+  klee::ConstraintManager  constraints,
+  klee::Solver             *solver,
+  std::vector<chunk_state> &chunks
 )
 {
   chunk_state chunk(chunk_expr);
 
-  readLSB_parse(chunk.expr, constraints, chunk.offset, chunk.borrowed);
+  readLSB_parse(chunk.expr, constraints, solver, chunk.offset, chunk.borrowed);
 
   if (chunks.size() == 0 || chunks.back().is_complete()) {
     if (chunks.size() == 0)
       chunk.layer = 2;
     else {
       chunk.layer = chunks.back().layer + 1;
-      proto_from_chunk(chunks.back(), constraints, chunk);
+      proto_from_chunk(chunks.back(), constraints, solver, chunk);
     }
 
     chunks.push_back(chunk);
@@ -649,6 +669,7 @@ void mem_access_process(
   std::string             interface,
   klee::expr::ExprHandle  expr,
   klee::ConstraintManager constraints,
+  klee::Solver            *solver,
   chunk_state             current_chunk,
   std::vector<mem_access> &mem_accesses
 )
@@ -658,7 +679,7 @@ void mem_access_process(
   mem_access ma(interface, expr);
   mem_accesses.push_back(ma);
 
-  if (!has_packet(expr, constraints, bytes_read))
+  if (!has_packet(expr, constraints, solver, bytes_read))
     return;
 
   mem_access &last_ma = mem_accesses.back();
@@ -668,16 +689,19 @@ void mem_access_process(
     last_ma.append_dep(byte_read);
 }
 
-std::vector<mem_access> parse_call_path(call_path_t *call_path)
+std::vector<mem_access> parse_call_path(
+  call_path_t *call_path,
+  klee::Solver *solver
+)
 {
   std::vector<mem_access> mem_accesses;
   std::vector<chunk_state> chunks;
 
   for (auto call : call_path->calls) {
-    std::cout << "[CALL] " << call.function_name << std::endl;
+    std::cerr << "[CALL] " << call.function_name << std::endl;
     
     if (call.function_name == "packet_borrow_next_chunk") {
-      std::cout << "  grabbing chunk info" << std::endl;
+      std::cerr << "  grabbing chunk info" << std::endl;
 
       assert(call.extra_vars.count("the_chunk"));
       assert(!call.extra_vars["the_chunk"].second.isNull());
@@ -685,12 +709,13 @@ std::vector<mem_access> parse_call_path(call_path_t *call_path)
       store_chunk(
         call.extra_vars["the_chunk"].second,
         call_path->constraints,
+        solver,
         chunks
       );
     }
 
     else if (call.extra_vars.count("the_key")) {
-      std::cout << "  grabbing mem access info" << std::endl;
+      std::cerr << "  grabbing mem access info" << std::endl;
       
       assert(!call.extra_vars["the_key"].first.isNull());
 
@@ -698,6 +723,7 @@ std::vector<mem_access> parse_call_path(call_path_t *call_path)
         call.function_name,
         call.extra_vars["the_key"].first,
         call_path->constraints,
+        solver,
         chunks.back(),
         mem_accesses);
     }
@@ -709,17 +735,24 @@ std::vector<mem_access> parse_call_path(call_path_t *call_path)
 int main(int argc, char **argv, char **envp) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
+  klee::Solver *solver = klee::createCoreSolver(klee::Z3_SOLVER);
+  assert(solver);
+
+  solver = createCexCachingSolver(solver);
+  solver = createCachingSolver(solver);
+  solver = createIndependentSolver(solver);
+
   std::vector<call_path_t *> call_paths;
   std::vector< std::pair<std::string, mem_access> > mem_accesses;
 
   for (auto file : InputCallPathFiles) {
-    std::cout << "Loading: " << file << std::endl;
+    std::cerr << "Loading: " << file << std::endl;
 
     std::vector<std::string> expressions_str;
     std::deque<klee::ref<klee::Expr> > expressions;
     
     call_path_t *call_path = load_call_path(file, expressions_str, expressions);
-    std::vector<mem_access> mas = parse_call_path(call_path);
+    std::vector<mem_access> mas = parse_call_path(call_path, solver);
 
     for (auto ma : mas)
     {
@@ -730,9 +763,10 @@ int main(int argc, char **argv, char **envp) {
 
   for (auto ma : mem_accesses)
   {
-    std::cout << "\n=========== MEMORY ACCESS ===========" << std::endl;
-    std::cout << "file: " << ma.first << std::endl;
+    std::cerr << "\n=========== MEMORY ACCESS ===========" << std::endl;
+    std::cerr << "file: " << ma.first << std::endl;
     ma.second.print();
+    ma.second.report();
   }
 
   return 0;
