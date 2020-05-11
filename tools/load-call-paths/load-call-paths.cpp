@@ -348,7 +348,12 @@ std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, klee::Constra
   return bytes;
 }
 
-unsigned readLSB_byte_index(klee::expr::ExprHandle expr, klee::ConstraintManager constraints)
+void readLSB_parse(
+  klee::expr::ExprHandle expr,
+  klee::ConstraintManager constraints,
+  unsigned &offset,
+  unsigned &size // bits
+  )
 {
   std::vector<unsigned> bytes_read;
 
@@ -358,6 +363,7 @@ unsigned readLSB_byte_index(klee::expr::ExprHandle expr, klee::ConstraintManager
     {
       klee::ReadExpr *read = cast<klee::ReadExpr>(expr);
       bytes_read = readLSB_byte_indexes(read, constraints);
+      size = read->getWidth();
       break;
     }
 
@@ -365,6 +371,7 @@ unsigned readLSB_byte_index(klee::expr::ExprHandle expr, klee::ConstraintManager
     {
       klee::ConcatExpr *concat = cast<klee::ConcatExpr>(expr);
       bytes_read = readLSB_byte_indexes(concat, constraints);
+      size = concat->getWidth();
       break;
     }
 
@@ -373,7 +380,7 @@ unsigned readLSB_byte_index(klee::expr::ExprHandle expr, klee::ConstraintManager
   }
 
   
-  return *std::min_element(bytes_read.begin(), bytes_read.end());
+  offset = *std::min_element(bytes_read.begin(), bytes_read.end());
 }
 
 bool has_packet(klee::expr::ExprHandle expr, klee::ConstraintManager constraints, std::vector<unsigned> &bytes_read)
@@ -408,10 +415,27 @@ bool has_packet(klee::expr::ExprHandle expr, klee::ConstraintManager constraints
 }
 
 struct chunk_state {
+
+  struct proto_data {
+    unsigned code;
+    bool complete;
+
+    proto_data() {}
+
+    proto_data(unsigned _code, bool _complete) {
+      code = _code;
+      complete = _complete;
+    }
+  };
+
   klee::expr::ExprHandle expr;
+  std::vector<klee::expr::ExprHandle> exprs_appended;
+
   unsigned offset;
+  unsigned borrowed;
   unsigned layer;
-  std::pair<unsigned, bool> proto;
+
+  std::pair<chunk_state::proto_data, bool> proto;
   std::vector<unsigned> packet_fields_deps;
 
   chunk_state() {
@@ -423,11 +447,32 @@ struct chunk_state {
     proto.second = false;
   }
 
-  void add_proto(unsigned _proto) {
-    std::pair<unsigned, bool> new_proto(_proto, true);
+  void add_proto(unsigned _code, bool _complete) {
+    std::pair<chunk_state::proto_data, bool> new_proto
+      (chunk_state::proto_data(_code, _complete), true);
     proto.swap(new_proto);
   }
+
+  bool is_complete() {
+    return !proto.second || proto.first.complete;
+  }
+
+  void append(chunk_state chunk) {
+    if (!proto.second)
+      assert(false && "proto not set");
+
+    exprs_appended.push_back(chunk.expr);
+    proto.first.complete = true;
+  }
 };
+
+std::string expr_to_string(klee::expr::ExprHandle expr) {
+  std::string expr_str;
+  llvm::raw_string_ostream os(expr_str);
+  expr->print(os);
+  os.str();
+  return expr_str;
+}
 
 struct mem_access {
   klee::expr::ExprHandle expr;
@@ -463,29 +508,37 @@ struct mem_access {
 
   void print()
   {
-    llvm::raw_ostream &os = llvm::outs();
-
     std::cout << "interface: " << interface << std::endl;
-    std::cout << "expr:" << std::endl;
-    expr->print(os);
-    std::cout << std::endl;
+    
+    std::cout << "expr:        " << std::endl;
+    std::cout << expr_to_string(expr) << std::endl;
 
     if (!chunk.second) return;
 
-    std::cout << "chunk:" << std::endl;
-    chunk.first.expr->print(os);
-    std::cout << std::endl;
+    std::cout << "chunk:       " << std::endl;
+    std::cout << expr_to_string(chunk.first.expr) << std::endl;
 
-    std::cout << "layer: " << chunk.first.layer << std::endl;
-    std::cout << "offset: " << chunk.first.offset << std::endl;
+    for (auto appended : chunk.first.exprs_appended) {
+      std::cout << "appended:    " << std::endl;
+      std::cout << expr_to_string(appended) << std::endl;
+    }
+
+    std::cout << "layer:       " << chunk.first.layer << std::endl;
+    std::cout << "offset:      " << chunk.first.offset << std::endl;
+    std::cout << "borrowed:    " << chunk.first.borrowed << std::endl;
 
     if (chunk.first.proto.second) {
-      std::cout << "proto: 0x"
-        << std::setfill('0') << std::setw(4)
-        << std::hex << chunk.first.proto.first << std::dec << std::endl;
+      std::cout << "proto:       0x"
+        << std::setfill('0')
+        << std::setw(4)
+        << std::hex
+        << chunk.first.proto.first.code
+        << std::dec
+        << std::endl;
       
+      std::cout << "dependencies:" << std::endl;
       for (unsigned dep : chunk.first.packet_fields_deps)
-        std::cout << "dep offset field " << dep << std::endl;
+        std::cout << "          byte " << dep << std::endl;
     }
 
   }
@@ -498,6 +551,8 @@ void proto_from_chunk(
   chunk_state             &chunk
 )
 {
+  unsigned proto;
+
   klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();;
   klee::Solver *solver = klee::createCoreSolver(klee::Z3_SOLVER);
 
@@ -505,37 +560,64 @@ void proto_from_chunk(
   solver = createCachingSolver(solver);
   solver = createIndependentSolver(solver);
 
-  switch (chunk.layer) {
-    case 3:
+  if (chunk.layer == 3) {
+    klee::ref<klee::Expr> proto_expr =
+      exprBuilder->Extract(prev_chunk.expr, 12 * 8, klee::Expr::Int16);
+
+    klee::Query proto_query(constraints, proto_expr);
+    klee::ref<klee::ConstantExpr> proto_value;
+
+    assert(solver->getValue(proto_query, proto_value));
+
+    proto = proto_value.get()->getZExtValue(klee::Expr::Int16);
+    proto = UINT_16_SWAP_ENDIANNESS(proto);
+
+    if (proto == 0x0800) // IP
     {
-      klee::ref<klee::Expr> proto_expr = exprBuilder->Extract(prev_chunk.expr, 12*8, klee::Expr::Int16);
-      klee::Query sat_query(constraints, proto_expr);
-      klee::ref<klee::ConstantExpr> result;
+      klee::ref<klee::Expr> version_ihl_expr =
+        exprBuilder->Extract(chunk.expr, 0, klee::Expr::Int8);
 
-      assert(solver->getValue(sat_query, result));
+      klee::Query version_ihl_query(constraints, version_ihl_expr);
+      klee::ref<klee::ConstantExpr> version_ihl_value;
 
-      unsigned proto = result.get()->getZExtValue(klee::Expr::Int16);
-      chunk.add_proto(UINT_16_SWAP_ENDIANNESS(proto));
+      assert(solver->getValue(version_ihl_query, version_ihl_value));
 
-      break;
-    }
+      unsigned version_ihl = 0;
+      version_ihl =
+        version_ihl_value.get()->getZExtValue(klee::Expr::Int8);
 
-    default:
+      unsigned ihl = version_ihl & 0xf;
+
+      chunk.add_proto(proto, ihl <= 5);
+    } else {
       std::cout
-        << RED
-        << "[WARNING] Not implemented: only layer 3, and trying to parse layer "
-        << chunk.layer
-        << RESET
-        << std::endl;
-  }
-}
+      << MAGENTA
+      << "[WARNING] Layer 3 protocol not in set { IP, VLAN }"
+      << RESET
+      << std::endl;
+    }
+  } else if (chunk.layer == 4) {
+    klee::ref<klee::Expr> proto_expr =
+      exprBuilder->Extract(prev_chunk.expr, 9 * 8, klee::Expr::Int8);
 
-void offset_from_chunk(
-  klee::ConstraintManager constraints,
-  chunk_state             &chunk
-)
-{
-  chunk.offset = readLSB_byte_index(chunk.expr, constraints);
+    klee::Query proto_query(constraints, proto_expr);
+    klee::ref<klee::ConstantExpr> proto_value;
+
+    assert(solver->getValue(proto_query, proto_value));
+
+    proto = proto_value.get()->getZExtValue(klee::Expr::Int8);
+
+    chunk.add_proto(proto, true);
+  } else {
+    std::cout
+      << RED
+      << "[WARNING] Not implemented: trying to parse layer "
+      << chunk.layer
+      << RESET
+      << std::endl;
+    
+    return;
+  }
 }
 
 void store_chunk(
@@ -546,16 +628,21 @@ void store_chunk(
 {
   chunk_state chunk(chunk_expr);
 
-  if (chunks.size() == 0)
-    chunk.layer = 2;
-  else {
-    chunk.layer = chunks.back().layer + 1;
-    proto_from_chunk(chunks.back(), constraints, chunk);
+  readLSB_parse(chunk.expr, constraints, chunk.offset, chunk.borrowed);
+
+  if (chunks.size() == 0 || chunks.back().is_complete()) {
+    if (chunks.size() == 0)
+      chunk.layer = 2;
+    else {
+      chunk.layer = chunks.back().layer + 1;
+      proto_from_chunk(chunks.back(), constraints, chunk);
+    }
+
+    chunks.push_back(chunk);
+  } else if (chunks.size()) {
+    chunks.back().append(chunk);
   }
 
-  offset_from_chunk(constraints, chunk);
-
-  chunks.push_back(chunk);
 }
 
 void mem_access_process(
@@ -626,7 +713,7 @@ int main(int argc, char **argv, char **envp) {
   std::vector< std::pair<std::string, mem_access> > mem_accesses;
 
   for (auto file : InputCallPathFiles) {
-    std::cerr << "Loading: " << file << std::endl;
+    std::cout << "Loading: " << file << std::endl;
 
     std::vector<std::string> expressions_str;
     std::deque<klee::ref<klee::Expr> > expressions;
