@@ -961,6 +961,16 @@ void KleeHandler::dumpCallPath(const ExecutionState &state, llvm::raw_ostream *f
   std::vector<const klee::Array *> evalArrays;
 
   for (auto ci : state.callPath) {
+    for (auto a : ci.args) {
+      if (a.isPtr && a.pointee.doTraceValueIn) {
+        evalExprs.push_back(a.pointee.inVal);
+      } else if (a.isPtr && a.pointee.doTraceValueOut) {
+        evalExprs.push_back(a.pointee.outVal);
+      } else {
+        evalExprs.push_back(a.expr);
+      }
+    }
+
     for (auto e : ci.extraPtrs) {
       if (e.second.pointee.doTraceValueIn) {
         evalExprs.push_back(e.second.pointee.inVal);
