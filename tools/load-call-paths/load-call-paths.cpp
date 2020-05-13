@@ -347,7 +347,6 @@ call_path_t *load_call_path(std::string file_name,
 
 uint64_t evaluate_expr(
   klee::expr::ExprHandle expr,
-  klee::Expr::Width width,
   klee::ConstraintManager constraints,
   klee::Solver *solver)
 {
@@ -356,7 +355,7 @@ uint64_t evaluate_expr(
 
   assert(solver->getValue(sat_query, result));
 
-  return result.get()->getZExtValue(width);
+  return result.get()->getZExtValue(expr->getWidth());
 }
 
 std::vector<unsigned> readLSB_byte_indexes(
@@ -366,7 +365,10 @@ std::vector<unsigned> readLSB_byte_indexes(
 )
 {
   std::vector<unsigned> bytes;
-  uint64_t index = evaluate_expr(expr->index, expr->index->getWidth(), constraints, solver);
+  uint64_t index = evaluate_expr(
+    expr->index,
+    constraints,
+    solver);
   bytes.push_back(index);
   return bytes;
 }
@@ -380,13 +382,9 @@ std::vector<unsigned> readLSB_byte_indexes(
   std::vector<unsigned> bytes;
   std::vector<unsigned> right_bytes, left_bytes;
 
-  if (expr->getRight()->getKind() == klee::Expr::Kind::Concat)
-  {
-    klee::ConcatExpr *right = cast<klee::ConcatExpr>(expr->getRight());
+  if (klee::ConcatExpr *right = dyn_cast<klee::ConcatExpr>(expr->getRight())) {
     right_bytes = readLSB_byte_indexes(right, constraints, solver);
-  } else if (expr->getRight()->getKind() == klee::Expr::Read)
-  {
-    klee::ReadExpr *right = cast<klee::ReadExpr>(expr->getRight());
+  } else if (klee::ReadExpr *right = dyn_cast<klee::ReadExpr>(expr->getRight())) {
     right_bytes = readLSB_byte_indexes(right, constraints, solver);
   } else {
     assert(false && "Unknown expression on readLSB_byte_indexes");
@@ -394,13 +392,9 @@ std::vector<unsigned> readLSB_byte_indexes(
 
   bytes.insert(bytes.end(), right_bytes.begin(), right_bytes.end());
 
-  if (expr->getLeft()->getKind() == klee::Expr::Kind::Concat)
-  {
-    klee::ConcatExpr *left = cast<klee::ConcatExpr>(expr->getLeft());
+  if (klee::ConcatExpr *left = dyn_cast<klee::ConcatExpr>(expr->getLeft())) {
     left_bytes = readLSB_byte_indexes(left, constraints, solver);
-  } else if (expr->getLeft()->getKind() == klee::Expr::Read)
-  {
-    klee::ReadExpr *left = cast<klee::ReadExpr>(expr->getLeft());
+  } else if (klee::ReadExpr *left = dyn_cast<klee::ReadExpr>(expr->getLeft())) {
     left_bytes = readLSB_byte_indexes(left, constraints, solver);
   } else {
     assert(false && "Unknown expression on readLSB_byte_indexes");
@@ -421,29 +415,16 @@ void readLSB_parse(
 {
   std::vector<unsigned> bytes_read;
 
-  switch (expr->getKind())
-  {
-    case klee::Expr::Kind::Read: 
-    {
-      klee::ReadExpr *read = cast<klee::ReadExpr>(expr);
-      bytes_read = readLSB_byte_indexes(read, constraints, solver);
-      size = read->getWidth();
-      break;
-    }
-
-    case klee::Expr::Kind::Concat:
-    {
-      klee::ConcatExpr *concat = cast<klee::ConcatExpr>(expr);
-      bytes_read = readLSB_byte_indexes(concat, constraints, solver);
-      size = concat->getWidth();
-      break;
-    }
-
-    default:
-      std::cerr << "cast missing" << std::endl;
+  if (klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr)) {
+    bytes_read = readLSB_byte_indexes(read, constraints, solver);
+    size = read->getWidth();
+  } else if (klee::ConcatExpr *concat = dyn_cast<klee::ConcatExpr>(expr)) {
+    bytes_read = readLSB_byte_indexes(concat, constraints, solver);
+    size = concat->getWidth();
+  } else {
+    assert(false && "cast missing");
   }
 
-  
   offset = *std::min_element(bytes_read.begin(), bytes_read.end());
 }
 
@@ -453,33 +434,26 @@ bool has_packet(
   klee::Solver *solver,
   std::vector<unsigned> &bytes_read)
 {
-  switch (expr->getKind())
-  {
-    case klee::Expr::Kind::Concat:
-    {
-      klee::ConcatExpr *concat = cast<klee::ConcatExpr>(expr);
-      return has_packet(concat->getLeft(), constraints, solver, bytes_read) &&
+  if (klee::ConcatExpr *concat = dyn_cast<klee::ConcatExpr>(expr)) {
+    return has_packet(concat->getLeft(), constraints, solver, bytes_read) &&
         has_packet(concat->getRight(), constraints, solver, bytes_read);
-    }
+  } else if (klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr)) {
+    uint64_t index = evaluate_expr(
+      read->index,
+      constraints,
+      solver);
+    bytes_read.push_back(index);
 
-    case klee::Expr::Kind::Read:
-    {
-      klee::ReadExpr *read = cast<klee::ReadExpr>(expr);
-      
-      uint64_t index = evaluate_expr(read->index, read->index->getWidth(), constraints, solver);
-      bytes_read.push_back(index);
-
-      if (read->updates.root == nullptr) return false;
-      if (read->updates.root->getName() != "packet_chunks") return false;
-      
+    if (read->updates.root == nullptr) return false;
+    if (read->updates.root->getName() != "packet_chunks") return false;
+    
+    return true;
+  } 
+  
+  for (unsigned i = 0; i < expr->getNumKids(); i++)
+    if (has_packet(expr->getKid(i), constraints, solver, bytes_read))
       return true;
-    }
-
-    default:
-      for (unsigned i = 0; i < expr->getNumKids(); i++)
-        if (has_packet(expr->getKid(i), constraints, solver, bytes_read)) return true;
-      return false;
-  }
+  return false;
 }
 
 struct chunk_state {
@@ -532,85 +506,94 @@ struct chunk_state {
     exprs_appended.push_back(chunk.expr);
     proto.first.complete = true;
   }
+
+  bool add_dep(unsigned dep) {
+    if (dep < offset || dep > offset + borrowed / 8)
+      return false;
+    packet_fields_deps.push_back(dep - offset);
+    return true;
+  }
 };
 
 struct mem_access {
   klee::expr::ExprHandle expr;
   std::string interface;
-  std::pair<chunk_state, bool> chunk;
-
+  std::vector<chunk_state> chunks;
 
   mem_access(std::string _interface, klee::expr::ExprHandle _expr) {
-    chunk.second = false;
     interface = _interface;
     expr = _expr;
   }
 
-  void add_chunk(chunk_state _chunk)
-  {
-    std::pair<chunk_state, bool> new_chunk(_chunk, true);
-    chunk.swap(new_chunk);
+  void add_chunks(std::vector<chunk_state> _chunks) {
+    chunks.insert(chunks.end(), _chunks.begin(), _chunks.end());
   }
 
   void append_dep(unsigned dep)
   {
-    if (!chunk.second) {
-      std::cerr
-        << RED
-        << "[ERROR] no chunk stored, can't add dependency."
-        << RESET
-        << std::endl;
-      exit(1);
+    for (auto &chunk : chunks) {
+      if (chunk.add_dep(dep)) return;
     }
 
-    chunk.first.packet_fields_deps.push_back(dep - chunk.first.offset);
+    std::cerr
+      << RED
+      << "[ERROR] byte " << dep << " not associated with any chunk."
+      << RESET
+      << std::endl;
+    
+    std::cerr << RED;
+    print();
+    std::cerr << RESET;
+
+    exit(1);
   }
 
   void print()
   {
     std::cerr << "interface: " << interface << std::endl;
     
-    std::cerr << "expr:        " << std::endl;
-    std::cerr << expr_to_string(expr) << std::endl;
+    std::cerr << "expr:      " << expr_to_string(expr) << std::endl;
 
-    if (!chunk.second) return;
+    for (auto chunk : chunks) {
+      std::cerr << "chunk:" << std::endl;
+      std::cerr << "\texpr:        " << expr_to_string(chunk.expr) << std::endl;
 
-    std::cerr << "chunk:       " << std::endl;
-    std::cerr << expr_to_string(chunk.first.expr) << std::endl;
+      for (auto appended : chunk.exprs_appended) {
+        std::cerr << "\tappended:    " << expr_to_string(appended) << std::endl;
+      }
 
-    for (auto appended : chunk.first.exprs_appended) {
-      std::cerr << "appended:    " << std::endl;
-      std::cerr << expr_to_string(appended) << std::endl;
+      std::cerr << "\tlayer:       " << chunk.layer << std::endl;
+      std::cerr << "\toffset:      " << chunk.offset << std::endl;
+      std::cerr << "\tborrowed:    " << chunk.borrowed << std::endl;
+
+      if (chunk.proto.second) {
+        std::cerr << "\tproto:       0x"
+          << std::setfill('0')
+          << std::setw(4)
+          << std::hex
+          << chunk.proto.first.code
+          << std::dec
+          << std::endl;
+        
+        std::cerr << "\tdependencies:" << std::endl;
+        for (unsigned dep : chunk.packet_fields_deps)
+          std::cerr << "\t          byte " << dep << std::endl;
+      }
     }
 
-    std::cerr << "layer:       " << chunk.first.layer << std::endl;
-    std::cerr << "offset:      " << chunk.first.offset << std::endl;
-    std::cerr << "borrowed:    " << chunk.first.borrowed << std::endl;
-
-    if (chunk.first.proto.second) {
-      std::cerr << "proto:       0x"
-        << std::setfill('0')
-        << std::setw(4)
-        << std::hex
-        << chunk.first.proto.first.code
-        << std::dec
-        << std::endl;
-      
-      std::cerr << "dependencies:" << std::endl;
-      for (unsigned dep : chunk.first.packet_fields_deps)
-        std::cerr << "          byte " << dep << std::endl;
-    }
 
   }
 
   void report() {
     std::cout << "BEGIN" << std::endl;
 
-    if (chunk.first.proto.second) {
-      std::cout << "layer  " << chunk.first.layer << std::endl;
-      std::cout << "proto  " << chunk.first.proto.first.code << std::endl;
-      for (unsigned dep : chunk.first.packet_fields_deps)
-        std::cout << "dep    " << dep << std::endl;
+    for (auto chunk : chunks) {
+      if (chunk.proto.second) {
+        std::cout << "layer  " << chunk.layer << std::endl;
+        std::cout << "proto  " << chunk.proto.first.code << std::endl;
+        for (unsigned dep : chunk.packet_fields_deps)
+          std::cout << "dep    " << dep << std::endl;
+      }
     }
 
     std::cout << "END" << std::endl;
@@ -630,34 +613,27 @@ void proto_from_chunk(
   klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();;
 
   if (chunk.layer == 3) {
+
     klee::ref<klee::Expr> proto_expr =
       exprBuilder->Extract(prev_chunk.expr, 12 * 8, klee::Expr::Int16);
 
-    klee::Query proto_query(constraints, proto_expr);
-    klee::ref<klee::ConstantExpr> proto_value;
-
-    assert(solver->getValue(proto_query, proto_value));
-
-    proto = proto_value.get()->getZExtValue(klee::Expr::Int16);
+    proto = evaluate_expr(proto_expr, constraints, solver);
     proto = UINT_16_SWAP_ENDIANNESS(proto);
 
     if (proto == 0x0800) // IP
     {
-      klee::ref<klee::Expr> version_ihl_expr =
-        exprBuilder->Extract(chunk.expr, 0, klee::Expr::Int8);
+      klee::ref<klee::Expr> ihl_le_5_expr = exprBuilder->Ule(
+        exprBuilder->And(
+          exprBuilder->Extract(chunk.expr, 0, klee::Expr::Int8),
+          exprBuilder->Constant(0b1111, klee::Expr::Int8)
+        ),
+        exprBuilder->Constant(5, klee::Expr::Int8)
+      );
 
-      klee::Query version_ihl_query(constraints, version_ihl_expr);
-      klee::ref<klee::ConstantExpr> version_ihl_value;
+      bool ihl_le_5 = evaluate_expr(ihl_le_5_expr, constraints, solver);
+      if (!ihl_le_5) std::cerr << "[ALERT] ihl > 5" << std::endl;
+      chunk.add_proto(proto, ihl_le_5);
 
-      assert(solver->getValue(version_ihl_query, version_ihl_value));
-
-      unsigned version_ihl = 0;
-      version_ihl =
-        version_ihl_value.get()->getZExtValue(klee::Expr::Int8);
-
-      unsigned ihl = version_ihl & 0xf;
-
-      chunk.add_proto(proto, ihl <= 5);
     } else {
       std::cerr
       << MAGENTA
@@ -716,12 +692,12 @@ void store_chunk(
 }
 
 void mem_access_process(
-  std::string             interface,
-  klee::expr::ExprHandle  expr,
-  klee::ConstraintManager constraints,
-  klee::Solver            *solver,
-  chunk_state             current_chunk,
-  std::vector<mem_access> &mem_accesses
+  std::string              interface,
+  klee::expr::ExprHandle   expr,
+  klee::ConstraintManager  constraints,
+  klee::Solver             *solver,
+  std::vector<chunk_state> chunks,
+  std::vector<mem_access>  &mem_accesses
 )
 {
   std::vector<unsigned> bytes_read;
@@ -733,7 +709,7 @@ void mem_access_process(
     return;
 
   mem_access &last_ma = mem_accesses.back();
-  last_ma.add_chunk(current_chunk);
+  last_ma.add_chunks(chunks);
 
   for (auto byte_read : bytes_read)
     last_ma.append_dep(byte_read);
@@ -768,8 +744,9 @@ std::vector<mem_access> parse_call_path(
         chunks
       );
     } else if (
-      call.function_name == "map_get" ||
-      call.function_name == "map_put"
+      call.function_name == "map_get"    ||
+      call.function_name == "map_put"    ||
+      call.function_name == "dmap_get_a"
     ) {
       std::cerr << "  grabbing memory access info" << std::endl;
 
@@ -781,7 +758,7 @@ std::vector<mem_access> parse_call_path(
         call.args["key"],
         call_path->constraints,
         solver,
-        chunks.back(),
+        chunks,
         mem_accesses
       );
     }
@@ -818,29 +795,6 @@ int main(int argc, char **argv, char **envp) {
       std::pair<std::string, mem_access> file_ma(file, ma);
       mem_accesses.push_back(file_ma);
     }
-
-    /*
-   for (auto call : call_path->calls) {
-     std::cout << "\n========== CALL ==========" << std::endl;
-
-     std::cout << "function " << call.function_name << std::endl;
-
-     for (auto arg : call.args) {
-       std::cout << "arg " << arg.first << std::endl;
-       std::cout << expr_to_string(arg.second) << std::endl;
-     }
-
-     for (auto extra_var : call.extra_vars) {
-       std::cout << "extra var " << extra_var.first << std::endl;
-       std::cout << "in" << std::endl;
-       std::cout << expr_to_string(extra_var.second.first) << std::endl;
-       std::cout << "out" << std::endl;
-       std::cout << expr_to_string(extra_var.second.second) << std::endl;
-     }
-
-     std::cout << "\n==========================" << std::endl;
-   }
-   */
   }
 
   for (auto ma : mem_accesses)
