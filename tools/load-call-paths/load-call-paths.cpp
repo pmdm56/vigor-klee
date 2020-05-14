@@ -409,18 +409,15 @@ void readLSB_parse(
   klee::expr::ExprHandle expr,
   klee::ConstraintManager constraints,
   klee::Solver *solver,
-  unsigned &offset,
-  unsigned &size // bits
+  unsigned &offset
   )
 {
   std::vector<unsigned> bytes_read;
 
   if (klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr)) {
     bytes_read = readLSB_byte_indexes(read, constraints, solver);
-    size = read->getWidth();
   } else if (klee::ConcatExpr *concat = dyn_cast<klee::ConcatExpr>(expr)) {
     bytes_read = readLSB_byte_indexes(concat, constraints, solver);
-    size = concat->getWidth();
   } else {
     assert(false && "cast missing");
   }
@@ -470,21 +467,37 @@ struct chunk_state {
     }
   };
 
+  struct appended_chunk {
+    klee::expr::ExprHandle expr;
+    unsigned               offset;
+    unsigned               length;
+
+    appended_chunk(chunk_state chunk) {
+      expr   = chunk.expr;
+      offset = chunk.offset;
+      length = chunk.length;
+    }
+  };
+
   klee::expr::ExprHandle expr;
-  std::vector<klee::expr::ExprHandle> exprs_appended;
+  std::vector<appended_chunk> appended;
 
   unsigned offset;
-  unsigned borrowed;
+  unsigned length;
   unsigned layer;
 
   std::pair<chunk_state::proto_data, bool> proto;
   std::vector<unsigned> packet_fields_deps;
 
-  chunk_state() {
+  chunk_state(unsigned _offset, unsigned _length) {
+    offset = _offset;
+    length = _length;
     proto.second = false;
   }
 
-  chunk_state(klee::expr::ExprHandle _expr) {
+  chunk_state(unsigned _offset, unsigned _length, klee::expr::ExprHandle _expr) {
+    offset = _offset;
+    length = _length;
     expr = _expr;
     proto.second = false;
   }
@@ -503,13 +516,21 @@ struct chunk_state {
     if (!proto.second)
       assert(false && "proto not set");
 
-    exprs_appended.push_back(chunk.expr);
+    appended.emplace_back(chunk);
     proto.first.complete = true;
   }
 
   bool add_dep(unsigned dep) {
-    if (dep < offset || dep > offset + borrowed / 8)
+    for (auto ca : appended) {
+      if (dep >= ca.offset && dep <= ca.offset + ca.length) {
+        packet_fields_deps.push_back(dep - (offset + length));
+        return true;
+      }
+    }
+
+    if (dep < offset || dep > offset + length)
       return false;
+
     packet_fields_deps.push_back(dep - offset);
     return true;
   }
@@ -548,36 +569,54 @@ struct mem_access {
     exit(1);
   }
 
+  std::string lvl(unsigned lvl, std::string str) {
+    unsigned pad = 4;
+    return std::string(pad * lvl, ' ') + str;
+  }
+
   void print()
   {
-    std::cerr << "interface: " << interface << std::endl;
+    std::cerr << lvl(0, "interface:") << std::endl;
+    std::cerr << lvl(1, interface) << std::endl;
     
-    std::cerr << "expr:      " << expr_to_string(expr) << std::endl;
+    std::cerr << lvl(0, "expr:") << std::endl;
+    std::cerr << lvl(1, expr_to_string(expr)) << std::endl;
 
     for (auto chunk : chunks) {
-      std::cerr << "chunk:" << std::endl;
-      std::cerr << "\texpr:        " << expr_to_string(chunk.expr) << std::endl;
+      std::cerr << lvl(0, "chunk:") << std::endl;
 
-      for (auto appended : chunk.exprs_appended) {
-        std::cerr << "\tappended:    " << expr_to_string(appended) << std::endl;
+      std::cerr << lvl(1, "expr:") << std::endl;
+      std::cerr << lvl(2, expr_to_string(chunk.expr)) << std::endl;
+
+      for (auto appended : chunk.appended) {
+        std::cerr << lvl(1, "appended:") << std::endl;
+        
+        std::cerr << lvl(2, "expr:") << std::endl;
+        std::cerr << lvl(3, expr_to_string(appended.expr)) << std::endl;
+
+        std::cerr << lvl(2, "offset:") << std::endl;
+        std::cerr << lvl(3, std::to_string(appended.offset)) << std::endl;
+
+        std::cerr << lvl(2, "length:") << std::endl;
+        std::cerr << lvl(3, std::to_string(appended.length)) << std::endl;
       }
 
-      std::cerr << "\tlayer:       " << chunk.layer << std::endl;
-      std::cerr << "\toffset:      " << chunk.offset << std::endl;
-      std::cerr << "\tborrowed:    " << chunk.borrowed << std::endl;
+      std::cerr << lvl(1, "layer:") << std::endl;
+      std::cerr << lvl(2, std::to_string(chunk.layer)) << std::endl;
+
+      std::cerr << lvl(1, "offset:") << std::endl;
+      std::cerr << lvl(2, std::to_string(chunk.offset)) << std::endl;
+
+      std::cerr << lvl(1, "length:") << std::endl;
+      std::cerr << lvl(2, std::to_string(chunk.length)) << std::endl;
 
       if (chunk.proto.second) {
-        std::cerr << "\tproto:       0x"
-          << std::setfill('0')
-          << std::setw(4)
-          << std::hex
-          << chunk.proto.first.code
-          << std::dec
-          << std::endl;
+        std::cerr << lvl(1, "proto:") << std::endl;
+        std::cerr << lvl(2, std::to_string(chunk.proto.first.code)) << std::endl;
         
-        std::cerr << "\tdependencies:" << std::endl;
+        std::cerr << lvl(1, "dependencies:") << std::endl;
         for (unsigned dep : chunk.packet_fields_deps)
-          std::cerr << "\t          byte " << dep << std::endl;
+          std::cerr << lvl(2, std::to_string(dep)) << std::endl;
       }
     }
 
@@ -667,14 +706,16 @@ void proto_from_chunk(
 
 void store_chunk(
   klee::expr::ExprHandle   chunk_expr,
+  unsigned 		             length,
   klee::ConstraintManager  constraints,
   klee::Solver             *solver,
   std::vector<chunk_state> &chunks
 )
 {
-  chunk_state chunk(chunk_expr);
+  unsigned offset;
+  readLSB_parse(chunk_expr, constraints, solver, offset);
 
-  readLSB_parse(chunk.expr, constraints, solver, chunk.offset, chunk.borrowed);
+  chunk_state chunk(offset, length, chunk_expr);
 
   if (chunks.size() == 0 || chunks.back().is_complete()) {
     if (chunks.size() == 0)
@@ -722,6 +763,7 @@ std::vector<mem_access> parse_call_path(
 {
   std::vector<mem_access> mem_accesses;
   std::vector<chunk_state> chunks;
+  unsigned length;
 
   for (auto call : call_path->calls) {
     std::cerr << "[CALL] " << call.function_name << std::endl;
@@ -737,8 +779,14 @@ std::vector<mem_access> parse_call_path(
       assert(call.extra_vars.count("the_chunk"));
       assert(!call.extra_vars["the_chunk"].second.isNull());
 
+      assert(call.args.find("length") != call.args.end());
+      assert(!call.args["length"].isNull());
+
+      length = evaluate_expr(call.args["length"], call_path->constraints, solver);
+
       store_chunk(
         call.extra_vars["the_chunk"].second,
+	length,
         call_path->constraints,
         solver,
         chunks
