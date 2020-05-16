@@ -432,24 +432,27 @@ bool has_packet(
   std::vector<unsigned> &bytes_read)
 {
   if (klee::ConcatExpr *concat = dyn_cast<klee::ConcatExpr>(expr)) {
-    return has_packet(concat->getLeft(), constraints, solver, bytes_read) &&
+    return has_packet(concat->getLeft(), constraints, solver, bytes_read) ||
         has_packet(concat->getRight(), constraints, solver, bytes_read);
   } else if (klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr)) {
+    if (read->updates.root == nullptr) return false;
+    if (read->updates.root->getName() != "packet_chunks") return false;
+
     uint64_t index = evaluate_expr(
       read->index,
       constraints,
-      solver);
+      solver
+    );
+
     bytes_read.push_back(index);
 
-    if (read->updates.root == nullptr) return false;
-    if (read->updates.root->getName() != "packet_chunks") return false;
-    
     return true;
   } 
   
   for (unsigned i = 0; i < expr->getNumKids(); i++)
     if (has_packet(expr->getKid(i), constraints, solver, bytes_read))
       return true;
+
   return false;
 }
 
@@ -482,6 +485,7 @@ struct chunk_state {
   klee::expr::ExprHandle expr;
   std::vector<appended_chunk> appended;
 
+  unsigned src_device;
   unsigned offset;
   unsigned length;
   unsigned layer;
@@ -489,13 +493,20 @@ struct chunk_state {
   std::pair<chunk_state::proto_data, bool> proto;
   std::vector<unsigned> packet_fields_deps;
 
-  chunk_state(unsigned _offset, unsigned _length) {
+  chunk_state(unsigned _src_device, unsigned _offset, unsigned _length) {
+    src_device = _src_device;
     offset = _offset;
     length = _length;
     proto.second = false;
   }
 
-  chunk_state(unsigned _offset, unsigned _length, klee::expr::ExprHandle _expr) {
+  chunk_state(
+    unsigned _src_device,
+    unsigned _offset,
+    unsigned _length,
+    klee::expr::ExprHandle _expr
+  ) {
+    src_device = _src_device;
     offset = _offset;
     length = _length;
     expr = _expr;
@@ -585,6 +596,9 @@ struct mem_access {
     for (auto chunk : chunks) {
       std::cerr << lvl(0, "chunk:") << std::endl;
 
+      std::cerr << lvl(1, "device:") << std::endl;
+      std::cerr << lvl(2, std::to_string(chunk.src_device)) << std::endl;
+
       std::cerr << lvl(1, "expr:") << std::endl;
       std::cerr << lvl(2, expr_to_string(chunk.expr)) << std::endl;
 
@@ -624,18 +638,20 @@ struct mem_access {
   }
 
   void report() {
-    std::cout << "BEGIN" << std::endl;
 
     for (auto chunk : chunks) {
-      if (chunk.proto.second) {
-        std::cout << "layer  " << chunk.layer << std::endl;
-        std::cout << "proto  " << chunk.proto.first.code << std::endl;
-        for (unsigned dep : chunk.packet_fields_deps)
-          std::cout << "dep    " << dep << std::endl;
-      }
+      if (!chunk.proto.second || !chunk.packet_fields_deps.size())
+        continue;
+
+      std::cout << "BEGIN" << std::endl;
+      std::cout << "device " << chunk.src_device << std::endl;
+      std::cout << "layer  " << chunk.layer << std::endl;
+      std::cout << "proto  " << chunk.proto.first.code << std::endl;
+      for (unsigned dep : chunk.packet_fields_deps)
+        std::cout << "dep    " << dep << std::endl;
+      std::cout << "END" << std::endl;
     }
 
-    std::cout << "END" << std::endl;
   }
 
 };
@@ -705,6 +721,7 @@ void proto_from_chunk(
 }
 
 void store_chunk(
+  unsigned                 src_device,
   klee::expr::ExprHandle   chunk_expr,
   unsigned 		             length,
   klee::ConstraintManager  constraints,
@@ -715,7 +732,7 @@ void store_chunk(
   unsigned offset;
   readLSB_parse(chunk_expr, constraints, solver, offset);
 
-  chunk_state chunk(offset, length, chunk_expr);
+  chunk_state chunk(src_device, offset, length, chunk_expr);
 
   if (chunks.size() == 0 || chunks.back().is_complete()) {
     if (chunks.size() == 0)
@@ -743,8 +760,7 @@ void mem_access_process(
 {
   std::vector<unsigned> bytes_read;
   
-  mem_access ma(interface, expr);
-  mem_accesses.push_back(ma);
+  mem_accesses.emplace_back(interface, expr);
 
   if (!has_packet(expr, constraints, solver, bytes_read))
     return;
@@ -761,20 +777,36 @@ std::vector<mem_access> parse_call_path(
   klee::Solver *solver
 )
 {
-  std::vector<mem_access> mem_accesses;
-  std::vector<chunk_state> chunks;
-  unsigned length;
+  std::vector<mem_access>   mem_accesses;
+  std::vector<chunk_state>  chunks;
+  unsigned                  length;
+  std::pair<unsigned, bool> src_device;
+
+  src_device.second = false;
 
   for (auto call : call_path->calls) {
     std::cerr << "[CALL] " << call.function_name << std::endl;
 
-    for (auto arg : call.args) {
-       std::cerr << "  arg " << arg.first << std::endl;
-       std::cerr << "      " << expr_to_string(arg.second) << std::endl;
-     }
-    
-    if (call.function_name == "packet_borrow_next_chunk") {
-      std::cerr << "  grabbing chunk info" << std::endl;
+    if (call.function_name == "packet_receive") {
+      assert(!call.args["src_devices"].isNull());
+
+      src_device.first = evaluate_expr(
+        call.args["src_devices"],
+        call_path->constraints,
+        solver
+      );
+
+      src_device.second = true;
+    } else if (call.function_name == "packet_borrow_next_chunk") {
+      std::cerr
+        << "  the_chunk : "
+        << expr_to_string(call.extra_vars["the_chunk"].second)
+        << std::endl;
+
+      std::cerr
+        << "  length : "
+        << expr_to_string(call.args["length"])
+        << std::endl;
 
       assert(call.extra_vars.count("the_chunk"));
       assert(!call.extra_vars["the_chunk"].second.isNull());
@@ -782,11 +814,18 @@ std::vector<mem_access> parse_call_path(
       assert(call.args.find("length") != call.args.end());
       assert(!call.args["length"].isNull());
 
-      length = evaluate_expr(call.args["length"], call_path->constraints, solver);
+      assert(src_device.second);
+
+      length = evaluate_expr(
+        call.args["length"],
+        call_path->constraints,
+        solver
+      );
 
       store_chunk(
+        src_device.first,
         call.extra_vars["the_chunk"].second,
-	length,
+	      length,
         call_path->constraints,
         solver,
         chunks
@@ -794,9 +833,13 @@ std::vector<mem_access> parse_call_path(
     } else if (
       call.function_name == "map_get"    ||
       call.function_name == "map_put"    ||
+      call.function_name == "map_erase"  ||
       call.function_name == "dmap_get_a"
     ) {
-      std::cerr << "  grabbing memory access info" << std::endl;
+      std::cerr
+        << "  key    : "
+        << expr_to_string(call.args["key"])
+        << std::endl;
 
       assert(call.args.find("key") != call.args.end());
       assert(!call.args["key"].isNull());
@@ -804,6 +847,25 @@ std::vector<mem_access> parse_call_path(
       mem_access_process(
         call.function_name,
         call.args["key"],
+        call_path->constraints,
+        solver,
+        chunks,
+        mem_accesses
+      );
+    } else if (
+      call.function_name == "vector_borrow"
+    ) {
+      std::cerr
+        << "  index  : "
+        << expr_to_string(call.args["index"])
+        << std::endl;
+      
+      assert(call.args.find("index") != call.args.end());
+      assert(!call.args["index"].isNull());
+
+      mem_access_process(
+        call.function_name,
+        call.args["index"],
         call_path->constraints,
         solver,
         chunks,
