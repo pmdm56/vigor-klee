@@ -22,6 +22,7 @@
 #include <vector>
 #include <algorithm>
 #include <iomanip>
+#include <algorithm>
 
 // term colors
 // src: https://stackoverflow.com/questions/9158150/colored-output-in-c/9158263
@@ -432,8 +433,12 @@ bool has_packet(
   std::vector<unsigned> &bytes_read)
 {
   if (klee::ConcatExpr *concat = dyn_cast<klee::ConcatExpr>(expr)) {
-    return has_packet(concat->getLeft(), constraints, solver, bytes_read) ||
-        has_packet(concat->getRight(), constraints, solver, bytes_read);
+    bool hp = false;
+
+    hp |= has_packet(concat->getLeft(), constraints, solver, bytes_read);
+    hp |= has_packet(concat->getRight(), constraints, solver, bytes_read);
+
+    return hp;
   } else if (klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr)) {
     if (read->updates.root == nullptr) return false;
     if (read->updates.root->getName() != "packet_chunks") return false;
@@ -535,6 +540,7 @@ struct chunk_state {
     for (auto ca : appended) {
       if (dep >= ca.offset && dep <= ca.offset + ca.length) {
         packet_fields_deps.push_back(dep - (offset + length));
+        std::sort(packet_fields_deps.begin(), packet_fields_deps.end());
         return true;
       }
     }
@@ -543,6 +549,7 @@ struct chunk_state {
       return false;
 
     packet_fields_deps.push_back(dep - offset);
+    std::sort(packet_fields_deps.begin(), packet_fields_deps.end());
     return true;
   }
 };
@@ -563,9 +570,8 @@ struct mem_access {
 
   void append_dep(unsigned dep)
   {
-    for (auto &chunk : chunks) {
+    for (auto &chunk : chunks)
       if (chunk.add_dep(dep)) return;
-    }
 
     std::cerr
       << RED
@@ -633,27 +639,35 @@ struct mem_access {
           std::cerr << lvl(2, std::to_string(dep)) << std::endl;
       }
     }
+  }
 
-
+  bool has_report_content() {
+    for (auto chunk : chunks) {
+      if (!chunk.proto.second || !chunk.packet_fields_deps.size())
+        continue;
+      return true;
+    }
+    return false;
   }
 
   void report() {
 
+    std::string filename = "";
+
     for (auto chunk : chunks) {
       if (!chunk.proto.second || !chunk.packet_fields_deps.size())
         continue;
-
-      std::cout << "BEGIN" << std::endl;
+      
+      std::cout << "BEGIN ACCESS" << std::endl;
       std::cout << "device " << chunk.src_device << std::endl;
       std::cout << "layer  " << chunk.layer << std::endl;
       std::cout << "proto  " << chunk.proto.first.code << std::endl;
       for (unsigned dep : chunk.packet_fields_deps)
         std::cout << "dep    " << dep << std::endl;
-      std::cout << "END" << std::endl;
+      std::cout << "END ACCESS" << std::endl;
     }
 
   }
-
 };
 
 void proto_from_chunk(
@@ -759,17 +773,17 @@ void mem_access_process(
 )
 {
   std::vector<unsigned> bytes_read;
-  
-  mem_accesses.emplace_back(interface, expr);
 
   if (!has_packet(expr, constraints, solver, bytes_read))
     return;
-
-  mem_access &last_ma = mem_accesses.back();
-  last_ma.add_chunks(chunks);
+  
+  mem_access ma(interface, expr);
+  ma.add_chunks(chunks);
 
   for (auto byte_read : bytes_read)
-    last_ma.append_dep(byte_read);
+    ma.append_dep(byte_read);
+  
+  mem_accesses.push_back(ma);
 }
 
 std::vector<mem_access> parse_call_path(
@@ -901,19 +915,34 @@ int main(int argc, char **argv, char **envp) {
     std::vector<mem_access> mas = parse_call_path(call_path, solver);
 
     for (auto ma : mas)
-    {
-      std::pair<std::string, mem_access> file_ma(file, ma);
-      mem_accesses.push_back(file_ma);
-    }
+      mem_accesses.emplace_back(file, ma);
   }
+
+  std::string execution;
+  bool execution_started = false;
 
   for (auto ma : mem_accesses)
   {
     std::cerr << "\n=========== MEMORY ACCESS ===========" << std::endl;
     std::cerr << "file: " << ma.first << std::endl;
     ma.second.print();
+
+    if (!ma.second.has_report_content()) continue;
+
+    if (ma.first != execution) {
+      if (execution_started)
+        std::cout << "END EXECUTION" << std::endl;
+
+      execution = ma.first;
+      execution_started = true;
+      std::cout << "BEGIN EXECUTION" << std::endl;
+    }
+
     ma.second.report();
   }
+
+  if (execution_started)
+    std::cout << "END EXECUTION" << std::endl;
 
   return 0;
 }
