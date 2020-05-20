@@ -655,7 +655,7 @@ bool dumpCallInfo(const CallInfo& ci, llvm::raw_ostream& file) {
               arg->pointee.outVal.isNull()) return false;
           file <<"->";
           if (arg->pointee.doTraceValueOut) {
-            file <<*arg->pointee.outVal; // FIXME this is dubious, the delimiter is only written if doTraceValueOut?
+            file <<*arg->pointee.outVal;
           }
           file <<"]";
           std::map<int, FieldDescr>::const_iterator i =
