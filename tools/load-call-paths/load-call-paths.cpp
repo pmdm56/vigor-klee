@@ -881,6 +881,11 @@ void build_process_data(lookup_process_data &lpd) {
   load_lookup_process_data(lpd, "restart_time");
   load_lookup_process_data(lpd, "current_time");
 
+  load_lookup_process_data(lpd, "ether_addr_hash");
+
+  load_lookup_process_data(lpd, "cht_fill_cht");
+  load_lookup_process_data(lpd, "cht_find_preferred_available_backend");
+
   load_lookup_process_data(lpd, "loop_invariant_consume");
   load_lookup_process_data(lpd, "loop_invariant_produce");
 
@@ -894,6 +899,8 @@ void build_process_data(lookup_process_data &lpd) {
   load_lookup_process_data(lpd, "expire_items_single_map");
 
   load_lookup_process_data(lpd, "nf_set_ipv4_udptcp_checksum");
+
+  load_lookup_process_data(lpd, "LoadBalancedFlow_hash");
 }
 
 void mem_access_process(process_data pd, klee::ConstraintManager constraints,
