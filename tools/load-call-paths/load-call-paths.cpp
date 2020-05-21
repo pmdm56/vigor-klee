@@ -30,7 +30,6 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 }
 
 typedef struct {
-
   std::string function_name;
   std::map<std::string, std::pair<klee::ref<klee::Expr>,
                                   klee::ref<klee::Expr> > > extra_vars;
