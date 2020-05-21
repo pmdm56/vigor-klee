@@ -720,7 +720,6 @@ void proto_from_chunk(chunk_state prev_chunk,
   unsigned proto;
 
   klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
-  ;
 
   if (chunk.layer == 3) {
 
@@ -790,17 +789,123 @@ void store_chunk(unsigned src_device, klee::expr::ExprHandle chunk_expr,
   }
 }
 
-void mem_access_process(klee::expr::ExprHandle obj, std::string interface,
-                        klee::expr::ExprHandle expr,
-                        klee::ConstraintManager constraints,
+struct process_data {
+  std::string func_name;
+  std::pair<std::string, klee::expr::ExprHandle> obj;
+  bool has_arg;
+  std::pair<std::string, klee::expr::ExprHandle> arg;
+
+  process_data() {}
+
+  process_data(const process_data &pd) {
+    func_name = pd.func_name;
+    obj = pd.obj;
+    arg = pd.arg;
+    has_arg = pd.has_arg;
+  }
+
+  process_data(std::string _func_name, std::string _obj) {
+    func_name = _func_name;
+    obj.first = _obj;
+    has_arg = false;
+  }
+
+  process_data(std::string _func_name) {
+    func_name = _func_name;
+    has_arg = false;
+  }
+
+  process_data(std::string _func_name, std::string _obj_name,
+               std::string _arg_name) {
+    func_name = _func_name;
+    obj.first = _obj_name;
+    arg.first = _arg_name;
+    has_arg = true;
+  }
+
+  void fill_exprs(klee::expr::ExprHandle _obj_expr,
+                  klee::expr::ExprHandle _arg_expr) {
+    assert(has_arg);
+    obj.second = _obj_expr;
+    arg.second = _arg_expr;
+  }
+};
+
+typedef std::map<std::string, process_data> lookup_process_data;
+
+void load_lookup_process_data(lookup_process_data &lpd, std::string func_name,
+                              std::string obj, std::string arg) {
+  lpd.emplace(std::make_pair(func_name, process_data(func_name, obj, arg)));
+}
+
+void load_lookup_process_data(lookup_process_data &lpd, std::string func_name,
+                              std::string obj) {
+  lpd.emplace(std::make_pair(func_name, process_data(func_name, obj)));
+}
+
+void load_lookup_process_data(lookup_process_data &lpd, std::string func_name) {
+  lpd.emplace(std::make_pair(func_name, process_data(func_name)));
+}
+
+void build_process_data(lookup_process_data &lpd) {
+  load_lookup_process_data(lpd, "map_allocate", "map_out");
+  load_lookup_process_data(lpd, "map_set_entry_condition", "map");
+  load_lookup_process_data(lpd, "map_get", "map", "key");
+  load_lookup_process_data(lpd, "map_put", "map", "key");
+  load_lookup_process_data(lpd, "map_erase", "map", "key");
+  load_lookup_process_data(lpd, "map_size", "map");
+
+  load_lookup_process_data(lpd, "dmap_set_entry_condition", "dmap");
+  load_lookup_process_data(lpd, "dmap_set_layout", "dmap");
+  load_lookup_process_data(lpd, "dmap_allocate", "dmap_out");
+  load_lookup_process_data(lpd, "dmap_get_a", "dmap", "key");
+  load_lookup_process_data(lpd, "dmap_get_b", "dmap", "key");
+  load_lookup_process_data(lpd, "dmap_put", "dmap", "index");
+  load_lookup_process_data(lpd, "dmap_erase", "dmap", "index");
+  load_lookup_process_data(lpd, "dmap_get_value", "dmap", "index");
+  load_lookup_process_data(lpd, "dmap_size", "dmap");
+
+  load_lookup_process_data(lpd, "vector_allocate", "vector_out");
+  load_lookup_process_data(lpd, "vector_set_entry_condition", "vector");
+  load_lookup_process_data(lpd, "vector_borrow", "vector", "index");
+  load_lookup_process_data(lpd, "vector_return", "vector", "index");
+
+  load_lookup_process_data(lpd, "dchain_allocate", "chain_out");
+  load_lookup_process_data(lpd, "dchain_allocate_new_index", "chain");
+  load_lookup_process_data(lpd, "dchain_rejuvenate_index", "chain", "index");
+  load_lookup_process_data(lpd, "dchain_expire_one_index", "chain");
+  load_lookup_process_data(lpd, "dchain_is_index_allocated", "chain", "index");
+  load_lookup_process_data(lpd, "dchain_free_index", "chain", "index");
+
+  load_lookup_process_data(lpd, "start_time");
+  load_lookup_process_data(lpd, "restart_time");
+  load_lookup_process_data(lpd, "current_time");
+
+  load_lookup_process_data(lpd, "loop_invariant_consume");
+  load_lookup_process_data(lpd, "loop_invariant_produce");
+
+  load_lookup_process_data(lpd, "packet_return_chunk", "p");
+  load_lookup_process_data(lpd, "packet_state_total_length", "p");
+  load_lookup_process_data(lpd, "packet_send", "p");
+  load_lookup_process_data(lpd, "packet_free", "p");
+  load_lookup_process_data(lpd, "packet_get_unread_length", "p");
+
+  load_lookup_process_data(lpd, "expire_items");
+  load_lookup_process_data(lpd, "expire_items_single_map");
+
+  load_lookup_process_data(lpd, "nf_set_ipv4_udptcp_checksum");
+}
+
+void mem_access_process(process_data pd, klee::ConstraintManager constraints,
                         klee::Solver *solver, std::vector<chunk_state> chunks,
                         std::vector<mem_access> &mem_accesses) {
   std::vector<unsigned> bytes_read;
 
-  if (!has_packet(expr, constraints, solver, bytes_read))
+  if (!has_packet(pd.arg.second, constraints, solver, bytes_read))
     return;
 
-  mem_access ma(evaluate_expr(obj, constraints, solver), interface, expr);
+  mem_access ma(evaluate_expr(pd.obj.second, constraints, solver), pd.func_name,
+                pd.arg.second);
 
   ma.add_chunks(chunks);
 
@@ -810,37 +915,9 @@ void mem_access_process(klee::expr::ExprHandle obj, std::string interface,
   mem_accesses.push_back(ma);
 }
 
-/*
-
-struct process_data {
-  std::string  obj,
-  std::string  arg,
-  klee::Solver *solver,
-  klee::ConstraintManager   constraints,
-  std::vector<mem_access>   mem_accesses;
-  std::vector<chunk_state>  chunks;
-
-  process_data(
-    klee::ConstraintManager   &_constraints,
-    std::vector<mem_access>   &_mem_accesses,
-    std::vector<chunk_state>  &_chunks
-  ) {
-    constraints  = _constraints;
-    mem_accesses = _mem_accesses;
-    chunks       = _chunks;
-  }
-);
-
-typedef (*mem_access_handler) ()
-
-typedef std::map<std::string,
-
-void mem_access_process_lookup(process_data pd) {
-
-}
-*/
 std::vector<mem_access> parse_call_path(call_path_t *call_path,
-                                        klee::Solver *solver) {
+                                        klee::Solver *solver,
+                                        lookup_process_data lpd) {
   std::vector<mem_access> mem_accesses;
   std::vector<chunk_state> chunks;
   unsigned length;
@@ -879,47 +956,30 @@ std::vector<mem_access> parse_call_path(call_path_t *call_path,
 
       store_chunk(src_device.first, call.extra_vars["the_chunk"].second, length,
                   call_path->constraints, solver, chunks);
-    } else if (call.function_name == "map_get" ||
-               call.function_name == "map_put" ||
-               call.function_name == "map_erase") {
-      std::cerr << "  key    : " << expr_to_string(call.args["key"].first)
+    } else {
+      assert(lpd.find(call.function_name) != lpd.end());
+
+      process_data &pd = lpd[call.function_name];
+
+      if (!pd.has_arg)
+        continue;
+
+      assert(call.args.count(pd.arg.first));
+      assert(call.args.count(pd.obj.first));
+
+      lpd[call.function_name]
+          .fill_exprs(call.args[lpd[call.function_name].obj.first].first,
+                      call.args[lpd[call.function_name].arg.first].first);
+
+      std::cerr << lpd[call.function_name].obj.first << " : "
+                << expr_to_string(lpd[call.function_name].obj.second)
                 << std::endl;
 
-      assert(call.args.find("key") != call.args.end());
-      assert(!call.args["key"].first.isNull());
-
-      assert(call.args.find("map") != call.args.end());
-      assert(!call.args["map"].first.isNull());
-
-      mem_access_process(call.args["map"].first, call.function_name,
-                         call.args["key"].first, call_path->constraints, solver,
-                         chunks, mem_accesses);
-    } else if (call.function_name == "dmap_get_a") {
-      std::cerr << "  key    : " << expr_to_string(call.args["key"].first)
+      std::cerr << lpd[call.function_name].arg.first << " : "
+                << expr_to_string(lpd[call.function_name].arg.second)
                 << std::endl;
 
-      assert(call.args.find("key") != call.args.end());
-      assert(!call.args["key"].first.isNull());
-
-      assert(call.args.find("map") != call.args.end());
-      assert(!call.args["map"].first.isNull());
-
-      mem_access_process(call.args["dmap"].first, call.function_name,
-                         call.args["key"].first, call_path->constraints, solver,
-                         chunks, mem_accesses);
-    } else if (call.function_name == "vector_borrow" ||
-               call.function_name == "vector_return") {
-      std::cerr << "  index  : " << expr_to_string(call.args["index"].first)
-                << std::endl;
-
-      assert(call.args.find("index") != call.args.end());
-      assert(!call.args["index"].first.isNull());
-
-      assert(call.args.find("vector") != call.args.end());
-      assert(!call.args["vector"].first.isNull());
-
-      mem_access_process(call.args["vector"].first, call.function_name,
-                         call.args["index"].first, call_path->constraints,
+      mem_access_process(lpd[call.function_name], call_path->constraints,
                          solver, chunks, mem_accesses);
     }
   }
@@ -939,6 +999,9 @@ int main(int argc, char **argv, char **envp) {
 
   std::vector<call_path_t *> call_paths;
   std::vector<std::pair<std::string, mem_access> > mem_accesses;
+  lookup_process_data lpd;
+
+  build_process_data(lpd);
 
   for (auto file : InputCallPathFiles) {
     std::cerr << "Loading: " << file << std::endl;
@@ -948,7 +1011,7 @@ int main(int argc, char **argv, char **envp) {
 
     call_path_t *call_path = load_call_path(file, expressions_str, expressions);
 
-    std::vector<mem_access> mas = parse_call_path(call_path, solver);
+    std::vector<mem_access> mas = parse_call_path(call_path, solver, lpd);
 
     for (auto ma : mas)
       mem_accesses.emplace_back(file, ma);
