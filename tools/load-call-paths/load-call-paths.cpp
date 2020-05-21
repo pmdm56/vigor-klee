@@ -403,6 +403,20 @@ int main(int argc, char **argv, char **envp) {
     std::cout << "  Calls:" << std::endl;
     for (auto call : call_paths[i]->calls) {
       std::cout << "    Function: " << call.function_name << std::endl;
+      if (!call.args.empty()) {
+        std::cout << "      With Args:" << std::endl;
+        for (auto arg : call.args) {
+          std::cout << "        " << arg.first << ":" << std::endl;
+          if (!arg.second.first.isNull()) {
+            std::cout << "          Before:" << std::endl;
+            arg.second.first->dump();
+          }
+          if (!arg.second.second.isNull()) {
+            std::cout << "          After:" << std::endl;
+            arg.second.second->dump();
+          }
+        }
+      }
       if (!call.extra_vars.empty()) {
         std::cout << "      With Extra Vars:" << std::endl;
         for (auto extra_var : call.extra_vars) {
