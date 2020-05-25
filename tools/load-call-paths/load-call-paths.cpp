@@ -23,7 +23,7 @@
 #include <vector>
 #include <algorithm>
 #include <iomanip>
-#include <algorithm>
+#include <regex>
 
 // term colors
 // src: https://stackoverflow.com/questions/9158150/colored-output-in-c/9158263
@@ -1024,6 +1024,26 @@ private:
     solver = createIndependentSolver(solver);
   }
 
+  static void remove_dup_decl(std::string &smt) {
+    std::regex pattern(".declare-fun packet_chunks .*");
+    std::smatch decls;
+
+    auto pattern_begin = std::sregex_iterator(smt.begin(), smt.end(), pattern);
+    auto pattern_end   = std::sregex_iterator();
+
+    auto found = std::distance(pattern_begin, pattern_end);
+
+    if (found > 1) {
+      // FIXME: this only works for 2 declarations, but will there be more?
+      std::smatch match = *pattern_begin;
+      std::string decl  = match.str();
+      
+      smt = 
+        smt.substr(0, pattern_begin->position()) +
+        smt.substr(pattern_begin->position() + decl.size() + 1, smt.size());
+    }
+  }
+
 public:
     
   MemAccesses() {
@@ -1066,11 +1086,15 @@ public:
 
         std::cout << "BEGIN SMT" << std::endl;
 
-        std::cout << expr_to_smt(
+        std::string smt = expr_to_smt(
             exprBuilder->Eq(accesses[i].second.expr,
                             accesses[j].second.expr)
         );
 
+        // remove duplicated declarations
+        remove_dup_decl(smt);
+
+        std::cout << smt;
         std::cout << "END SMT" << std::endl;
         std::cout << "END CONSTRAINT" << std::endl;
       }
