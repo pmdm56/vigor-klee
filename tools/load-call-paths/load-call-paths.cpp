@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "klee/ExprBuilder.h"
+#include "klee/util/ExprVisitor.h"
 #include "klee/perf-contracts.h"
 #include "klee/util/ExprSMTLIBPrinter.h"
 #include "llvm/Support/CommandLine.h"
@@ -415,6 +416,33 @@ call_path_t *load_call_path(std::string file_name,
 
   return call_path;
 }
+
+class ExprReplaceVisitor2 : public klee::ExprVisitor::ExprVisitor {
+private:
+
+public:
+  ExprReplaceVisitor2() : ExprVisitor(true) {}
+
+  klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
+    return klee::ExprVisitor::Action::doChildren();
+  }
+
+  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::ReadExpr copy = e;
+
+    klee::expr::ExprHandle handle(&copy);
+    std::cerr << "Visited read: " << expr_to_string(handle) << std::endl;
+
+    klee::UpdateList ul = e.updates;
+    const klee::Array *root = ul.root;
+    
+    std::cerr << "root name " << root->name << std::endl;
+    std::cerr << "root isConstantArray " << root->isConstantArray() << std::endl;
+    std::cerr << "root isSymbolicArray " << root->isSymbolicArray() << std::endl;
+
+    return klee::ExprVisitor::Action::doChildren();
+  }
+};
 
 uint64_t evaluate_expr(klee::expr::ExprHandle expr,
                        klee::ConstraintManager constraints,
@@ -900,6 +928,11 @@ std::vector<mem_access> parse_call_path(call_path_t *call_path,
 
       assert(call.args.count(pd.arg.first));
       assert(call.args.count(pd.obj.first));
+
+      ExprReplaceVisitor2 visitor;
+
+      std::cerr << "Visiting: " << expr_to_string(call.args[lpd[call.function_name].arg.first].first) << std::endl;
+      visitor.visit(call.args[lpd[call.function_name].arg.first].first);
 
       lpd[call.function_name]
           .fill_exprs(call.args[lpd[call.function_name].obj.first].first,
