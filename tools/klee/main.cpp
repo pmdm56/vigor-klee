@@ -722,7 +722,7 @@ bool dumpCallInfo(const CallInfo& ci, llvm::raw_ostream& file) {
   for (std::map<size_t, CallExtraPtr>::const_iterator i = ci.extraPtrs.begin(),
          e = ci.extraPtrs.end(); i != e; ++i) {
     const CallExtraPtr *extra_ptr = &(*i).second;
-    file <<"extra: " <<extra_ptr->name <<"PAIOPAIOPAIOPAIO&" <<extra_ptr->ptr <<" = &[";
+    file <<"extra: " <<extra_ptr->name <<"&" <<extra_ptr->ptr <<" = &[";
     if (extra_ptr->pointee.doTraceValueIn) {
       file <<extra_ptr->pointee.inVal;
     } else {

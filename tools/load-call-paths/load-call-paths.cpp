@@ -11,6 +11,7 @@
 
 #include "klee/ExprBuilder.h"
 #include "klee/util/ExprVisitor.h"
+#include "klee/util/ArrayCache.h"
 #include "klee/perf-contracts.h"
 #include "klee/util/ExprSMTLIBPrinter.h"
 #include "llvm/Support/CommandLine.h"
@@ -417,28 +418,58 @@ call_path_t *load_call_path(std::string file_name,
   return call_path;
 }
 
-class ExprReplaceVisitor2 : public klee::ExprVisitor::ExprVisitor {
+class RenameChunks : public klee::ExprVisitor::ExprVisitor {
 private:
+  int ref_counter = 0;
+  klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
+  std::map< klee::ref<klee::Expr>, klee::ref<klee::Expr> > replacements;
+
+  klee::ArrayCache arr_cache;
+  std::vector< const klee::Array* > new_arrays;
+  std::vector< klee::UpdateList > new_uls;
 
 public:
-  ExprReplaceVisitor2() : ExprVisitor(true) {}
+  RenameChunks() : ExprVisitor(true) {}
+
+  void inc_ref_counter() {
+    ref_counter++;
+    replacements.clear();
+  }
 
   klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
-    return klee::ExprVisitor::Action::doChildren();
+    std::map< klee::ref<klee::Expr>, klee::ref<klee::Expr> >::const_iterator it =
+      replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr*>(&e)));
+    
+    if (it!=replacements.end()) {
+      return Action::changeTo(it->second);
+    } else {
+      return Action::doChildren();
+    }
   }
 
   klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
-    klee::ReadExpr copy = e;
-
-    klee::expr::ExprHandle handle(&copy);
-    std::cerr << "Visited read: " << expr_to_string(handle) << std::endl;
-
     klee::UpdateList ul = e.updates;
     const klee::Array *root = ul.root;
-    
-    std::cerr << "root name " << root->name << std::endl;
-    std::cerr << "root isConstantArray " << root->isConstantArray() << std::endl;
-    std::cerr << "root isSymbolicArray " << root->isSymbolicArray() << std::endl;
+
+    if (root->name == "packet_chunks") {
+      const klee::Array *new_root = arr_cache.CreateArray(
+        root->getName() + "#" + std::to_string(ref_counter),
+        root->getSize(),
+        root->constantValues.begin().base(),
+        root->constantValues.end().base(),
+        root->getDomain(),
+        root->getRange()
+      );
+
+      
+      new_arrays.push_back(new_root);
+      new_uls.emplace_back(new_root, ul.head);
+
+      replacements.insert({
+        klee::expr::ExprHandle(const_cast<klee::ReadExpr*>(&e)),
+        builder->Read(new_uls.back(), e.index),
+      });
+    }
 
     return klee::ExprVisitor::Action::doChildren();
   }
@@ -929,11 +960,6 @@ std::vector<mem_access> parse_call_path(call_path_t *call_path,
       assert(call.args.count(pd.arg.first));
       assert(call.args.count(pd.obj.first));
 
-      ExprReplaceVisitor2 visitor;
-
-      std::cerr << "Visiting: " << expr_to_string(call.args[lpd[call.function_name].arg.first].first) << std::endl;
-      visitor.visit(call.args[lpd[call.function_name].arg.first].first);
-
       lpd[call.function_name]
           .fill_exprs(call.args[lpd[call.function_name].obj.first].first,
                       call.args[lpd[call.function_name].arg.first].first);
@@ -974,6 +1000,7 @@ std::string expr_to_smt(klee::expr::ExprHandle expr) {
 class MemAccesses {
   
 private:
+  RenameChunks rename_chunks_visitor;
   std::vector<std::pair<std::string, mem_access> > accesses;
   lookup_process_data lpd;
   klee::Solver *solver;
@@ -1057,26 +1084,6 @@ private:
     solver = createIndependentSolver(solver);
   }
 
-  static void remove_dup_decl(std::string &smt) {
-    std::regex pattern(".declare-fun packet_chunks .*");
-    std::smatch decls;
-
-    auto pattern_begin = std::sregex_iterator(smt.begin(), smt.end(), pattern);
-    auto pattern_end   = std::sregex_iterator();
-
-    auto found = std::distance(pattern_begin, pattern_end);
-
-    if (found > 1) {
-      // FIXME: this only works for 2 declarations, but will there be more?
-      std::smatch match = *pattern_begin;
-      std::string decl  = match.str();
-      
-      smt = 
-        smt.substr(0, pattern_begin->position()) +
-        smt.substr(pattern_begin->position() + decl.size() + 1, smt.size());
-    }
-  }
-
 public:
     
   MemAccesses() {
@@ -1087,7 +1094,7 @@ public:
   void parse_and_store_call_path(std::string file, call_path_t *call_path) {
     std::vector<mem_access> mas = parse_call_path(call_path, solver, lpd);
     
-    for (auto ma : mas) {
+    for (auto &ma : mas) {
       ma.set_id(accesses.size());
       accesses.emplace_back(file, ma);
     }
@@ -1119,13 +1126,22 @@ public:
 
         std::cout << "BEGIN SMT" << std::endl;
 
-        std::string smt = expr_to_smt(
-            exprBuilder->Eq(accesses[i].second.expr,
-                            accesses[j].second.expr)
-        );
+        klee::expr::ExprHandle first  = accesses[i].second.expr;
+        klee::expr::ExprHandle second = accesses[j].second.expr;
 
-        // remove duplicated declarations
-        remove_dup_decl(smt);
+        first  = rename_chunks_visitor.visit(first);
+        rename_chunks_visitor.inc_ref_counter();
+
+        second = rename_chunks_visitor.visit(second);
+        rename_chunks_visitor.inc_ref_counter();
+
+        std::cerr << "first:\n";
+        std::cerr << expr_to_string(first) << std::endl;
+
+        std::cerr << "second:\n";
+        std::cerr << expr_to_string(second) << std::endl;
+
+        std::string smt = expr_to_smt(exprBuilder->Eq(first, second));
 
         std::cout << smt;
         std::cout << "END SMT" << std::endl;
