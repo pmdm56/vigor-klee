@@ -420,7 +420,7 @@ call_path_t *load_call_path(std::string file_name,
 
 class RenameChunks : public klee::ExprVisitor::ExprVisitor {
 private:
-  int ref_counter = 0;
+  static int ref_counter;
   klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
   std::map< klee::ref<klee::Expr>, klee::ref<klee::Expr> > replacements;
 
@@ -429,11 +429,8 @@ private:
   std::vector< klee::UpdateList > new_uls;
 
 public:
-  RenameChunks() : ExprVisitor(true) {}
-
-  void inc_ref_counter() {
+  RenameChunks() : ExprVisitor(true) {
     ref_counter++;
-    replacements.clear();
   }
 
   klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
@@ -450,10 +447,11 @@ public:
   klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
     klee::UpdateList ul = e.updates;
     const klee::Array *root = ul.root;
+    std::string new_name = "packet_chunks_" + std::to_string(ref_counter);
 
-    if (root->name == "packet_chunks") {
+    if (root->name.find("packet_chunks") != std::string::npos && root->name != new_name) {
       const klee::Array *new_root = arr_cache.CreateArray(
-        root->getName() + "#" + std::to_string(ref_counter),
+        new_name,
         root->getSize(),
         root->constantValues.begin().base(),
         root->constantValues.end().base(),
@@ -465,15 +463,21 @@ public:
       new_arrays.push_back(new_root);
       new_uls.emplace_back(new_root, ul.head);
 
+      klee::expr::ExprHandle replacement = builder->Read(new_uls.back(), e.index);
+
       replacements.insert({
         klee::expr::ExprHandle(const_cast<klee::ReadExpr*>(&e)),
-        builder->Read(new_uls.back(), e.index),
+        replacement
       });
+
+      return Action::changeTo(replacement);
     }
 
     return klee::ExprVisitor::Action::doChildren();
   }
 };
+
+int RenameChunks::ref_counter = 0;
 
 uint64_t evaluate_expr(klee::expr::ExprHandle expr,
                        klee::ConstraintManager constraints,
@@ -990,8 +994,9 @@ std::string expr_to_smt(klee::expr::ExprHandle expr) {
 
   klee::Query sat_query(constraints, expr);
 
-  smtPrinter.setQuery(sat_query);
+  smtPrinter.setQuery(sat_query.negateExpr());
   smtPrinter.generateOutput();
+
   os.str();
 
   return expr_str;
@@ -1000,7 +1005,6 @@ std::string expr_to_smt(klee::expr::ExprHandle expr) {
 class MemAccesses {
   
 private:
-  RenameChunks rename_chunks_visitor;
   std::vector<std::pair<std::string, mem_access> > accesses;
   lookup_process_data lpd;
   klee::Solver *solver;
@@ -1129,19 +1133,13 @@ public:
         klee::expr::ExprHandle first  = accesses[i].second.expr;
         klee::expr::ExprHandle second = accesses[j].second.expr;
 
-        first  = rename_chunks_visitor.visit(first);
-        rename_chunks_visitor.inc_ref_counter();
+        RenameChunks rename_chunks_visitor_first;
+        auto new_first  = rename_chunks_visitor_first.visit(first);
 
-        second = rename_chunks_visitor.visit(second);
-        rename_chunks_visitor.inc_ref_counter();
+        RenameChunks rename_chunks_visitor_second;
+        auto new_second = rename_chunks_visitor_second.visit(second);
 
-        std::cerr << "first:\n";
-        std::cerr << expr_to_string(first) << std::endl;
-
-        std::cerr << "second:\n";
-        std::cerr << expr_to_string(second) << std::endl;
-
-        std::string smt = expr_to_smt(exprBuilder->Eq(first, second));
+        std::string smt = expr_to_smt(exprBuilder->Eq(new_first, new_second));
 
         std::cout << smt;
         std::cout << "END SMT" << std::endl;
