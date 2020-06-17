@@ -33,6 +33,8 @@ typedef struct {
   std::string function_name;
   std::map<std::string, std::pair<klee::ref<klee::Expr>,
                                   klee::ref<klee::Expr> > > extra_vars;
+  std::map<std::string,
+           std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr> > > args;
 } call_t;
 
 typedef struct {
@@ -62,9 +64,13 @@ call_path_t *load_call_path(std::string file_name,
   std::set<std::string> declared_arrays;
 
   int parenthesis_level = 0;
+
   std::string current_extra_var;
-  std::string current_extra_var_expr_str;
-  std::vector<std::string> current_extra_var_exprs_str;
+  std::string current_arg;
+  std::string current_arg_name;
+
+  std::string current_expr_str;
+  std::vector<std::string> current_exprs_str;
 
   while (!call_path_file.eof()) {
     std::string line;
@@ -144,7 +150,7 @@ call_path_t *load_call_path(std::string file_name,
         line = line.substr(delim + 1);
 
         current_extra_var.clear();
-        current_extra_var_exprs_str.clear();
+        current_exprs_str.clear();
 
         if (preamble == "extra") {
           while (line[0] == ' ') {
@@ -168,10 +174,10 @@ call_path_t *load_call_path(std::string file_name,
         }
 
         for (char c : line) {
-          current_extra_var_expr_str += c;
+          current_expr_str += c;
           if (c == '(') {
             if (parenthesis_level == 0) {
-              current_extra_var_expr_str = "(";
+              current_expr_str = "(";
             }
             parenthesis_level++;
           } else if (c == ')') {
@@ -179,7 +185,7 @@ call_path_t *load_call_path(std::string file_name,
             assert(parenthesis_level >= 0);
 
             if (parenthesis_level == 0) {
-              current_extra_var_exprs_str.push_back(current_extra_var_expr_str);
+              current_exprs_str.push_back(current_expr_str);
             }
           }
         }
@@ -188,19 +194,75 @@ call_path_t *load_call_path(std::string file_name,
           state = STATE_CALLS_MULTILINE;
         } else {
           if (!current_extra_var.empty()) {
-            assert(current_extra_var_exprs_str.size() == 2 &&
+            assert(current_exprs_str.size() == 2 &&
                    "Too many expression in extra variable.");
-            if (current_extra_var_exprs_str[0] != "(...)") {
+            if (current_exprs_str[0] != "(...)") {
               assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
               call_path->calls.back().extra_vars[current_extra_var].first =
                   exprs[0];
               exprs.erase(exprs.begin(), exprs.begin() + 1);
             }
-            if (current_extra_var_exprs_str[1] != "(...)") {
+            if (current_exprs_str[1] != "(...)") {
               assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
               call_path->calls.back().extra_vars[current_extra_var].second =
                   exprs[0];
               exprs.erase(exprs.begin(), exprs.begin() + 1);
+            }
+          } else {
+            bool parsed_last_arg = false;
+            while (!parsed_last_arg) {
+              if (current_exprs_str[0] == "()")
+                break;
+              delim = current_exprs_str[0].find(",");
+              if (delim == std::string::npos) {
+                delim = current_exprs_str[0].size() - 1;
+                parsed_last_arg = true;
+              }
+              current_arg = current_exprs_str[0].substr(0, delim);
+              if (current_arg[0] == '(')
+                current_arg = current_arg.substr(1);
+              current_exprs_str[0] = current_exprs_str[0].substr(delim + 1);
+              delim = current_arg.find(":");
+              assert(delim != std::string::npos);
+              current_arg_name = current_arg.substr(0, delim);
+              current_arg = current_arg.substr(delim + 1);
+
+              delim = current_arg.find("&");
+              if (delim == std::string::npos) {
+                assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
+                call_path->calls.back().args[current_arg_name].first = exprs[0];
+                exprs.erase(exprs.begin(), exprs.begin() + 1);
+              } else {
+                if (current_arg.substr(delim + 1) == "[...]" ||
+                    current_arg.substr(delim + 1)[0] != '[')
+                  continue;
+
+                current_arg = current_arg.substr(delim + 2);
+
+                delim = current_arg.find("]");
+                assert(delim != std::string::npos);
+
+                current_arg = current_arg.substr(0, delim);
+
+                delim = current_arg.find("->");
+                assert(delim != std::string::npos);
+
+                if (current_arg.substr(0, delim).size()) {
+                  assert(exprs.size() >= 1 &&
+                         "Not enough expression in kQuery.");
+                  call_path->calls.back().args[current_arg_name].first =
+                      exprs[0];
+                  exprs.erase(exprs.begin(), exprs.begin() + 1);
+                }
+
+                if (current_arg.substr(delim + 2).size()) {
+                  assert(exprs.size() >= 1 &&
+                         "Not enough expression in kQuery.");
+                  call_path->calls.back().args[current_arg_name].second =
+                      exprs[0];
+                  exprs.erase(exprs.begin(), exprs.begin() + 1);
+                }
+              }
             }
           }
         }
@@ -208,12 +270,12 @@ call_path_t *load_call_path(std::string file_name,
     } break;
 
     case STATE_CALLS_MULTILINE: {
-      current_extra_var_expr_str += " ";
+      current_expr_str += " ";
       for (char c : line) {
-        current_extra_var_expr_str += c;
+        current_expr_str += c;
         if (c == '(') {
           if (parenthesis_level == 0) {
-            current_extra_var_expr_str = "(";
+            current_expr_str = "(";
           }
           parenthesis_level++;
         } else if (c == ')') {
@@ -221,26 +283,81 @@ call_path_t *load_call_path(std::string file_name,
           assert(parenthesis_level >= 0);
 
           if (parenthesis_level == 0) {
-            current_extra_var_exprs_str.push_back(current_extra_var_expr_str);
+            current_exprs_str.push_back(current_expr_str);
           }
         }
       }
 
       if (parenthesis_level == 0) {
         if (!current_extra_var.empty()) {
-          assert(current_extra_var_exprs_str.size() == 2 &&
+          assert(current_exprs_str.size() == 2 &&
                  "Too many expression in extra variable.");
-          if (current_extra_var_exprs_str[0] != "(...)") {
+          if (current_exprs_str[0] != "(...)") {
             assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
             call_path->calls.back().extra_vars[current_extra_var].first =
                 exprs[0];
             exprs.erase(exprs.begin(), exprs.begin() + 1);
           }
-          if (current_extra_var_exprs_str[1] != "(...)") {
+          if (current_exprs_str[1] != "(...)") {
             assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
             call_path->calls.back().extra_vars[current_extra_var].second =
                 exprs[0];
             exprs.erase(exprs.begin(), exprs.begin() + 1);
+          }
+        } else {
+          bool parsed_last_arg = false;
+          size_t delim;
+
+          while (!parsed_last_arg) {
+            if (current_exprs_str[0] == "()")
+              break;
+            delim = current_exprs_str[0].find(",");
+            if (delim == std::string::npos) {
+              delim = current_exprs_str[0].size() - 1;
+              parsed_last_arg = true;
+            }
+            current_arg = current_exprs_str[0].substr(0, delim);
+            if (current_arg[0] == '(')
+              current_arg = current_arg.substr(1);
+            current_exprs_str[0] = current_exprs_str[0].substr(delim + 1);
+            delim = current_arg.find(":");
+            assert(delim != std::string::npos);
+            current_arg_name = current_arg.substr(0, delim);
+            current_arg = current_arg.substr(delim + 1);
+
+            delim = current_arg.find("&");
+            if (delim == std::string::npos) {
+              assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
+              call_path->calls.back().args[current_arg_name].first = exprs[0];
+              exprs.erase(exprs.begin(), exprs.begin() + 1);
+            } else {
+              if (current_arg.substr(delim + 1) == "[...]" ||
+                  current_arg.substr(delim + 1)[0] != '[')
+                continue;
+
+              current_arg = current_arg.substr(delim + 2);
+
+              delim = current_arg.find("]");
+              assert(delim != std::string::npos);
+
+              current_arg = current_arg.substr(0, delim);
+
+              delim = current_arg.find("->");
+              assert(delim != std::string::npos);
+
+              if (current_arg.substr(0, delim).size()) {
+                assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
+                call_path->calls.back().args[current_arg_name].first = exprs[0];
+                exprs.erase(exprs.begin(), exprs.begin() + 1);
+              }
+
+              if (current_arg.substr(delim + 2).size()) {
+                assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
+                call_path->calls.back().args[current_arg_name].second =
+                    exprs[0];
+                exprs.erase(exprs.begin(), exprs.begin() + 1);
+              }
+            }
           }
         }
 
@@ -285,6 +402,20 @@ int main(int argc, char **argv, char **envp) {
     std::cout << "  Calls:" << std::endl;
     for (auto call : call_paths[i]->calls) {
       std::cout << "    Function: " << call.function_name << std::endl;
+      if (!call.args.empty()) {
+        std::cout << "      With Args:" << std::endl;
+        for (auto arg : call.args) {
+          std::cout << "        " << arg.first << ":" << std::endl;
+          if (!arg.second.first.isNull()) {
+            std::cout << "          Before:" << std::endl;
+            arg.second.first->dump();
+          }
+          if (!arg.second.second.isNull()) {
+            std::cout << "          After:" << std::endl;
+            arg.second.second->dump();
+          }
+        }
+      }
       if (!call.extra_vars.empty()) {
         std::cout << "      With Extra Vars:" << std::endl;
         for (auto extra_var : call.extra_vars) {

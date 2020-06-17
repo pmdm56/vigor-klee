@@ -655,8 +655,9 @@ bool dumpCallInfo(const CallInfo& ci, llvm::raw_ostream& file) {
               arg->pointee.outVal.isNull()) return false;
           file <<"->";
           if (arg->pointee.doTraceValueOut) {
-            file <<*arg->pointee.outVal <<"]"; // FIXME this is dubious, the delimiter is only written if doTraceValueOut?
+            file <<*arg->pointee.outVal;
           }
+          file <<"]";
           std::map<int, FieldDescr>::const_iterator i =
             arg->pointee.fields.begin(),
             e = arg->pointee.fields.end();
@@ -961,6 +962,20 @@ void KleeHandler::dumpCallPath(const ExecutionState &state, llvm::raw_ostream *f
   std::vector<const klee::Array *> evalArrays;
 
   for (auto ci : state.callPath) {
+    for (auto a : ci.args) {
+      if (a.isPtr) {
+        if (a.pointee.doTraceValueIn) {
+          evalExprs.push_back(a.pointee.inVal);
+        }
+      
+        if (a.pointee.doTraceValueOut) {
+          evalExprs.push_back(a.pointee.outVal);
+        }
+      } else {
+        evalExprs.push_back(a.expr);
+      }
+    }
+
     for (auto e : ci.extraPtrs) {
       if (e.second.pointee.doTraceValueIn) {
         evalExprs.push_back(e.second.pointee.inVal);
