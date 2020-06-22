@@ -10,22 +10,22 @@
 //===----------------------------------------------------------------------===//
 
 #include "klee/ExprBuilder.h"
-#include "klee/util/ExprVisitor.h"
-#include "klee/util/ArrayCache.h"
 #include "klee/perf-contracts.h"
+#include "klee/util/ArrayCache.h"
 #include "klee/util/ExprSMTLIBPrinter.h"
+#include "klee/util/ExprVisitor.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include <algorithm>
 #include <dlfcn.h>
 #include <expr/Parser.h>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <klee/Constraints.h>
 #include <klee/Solver.h>
-#include <vector>
-#include <algorithm>
-#include <iomanip>
 #include <regex>
+#include <vector>
 
 // term colors
 // src: https://stackoverflow.com/questions/9158150/colored-output-in-c/9158263
@@ -49,7 +49,7 @@
 
 #define DEBUG
 
-#define UINT_16_SWAP_ENDIANNESS(p) ((((p) & 0xff) << 8) | ((p) >> 8 & 0xff))
+#define UINT_16_SWAP_ENDIANNESS(p) ((((p)&0xff) << 8) | ((p) >> 8 & 0xff))
 
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
@@ -69,10 +69,10 @@ std::string expr_to_string(klee::expr::ExprHandle expr) {
 
 typedef struct {
   std::string function_name;
-  std::map<std::string, std::pair<klee::ref<klee::Expr>,
-                                  klee::ref<klee::Expr> > > extra_vars;
-  std::map<std::string,
-           std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr> > > args;
+  std::map<std::string, std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr>>>
+      extra_vars;
+  std::map<std::string, std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr>>>
+      args;
 } call_t;
 
 typedef struct {
@@ -83,7 +83,7 @@ typedef struct {
 
 call_path_t *load_call_path(std::string file_name,
                             std::vector<std::string> expressions_str,
-                            std::deque<klee::ref<klee::Expr> > &expressions) {
+                            std::deque<klee::ref<klee::Expr>> &expressions) {
   std::ifstream call_path_file(file_name);
   assert(call_path_file.is_open() && "Unable to open call path file.");
 
@@ -98,7 +98,7 @@ call_path_t *load_call_path(std::string file_name,
   } state = STATE_INIT;
 
   std::string kQuery;
-  std::vector<klee::ref<klee::Expr> > exprs;
+  std::vector<klee::ref<klee::Expr>> exprs;
   std::set<std::string> declared_arrays;
 
   int parenthesis_level = 0;
@@ -409,9 +409,7 @@ call_path_t *load_call_path(std::string file_name,
       continue;
     } break;
 
-    default: {
-      assert(false && "Invalid call path file.");
-    } break;
+    default: { assert(false && "Invalid call path file."); } break;
     }
   }
 
@@ -422,22 +420,20 @@ class RenameChunks : public klee::ExprVisitor::ExprVisitor {
 private:
   static int ref_counter;
   klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
-  std::map< klee::ref<klee::Expr>, klee::ref<klee::Expr> > replacements;
+  std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
 
   klee::ArrayCache arr_cache;
-  std::vector< const klee::Array* > new_arrays;
-  std::vector< klee::UpdateList > new_uls;
+  std::vector<const klee::Array *> new_arrays;
+  std::vector<klee::UpdateList> new_uls;
 
 public:
-  RenameChunks() : ExprVisitor(true) {
-    ref_counter++;
-  }
+  RenameChunks() : ExprVisitor(true) { ref_counter++; }
 
   klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
-    std::map< klee::ref<klee::Expr>, klee::ref<klee::Expr> >::const_iterator it =
-      replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr*>(&e)));
-    
-    if (it!=replacements.end()) {
+    std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>>::const_iterator it =
+        replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e)));
+
+    if (it != replacements.end()) {
       return Action::changeTo(it->second);
     } else {
       return Action::doChildren();
@@ -449,26 +445,22 @@ public:
     const klee::Array *root = ul.root;
     std::string new_name = "packet_chunks_" + std::to_string(ref_counter);
 
-    if (root->name.find("packet_chunks") != std::string::npos && root->name != new_name) {
+    if (root->name.find("packet_chunks") != std::string::npos &&
+        root->name != new_name) {
       const klee::Array *new_root = arr_cache.CreateArray(
-        new_name,
-        root->getSize(),
-        root->constantValues.begin().base(),
-        root->constantValues.end().base(),
-        root->getDomain(),
-        root->getRange()
-      );
+          new_name, root->getSize(), root->constantValues.begin().base(),
+          root->constantValues.end().base(), root->getDomain(),
+          root->getRange());
 
-      
       new_arrays.push_back(new_root);
       new_uls.emplace_back(new_root, ul.head);
 
-      klee::expr::ExprHandle replacement = builder->Read(new_uls.back(), e.index);
+      klee::expr::ExprHandle replacement =
+          builder->Read(new_uls.back(), e.index);
 
-      replacements.insert({
-        klee::expr::ExprHandle(const_cast<klee::ReadExpr*>(&e)),
-        replacement
-      });
+      replacements.insert(
+          {klee::expr::ExprHandle(const_cast<klee::ReadExpr *>(&e)),
+           replacement});
 
       return Action::changeTo(replacement);
     }
@@ -485,9 +477,24 @@ uint64_t evaluate_expr(klee::expr::ExprHandle expr,
   klee::Query sat_query(constraints, expr);
   klee::ref<klee::ConstantExpr> result;
 
-  assert(solver->getValue(sat_query, result));
+  bool success = solver->getValue(sat_query, result);
+  assert(success);
 
   return result.get()->getZExtValue(expr->getWidth());
+}
+
+bool evaluate_expr_must_be_false(klee::expr::ExprHandle expr,
+                       klee::ConstraintManager constraints,
+                       klee::Solver *solver) {
+  klee::Query sat_query(constraints, expr);
+
+  bool success;
+  bool result;
+
+  success = solver->mustBeFalse(sat_query, result);
+  assert(success);
+
+  return result;
 }
 
 std::vector<unsigned> readLSB_byte_indexes(klee::ReadExpr *expr,
@@ -664,10 +671,8 @@ struct mem_access {
     interface = _interface;
     expr = _expr;
   }
-  
-  void set_id(unsigned _id) {
-    id = _id;
-  }
+
+  void set_id(unsigned _id) { id = _id; }
 
   void add_chunks(std::vector<chunk_state> _chunks) {
     chunks.insert(chunks.end(), _chunks.begin(), _chunks.end());
@@ -694,6 +699,9 @@ struct mem_access {
   }
 
   void print() {
+    std::cerr << lvl(0, "id:") << std::endl;
+    std::cerr << lvl(1, std::to_string(id)) << std::endl;
+
     std::cerr << lvl(0, "object:") << std::endl;
     std::cerr << lvl(1, std::to_string(obj)) << std::endl;
 
@@ -797,10 +805,11 @@ void proto_from_chunk(chunk_state prev_chunk,
               exprBuilder->Constant(0b1111, klee::Expr::Int8)),
           exprBuilder->Constant(5, klee::Expr::Int8));
 
-      bool ihl_le_5 = evaluate_expr(ihl_le_5_expr, constraints, solver);
-      if (!ihl_le_5)
+      bool ihl_gt_5 = evaluate_expr_must_be_false(ihl_le_5_expr, constraints, solver);
+      
+      if (ihl_gt_5)
         std::cerr << "[DEBUG] ihl > 5" << std::endl;
-      chunk.add_proto(proto, ihl_le_5);
+      chunk.add_proto(proto, !ihl_gt_5);
 
     } else {
       std::cerr << MAGENTA
@@ -964,9 +973,9 @@ std::vector<mem_access> parse_call_path(call_path_t *call_path,
       assert(call.args.count(pd.arg.first));
       assert(call.args.count(pd.obj.first));
 
-      lpd[call.function_name]
-          .fill_exprs(call.args[lpd[call.function_name].obj.first].first,
-                      call.args[lpd[call.function_name].arg.first].first);
+      lpd[call.function_name].fill_exprs(
+          call.args[lpd[call.function_name].obj.first].first,
+          call.args[lpd[call.function_name].arg.first].first);
 
       std::cerr << lpd[call.function_name].obj.first << " : "
                 << expr_to_string(lpd[call.function_name].obj.second)
@@ -1003,14 +1012,14 @@ std::string expr_to_smt(klee::expr::ExprHandle expr) {
 }
 
 class MemAccesses {
-  
+
 private:
-  std::vector<std::pair<std::string, mem_access> > accesses;
+  std::vector<std::pair<std::string, mem_access>> accesses;
   lookup_process_data lpd;
   klee::Solver *solver;
 
   void load_lookup_process_data(lookup_process_data &lpd, std::string func_name,
-                              std::string obj, std::string arg) {
+                                std::string obj, std::string arg) {
     lpd.emplace(std::make_pair(func_name, process_data(func_name, obj, arg)));
   }
 
@@ -1019,7 +1028,8 @@ private:
     lpd.emplace(std::make_pair(func_name, process_data(func_name, obj)));
   }
 
-  void load_lookup_process_data(lookup_process_data &lpd, std::string func_name) {
+  void load_lookup_process_data(lookup_process_data &lpd,
+                                std::string func_name) {
     lpd.emplace(std::make_pair(func_name, process_data(func_name)));
   }
 
@@ -1050,7 +1060,8 @@ private:
     load_lookup_process_data(lpd, "dchain_allocate_new_index", "chain");
     load_lookup_process_data(lpd, "dchain_rejuvenate_index", "chain", "index");
     load_lookup_process_data(lpd, "dchain_expire_one_index", "chain");
-    load_lookup_process_data(lpd, "dchain_is_index_allocated", "chain", "index");
+    load_lookup_process_data(lpd, "dchain_is_index_allocated", "chain",
+                             "index");
     load_lookup_process_data(lpd, "dchain_free_index", "chain", "index");
 
     load_lookup_process_data(lpd, "start_time");
@@ -1089,7 +1100,6 @@ private:
   }
 
 public:
-    
   MemAccesses() {
     build_process_data();
     init_solver();
@@ -1097,13 +1107,13 @@ public:
 
   void parse_and_store_call_path(std::string file, call_path_t *call_path) {
     std::vector<mem_access> mas = parse_call_path(call_path, solver, lpd);
-    
+
     for (auto &ma : mas) {
       ma.set_id(accesses.size());
       accesses.emplace_back(file, ma);
     }
   }
-  
+
   void print() {
     for (auto access : accesses) {
       std::cerr << "\n=========== MEMORY ACCESS ===========" << std::endl;
@@ -1111,10 +1121,10 @@ public:
       access.second.print();
     }
   }
-  
+
   void report() {
     klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
-    
+
     for (auto access : accesses) {
       if (!access.second.has_report_content())
         continue;
@@ -1130,11 +1140,11 @@ public:
 
         std::cout << "BEGIN SMT" << std::endl;
 
-        klee::expr::ExprHandle first  = accesses[i].second.expr;
+        klee::expr::ExprHandle first = accesses[i].second.expr;
         klee::expr::ExprHandle second = accesses[j].second.expr;
 
         RenameChunks rename_chunks_visitor_first;
-        auto new_first  = rename_chunks_visitor_first.visit(first);
+        auto new_first = rename_chunks_visitor_first.visit(first);
 
         RenameChunks rename_chunks_visitor_second;
         auto new_second = rename_chunks_visitor_second.visit(second);
@@ -1158,13 +1168,13 @@ int main(int argc, char **argv) {
     std::cerr << "Loading: " << file << std::endl;
 
     std::vector<std::string> expressions_str;
-    std::deque<klee::ref<klee::Expr> > expressions;
+    std::deque<klee::ref<klee::Expr>> expressions;
 
     call_path_t *call_path = load_call_path(file, expressions_str, expressions);
 
     mas.parse_and_store_call_path(file, call_path);
   }
-  
+
   mas.print();
   mas.report();
 
