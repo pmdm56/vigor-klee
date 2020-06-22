@@ -1134,6 +1134,8 @@ public:
 
     for (unsigned i = 0; i < accesses.size(); i++) {
       for (unsigned j = i; j < accesses.size(); j++) {
+        if (accesses[i].second.obj != accesses[j].second.obj) continue;
+
         std::cout << "BEGIN CONSTRAINT" << std::endl;
         std::cout << "first  " << i << std::endl;
         std::cout << "second " << j << std::endl;
