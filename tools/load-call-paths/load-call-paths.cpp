@@ -1133,17 +1133,17 @@ public:
     }
 
     for (unsigned i = 0; i < accesses.size(); i++) {
-      for (unsigned j = i; j < accesses.size(); j++) {
+      for (unsigned j = i + 1; j < accesses.size(); j++) {
         if (accesses[i].second.obj != accesses[j].second.obj) continue;
+
+        klee::expr::ExprHandle first = accesses[i].second.expr;
+        klee::expr::ExprHandle second = accesses[j].second.expr;
 
         std::cout << "BEGIN CONSTRAINT" << std::endl;
         std::cout << "first  " << i << std::endl;
         std::cout << "second " << j << std::endl;
 
         std::cout << "BEGIN SMT" << std::endl;
-
-        klee::expr::ExprHandle first = accesses[i].second.expr;
-        klee::expr::ExprHandle second = accesses[j].second.expr;
 
         RenameChunks rename_chunks_visitor_first;
         auto new_first = rename_chunks_visitor_first.visit(first);
