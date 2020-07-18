@@ -658,18 +658,75 @@ struct chunk_state {
   }
 };
 
+struct process_data {
+    enum operation {
+        READ,
+        WRITE,
+        NOP
+    };
+
+  std::string func_name;
+  std::pair<std::string, klee::expr::ExprHandle> obj;
+  bool has_arg;
+  std::pair<std::string, klee::expr::ExprHandle> arg;
+  operation op;
+
+  process_data() {}
+
+  process_data(const process_data &pd) {
+    func_name = pd.func_name;
+    obj = pd.obj;
+    arg = pd.arg;
+    has_arg = pd.has_arg;
+    op = pd.op;
+  }
+
+  process_data(std::string _func_name, std::string _obj, operation _op) {
+    func_name = _func_name;
+    obj.first = _obj;
+    has_arg = false;
+    op = _op;
+  }
+
+  process_data(std::string _func_name) {
+    func_name = _func_name;
+    has_arg = false;
+    op = WRITE;
+  }
+
+  process_data(std::string _func_name, std::string _obj_name,
+               std::string _arg_name, operation _op) {
+    func_name = _func_name;
+    obj.first = _obj_name;
+    arg.first = _arg_name;
+    has_arg = true;
+    op = _op;
+  }
+
+  void fill_exprs(klee::expr::ExprHandle _obj_expr,
+                  klee::expr::ExprHandle _arg_expr) {
+    assert(has_arg);
+    obj.second = _obj_expr;
+    arg.second = _arg_expr;
+  }
+};
+
+typedef std::map<std::string, process_data> lookup_process_data;
+
 struct mem_access {
   unsigned id;
   klee::expr::ExprHandle expr;
   uint64_t obj;
   std::string interface;
   std::vector<chunk_state> chunks;
+  process_data::operation op;
 
   mem_access(uint64_t _obj, std::string _interface,
-             klee::expr::ExprHandle _expr) {
+             klee::expr::ExprHandle _expr, process_data::operation _op) {
     obj = _obj;
     interface = _interface;
     expr = _expr;
+    op = _op;
   }
 
   void set_id(unsigned _id) { id = _id; }
@@ -766,17 +823,37 @@ struct mem_access {
   void report() {
 
     for (auto chunk : chunks) {
+        /*
       if (!chunk.proto.second || !chunk.packet_fields_deps.size())
         continue;
+        */
 
       std::cout << "BEGIN ACCESS" << std::endl;
-      std::cout << "id     " << id << std::endl;
-      std::cout << "device " << chunk.src_device << std::endl;
-      std::cout << "object " << obj << std::endl;
-      std::cout << "layer  " << chunk.layer << std::endl;
-      std::cout << "proto  " << chunk.proto.first.code << std::endl;
+      std::cout << "id         " << id << std::endl;
+      std::cout << "device     " << chunk.src_device << std::endl;
+      std::cout << "object     " << obj << std::endl;
+
+      std::cout << "operation  ";
+      switch (op) {
+      case process_data::WRITE:
+          std::cout << "write";
+          break;
+      case process_data::READ:
+          std::cout << "read";
+          break;
+      case process_data::NOP:
+          std::cout << "nop";
+          break;
+      default:
+          std::cerr << "ERROR: operation not recognized. Exiting..." << std::endl;
+          exit(1);
+      }
+      std::cout << std::endl;
+
+      std::cout << "layer      " << chunk.layer << std::endl;
+      std::cout << "protocol   " << chunk.proto.first.code << std::endl;
       for (unsigned dep : chunk.packet_fields_deps)
-        std::cout << "dep    " << dep << std::endl;
+        std::cout << "dependency " << dep << std::endl;
       std::cout << "END ACCESS" << std::endl;
     }
   }
@@ -858,50 +935,6 @@ void store_chunk(unsigned src_device, klee::expr::ExprHandle chunk_expr,
   }
 }
 
-struct process_data {
-  std::string func_name;
-  std::pair<std::string, klee::expr::ExprHandle> obj;
-  bool has_arg;
-  std::pair<std::string, klee::expr::ExprHandle> arg;
-
-  process_data() {}
-
-  process_data(const process_data &pd) {
-    func_name = pd.func_name;
-    obj = pd.obj;
-    arg = pd.arg;
-    has_arg = pd.has_arg;
-  }
-
-  process_data(std::string _func_name, std::string _obj) {
-    func_name = _func_name;
-    obj.first = _obj;
-    has_arg = false;
-  }
-
-  process_data(std::string _func_name) {
-    func_name = _func_name;
-    has_arg = false;
-  }
-
-  process_data(std::string _func_name, std::string _obj_name,
-               std::string _arg_name) {
-    func_name = _func_name;
-    obj.first = _obj_name;
-    arg.first = _arg_name;
-    has_arg = true;
-  }
-
-  void fill_exprs(klee::expr::ExprHandle _obj_expr,
-                  klee::expr::ExprHandle _arg_expr) {
-    assert(has_arg);
-    obj.second = _obj_expr;
-    arg.second = _arg_expr;
-  }
-};
-
-typedef std::map<std::string, process_data> lookup_process_data;
-
 void mem_access_process(process_data pd, klee::ConstraintManager constraints,
                         klee::Solver *solver, std::vector<chunk_state> chunks,
                         std::vector<mem_access> &mem_accesses) {
@@ -911,7 +944,7 @@ void mem_access_process(process_data pd, klee::ConstraintManager constraints,
     return;
 
   mem_access ma(evaluate_expr(pd.obj.second, constraints, solver), pd.func_name,
-                pd.arg.second);
+                pd.arg.second, pd.op);
 
   ma.add_chunks(chunks);
 
@@ -1013,19 +1046,21 @@ std::string expr_to_smt(klee::expr::ExprHandle expr) {
 
 class MemAccesses {
 
+public:
+
 private:
   std::vector<std::pair<std::string, mem_access>> accesses;
   lookup_process_data lpd;
   klee::Solver *solver;
 
   void load_lookup_process_data(lookup_process_data &lpd, std::string func_name,
-                                std::string obj, std::string arg) {
-    lpd.emplace(std::make_pair(func_name, process_data(func_name, obj, arg)));
+                                std::string obj, std::string arg, process_data::operation op) {
+    lpd.emplace(std::make_pair(func_name, process_data(func_name, obj, arg, op)));
   }
 
   void load_lookup_process_data(lookup_process_data &lpd, std::string func_name,
-                                std::string obj) {
-    lpd.emplace(std::make_pair(func_name, process_data(func_name, obj)));
+                                std::string obj, process_data::operation op) {
+    lpd.emplace(std::make_pair(func_name, process_data(func_name, obj, op)));
   }
 
   void load_lookup_process_data(lookup_process_data &lpd,
@@ -1034,35 +1069,35 @@ private:
   }
 
   void build_process_data() {
-    load_lookup_process_data(lpd, "map_allocate", "map_out");
-    load_lookup_process_data(lpd, "map_set_entry_condition", "map");
-    load_lookup_process_data(lpd, "map_get", "map", "key");
-    load_lookup_process_data(lpd, "map_put", "map", "key");
-    load_lookup_process_data(lpd, "map_erase", "map", "key");
-    load_lookup_process_data(lpd, "map_size", "map");
+    load_lookup_process_data(lpd, "map_allocate", "map_out", process_data::WRITE);
+    load_lookup_process_data(lpd, "map_set_entry_condition", "map", process_data::WRITE);
+    load_lookup_process_data(lpd, "map_get", "map", "key", process_data::READ);
+    load_lookup_process_data(lpd, "map_put", "map", "key", process_data::WRITE);
+    load_lookup_process_data(lpd, "map_erase", "map", "key", process_data::WRITE);
+    load_lookup_process_data(lpd, "map_size", "map", process_data::READ);
 
-    load_lookup_process_data(lpd, "dmap_set_entry_condition", "dmap");
-    load_lookup_process_data(lpd, "dmap_set_layout", "dmap");
-    load_lookup_process_data(lpd, "dmap_allocate", "dmap_out");
-    load_lookup_process_data(lpd, "dmap_get_a", "dmap", "key");
-    load_lookup_process_data(lpd, "dmap_get_b", "dmap", "key");
-    load_lookup_process_data(lpd, "dmap_put", "dmap", "index");
-    load_lookup_process_data(lpd, "dmap_erase", "dmap", "index");
-    load_lookup_process_data(lpd, "dmap_get_value", "dmap", "index");
-    load_lookup_process_data(lpd, "dmap_size", "dmap");
+    load_lookup_process_data(lpd, "dmap_set_entry_condition", "dmap", process_data::WRITE);
+    load_lookup_process_data(lpd, "dmap_set_layout", "dmap", process_data::WRITE);
+    load_lookup_process_data(lpd, "dmap_allocate", "dmap_out", process_data::WRITE);
+    load_lookup_process_data(lpd, "dmap_get_a", "dmap", "key", process_data::READ);
+    load_lookup_process_data(lpd, "dmap_get_b", "dmap", "key", process_data::READ);
+    load_lookup_process_data(lpd, "dmap_put", "dmap", "index", process_data::WRITE);
+    load_lookup_process_data(lpd, "dmap_erase", "dmap", "index", process_data::WRITE);
+    load_lookup_process_data(lpd, "dmap_get_value", "dmap", "index", process_data::READ);
+    load_lookup_process_data(lpd, "dmap_size", "dmap", process_data::READ);
 
-    load_lookup_process_data(lpd, "vector_allocate", "vector_out");
-    load_lookup_process_data(lpd, "vector_set_entry_condition", "vector");
-    load_lookup_process_data(lpd, "vector_borrow", "vector", "index");
-    load_lookup_process_data(lpd, "vector_return", "vector", "index");
+    load_lookup_process_data(lpd, "vector_allocate", "vector_out", process_data::WRITE);
+    load_lookup_process_data(lpd, "vector_set_entry_condition", "vector", process_data::WRITE);
+    load_lookup_process_data(lpd, "vector_borrow", "vector", "index", process_data::WRITE);
+    load_lookup_process_data(lpd, "vector_return", "vector", "index", process_data::WRITE);
 
-    load_lookup_process_data(lpd, "dchain_allocate", "chain_out");
-    load_lookup_process_data(lpd, "dchain_allocate_new_index", "chain");
-    load_lookup_process_data(lpd, "dchain_rejuvenate_index", "chain", "index");
-    load_lookup_process_data(lpd, "dchain_expire_one_index", "chain");
+    load_lookup_process_data(lpd, "dchain_allocate", "chain_out", process_data::WRITE);
+    load_lookup_process_data(lpd, "dchain_allocate_new_index", "chain", process_data::WRITE);
+    load_lookup_process_data(lpd, "dchain_rejuvenate_index", "chain", "index", process_data::WRITE);
+    load_lookup_process_data(lpd, "dchain_expire_one_index", "chain", process_data::WRITE);
     load_lookup_process_data(lpd, "dchain_is_index_allocated", "chain",
-                             "index");
-    load_lookup_process_data(lpd, "dchain_free_index", "chain", "index");
+                             "index", process_data::READ);
+    load_lookup_process_data(lpd, "dchain_free_index", "chain", "index", process_data::WRITE);
 
     load_lookup_process_data(lpd, "start_time");
     load_lookup_process_data(lpd, "restart_time");
@@ -1076,11 +1111,11 @@ private:
     load_lookup_process_data(lpd, "loop_invariant_consume");
     load_lookup_process_data(lpd, "loop_invariant_produce");
 
-    load_lookup_process_data(lpd, "packet_return_chunk", "p");
-    load_lookup_process_data(lpd, "packet_state_total_length", "p");
-    load_lookup_process_data(lpd, "packet_send", "p");
-    load_lookup_process_data(lpd, "packet_free", "p");
-    load_lookup_process_data(lpd, "packet_get_unread_length", "p");
+    load_lookup_process_data(lpd, "packet_return_chunk", "p", process_data::READ);
+    load_lookup_process_data(lpd, "packet_state_total_length", "p", process_data::READ);
+    load_lookup_process_data(lpd, "packet_send", "p", process_data::READ);
+    load_lookup_process_data(lpd, "packet_free", "p", process_data::WRITE);
+    load_lookup_process_data(lpd, "packet_get_unread_length", "p", process_data::READ);
 
     load_lookup_process_data(lpd, "expire_items");
     load_lookup_process_data(lpd, "expire_items_single_map");
@@ -1126,8 +1161,10 @@ public:
     klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
 
     for (auto access : accesses) {
+        /*
       if (!access.second.has_report_content())
         continue;
+        */
 
       access.second.report();
     }
