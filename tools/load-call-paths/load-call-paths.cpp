@@ -662,7 +662,8 @@ struct process_data {
     enum operation {
         READ,
         WRITE,
-        NOP
+        NOP,
+        INIT
     };
 
   std::string func_name;
@@ -691,7 +692,7 @@ struct process_data {
   process_data(std::string _func_name) {
     func_name = _func_name;
     has_arg = false;
-    op = WRITE;
+    op = INIT;
   }
 
   process_data(std::string _func_name, std::string _obj_name,
@@ -844,6 +845,9 @@ struct mem_access {
       case process_data::NOP:
           std::cout << "nop";
           break;
+      case process_data::INIT:
+          std::cout << "init";
+          break;
       default:
           std::cerr << "ERROR: operation not recognized. Exiting..." << std::endl;
           exit(1);
@@ -940,8 +944,10 @@ void mem_access_process(process_data pd, klee::ConstraintManager constraints,
                         std::vector<mem_access> &mem_accesses) {
   std::vector<unsigned> bytes_read;
 
+  /*
   if (!has_packet(pd.arg.second, constraints, solver, bytes_read))
     return;
+    */
 
   mem_access ma(evaluate_expr(pd.obj.second, constraints, solver), pd.func_name,
                 pd.arg.second, pd.op);
@@ -1010,11 +1016,11 @@ std::vector<mem_access> parse_call_path(call_path_t *call_path,
           call.args[lpd[call.function_name].obj.first].first,
           call.args[lpd[call.function_name].arg.first].first);
 
-      std::cerr << lpd[call.function_name].obj.first << " : "
+      std::cerr << "  " << lpd[call.function_name].obj.first << " : "
                 << expr_to_string(lpd[call.function_name].obj.second)
                 << std::endl;
 
-      std::cerr << lpd[call.function_name].arg.first << " : "
+      std::cerr << "  " << lpd[call.function_name].arg.first << " : "
                 << expr_to_string(lpd[call.function_name].arg.second)
                 << std::endl;
 
@@ -1069,7 +1075,7 @@ private:
   }
 
   void build_process_data() {
-    load_lookup_process_data(lpd, "map_allocate", "map_out", process_data::WRITE);
+    load_lookup_process_data(lpd, "map_allocate", "map_out", process_data::INIT);
     load_lookup_process_data(lpd, "map_set_entry_condition", "map", process_data::WRITE);
     load_lookup_process_data(lpd, "map_get", "map", "key", process_data::READ);
     load_lookup_process_data(lpd, "map_put", "map", "key", process_data::WRITE);
@@ -1086,12 +1092,12 @@ private:
     load_lookup_process_data(lpd, "dmap_get_value", "dmap", "index", process_data::READ);
     load_lookup_process_data(lpd, "dmap_size", "dmap", process_data::READ);
 
-    load_lookup_process_data(lpd, "vector_allocate", "vector_out", process_data::WRITE);
+    load_lookup_process_data(lpd, "vector_allocate", "vector_out", process_data::INIT);
     load_lookup_process_data(lpd, "vector_set_entry_condition", "vector", process_data::WRITE);
     load_lookup_process_data(lpd, "vector_borrow", "vector", "index", process_data::WRITE);
     load_lookup_process_data(lpd, "vector_return", "vector", "index", process_data::WRITE);
 
-    load_lookup_process_data(lpd, "dchain_allocate", "chain_out", process_data::WRITE);
+    load_lookup_process_data(lpd, "dchain_allocate", "chain_out", process_data::INIT);
     load_lookup_process_data(lpd, "dchain_allocate_new_index", "chain", process_data::WRITE);
     load_lookup_process_data(lpd, "dchain_rejuvenate_index", "chain", "index", process_data::WRITE);
     load_lookup_process_data(lpd, "dchain_expire_one_index", "chain", process_data::WRITE);
@@ -1113,7 +1119,7 @@ private:
 
     load_lookup_process_data(lpd, "packet_return_chunk", "p", process_data::READ);
     load_lookup_process_data(lpd, "packet_state_total_length", "p", process_data::READ);
-    load_lookup_process_data(lpd, "packet_send", "p", process_data::READ);
+    load_lookup_process_data(lpd, "packet_send", "p", "dst_device", process_data::READ);
     load_lookup_process_data(lpd, "packet_free", "p", process_data::WRITE);
     load_lookup_process_data(lpd, "packet_get_unread_length", "p", process_data::READ);
 
