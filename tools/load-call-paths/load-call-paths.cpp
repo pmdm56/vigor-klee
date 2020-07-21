@@ -722,12 +722,16 @@ struct mem_access {
   std::vector<chunk_state> chunks;
   process_data::operation op;
 
+  klee::ConstraintManager constraints;
+
   mem_access(uint64_t _obj, std::string _interface,
-             klee::expr::ExprHandle _expr, process_data::operation _op) {
+             klee::expr::ExprHandle _expr, process_data::operation _op, klee::ConstraintManager _constraints) {
     obj = _obj;
     interface = _interface;
     expr = _expr;
     op = _op;
+
+    constraints = _constraints;
   }
 
   void set_id(unsigned _id) { id = _id; }
@@ -821,7 +825,38 @@ struct mem_access {
     return false;
   }
 
-  void report() {
+  void report(klee::Solver *solver) {
+      if (chunks.size() == 0) {
+          std::cout << "BEGIN ACCESS" << std::endl;
+          std::cout << "id         " << id << std::endl;
+
+          // FIXME: this is ugly
+          // if this is packet_send related, the expression is the device
+          std::cout << "device     " << evaluate_expr(expr, constraints, solver) << std::endl;
+
+          std::cout << "object     " << obj << std::endl;
+
+          std::cout << "operation  ";
+          switch (op) {
+          case process_data::WRITE:
+              std::cout << "write";
+              break;
+          case process_data::READ:
+              std::cout << "read";
+              break;
+          case process_data::NOP:
+              std::cout << "nop";
+              break;
+          case process_data::INIT:
+              std::cout << "init";
+              break;
+          default:
+              std::cerr << "ERROR: operation not recognized. Exiting..." << std::endl;
+              exit(1);
+          }
+          std::cout << std::endl;
+          std::cout << "END ACCESS" << std::endl;
+      }
 
     for (auto chunk : chunks) {
         /*
@@ -944,18 +979,15 @@ void mem_access_process(process_data pd, klee::ConstraintManager constraints,
                         std::vector<mem_access> &mem_accesses) {
   std::vector<unsigned> bytes_read;
 
-  /*
-  if (!has_packet(pd.arg.second, constraints, solver, bytes_read))
-    return;
-    */
-
   mem_access ma(evaluate_expr(pd.obj.second, constraints, solver), pd.func_name,
-                pd.arg.second, pd.op);
+                pd.arg.second, pd.op, constraints);
 
-  ma.add_chunks(chunks);
+  if (has_packet(pd.arg.second, constraints, solver, bytes_read)) {
+    ma.add_chunks(chunks);
 
-  for (auto byte_read : bytes_read)
-    ma.append_dep(byte_read);
+    for (auto byte_read : bytes_read)
+        ma.append_dep(byte_read);
+  }
 
   mem_accesses.push_back(ma);
 }
@@ -1057,6 +1089,7 @@ public:
 private:
   std::vector<std::pair<std::string, mem_access>> accesses;
   lookup_process_data lpd;
+
   klee::Solver *solver;
 
   void load_lookup_process_data(lookup_process_data &lpd, std::string func_name,
@@ -1172,12 +1205,16 @@ public:
         continue;
         */
 
-      access.second.report();
+      access.second.report(solver);
     }
 
     for (unsigned i = 0; i < accesses.size(); i++) {
       for (unsigned j = i + 1; j < accesses.size(); j++) {
         if (accesses[i].second.obj != accesses[j].second.obj) continue;
+
+        // FIXME: this is not right, just for the packet_send and others
+        if (accesses[i].second.chunks.size() == 0) continue;
+        if (accesses[j].second.chunks.size() == 0) continue;
 
         klee::expr::ExprHandle first = accesses[i].second.expr;
         klee::expr::ExprHandle second = accesses[j].second.expr;
