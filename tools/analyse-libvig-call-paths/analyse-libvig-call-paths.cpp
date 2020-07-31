@@ -26,6 +26,7 @@
 #include <iostream>
 #include <regex>
 #include <vector>
+#include <memory>
 
 #include "../load-call-paths/load-call-paths.h"
 
@@ -69,109 +70,153 @@ std::string expr_to_string(klee::expr::ExprHandle expr) {
   return expr_str;
 }
 
-bool evaluate_expr_must_be_false(klee::expr::ExprHandle expr,
-                       klee::ConstraintManager constraints,
-                       klee::Solver *solver) {
-  klee::Query sat_query(constraints, expr);
 
-  bool success;
-  bool result;
+class KleeInterface {
+private:
+  std::map<std::string, klee::ConstraintManager> call_path_constraints;
+  klee::Solver *solver;
 
-  success = solver->mustBeFalse(sat_query, result);
-  assert(success);
-
-  return result;
-}
-
-bool evaluate_expr_must_be_true(klee::expr::ExprHandle expr,
-                       klee::ConstraintManager constraints,
-                       klee::Solver *solver) {
-  klee::Query sat_query(constraints, expr);
-
-  bool success;
-  bool result;
-
-  success = solver->mustBeTrue(sat_query, result);
-  assert(success);
-
-  return result;
-}
-
-uint64_t evaluate_expr(klee::expr::ExprHandle expr,
-                       klee::ConstraintManager constraints,
-                       klee::Solver *solver) {
-  klee::Query sat_query(constraints, expr);
-  klee::ref<klee::ConstantExpr> result;
-
-  bool success = solver->getValue(sat_query, result);
-  assert(success);
-
-  auto value = result.get()->getZExtValue(expr->getWidth());
-
-  klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
-
-  auto is_only_solution = evaluate_expr_must_be_true(exprBuilder->Eq(expr, result), constraints, solver);
-
-  if (!is_only_solution) {
-    std::cerr << RED << "expression: " << expr_to_string(expr) << "\n";
-    assert(false && "Value from evaluated expression is not the only solution");
+  const klee::ConstraintManager& get_constraint(const std::string& call_path_filename) const {
+    assert(call_path_constraints.count(call_path_filename) && "No constraints saved for this call_path");
+    return call_path_constraints.at(call_path_filename);
   }
 
-  return value;
-}
+public:
+  KleeInterface() {
+    solver = klee::createCoreSolver(klee::Z3_SOLVER);
+    assert(solver);
 
-std::vector<unsigned> readLSB_byte_indexes(klee::ReadExpr *expr,
-                                           klee::ConstraintManager constraints,
-                                           klee::Solver *solver) {
-  std::vector<unsigned> bytes;
-  uint64_t index = evaluate_expr(expr->index, constraints, solver);
-  bytes.push_back(index);
-  return bytes;
-}
-
-std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr,
-                                           klee::ConstraintManager constraints,
-                                           klee::Solver *solver) {
-  std::vector<unsigned> bytes;
-  std::vector<unsigned> right_bytes, left_bytes;
-
-  if (klee::ConcatExpr *right = dyn_cast<klee::ConcatExpr>(expr->getRight())) {
-    right_bytes = readLSB_byte_indexes(right, constraints, solver);
-  } else if (klee::ReadExpr *right =
-                 dyn_cast<klee::ReadExpr>(expr->getRight())) {
-    right_bytes = readLSB_byte_indexes(right, constraints, solver);
-  } else {
-    assert(false && "Unknown expression on readLSB_byte_indexes");
+    solver = createCexCachingSolver(solver);
+    solver = createCachingSolver(solver);
+    solver = createIndependentSolver(solver);
   }
 
-  bytes.insert(bytes.end(), right_bytes.begin(), right_bytes.end());
-
-  if (klee::ConcatExpr *left = dyn_cast<klee::ConcatExpr>(expr->getLeft())) {
-    left_bytes = readLSB_byte_indexes(left, constraints, solver);
-  } else if (klee::ReadExpr *left = dyn_cast<klee::ReadExpr>(expr->getLeft())) {
-    left_bytes = readLSB_byte_indexes(left, constraints, solver);
-  } else {
-    assert(false && "Unknown expression on readLSB_byte_indexes");
+  KleeInterface(const KleeInterface& interface) : KleeInterface() {
+    call_path_constraints = interface.call_path_constraints;
   }
 
-  bytes.insert(bytes.end(), left_bytes.begin(), left_bytes.end());
-
-  return bytes;
-}
-
-unsigned int readLSB_parse(klee::expr::ExprHandle expr,
-                   klee::ConstraintManager constraints, klee::Solver *solver) {
-  std::vector<unsigned> bytes_read;
-
-  if (klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr)) {
-    bytes_read = readLSB_byte_indexes(read, constraints, solver);
-  } else if (klee::ConcatExpr *concat = dyn_cast<klee::ConcatExpr>(expr)) {
-    bytes_read = readLSB_byte_indexes(concat, constraints, solver);
-  } else {
-    assert(false && "cast missing");
+  void add_constraints(const std::string& call_path_filename, klee::ConstraintManager constraints) {
+    call_path_constraints[call_path_filename] = constraints;
   }
 
-  return *std::min_element(bytes_read.begin(), bytes_read.end());
+  bool evaluate_expr_must_be_false(klee::expr::ExprHandle expr, std::string call_path_filename) {
+    const auto& constraints = get_constraint(call_path_filename);
+
+    klee::Query sat_query(constraints, expr);
+
+    bool success;
+    bool result;
+
+    success = solver->mustBeFalse(sat_query, result);
+    assert(success);
+
+    return result;
+  }
+
+  bool evaluate_expr_must_be_true(klee::expr::ExprHandle expr, std::string call_path_filename) {
+    const auto& constraints = get_constraint(call_path_filename);
+
+    klee::Query sat_query(constraints, expr);
+
+    bool success;
+    bool result;
+
+    success = solver->mustBeTrue(sat_query, result);
+    assert(success);
+
+    return result;
+  }
+
+  uint64_t evaluate_expr(klee::expr::ExprHandle expr, std::string call_path_filename) {
+    const auto& constraints = get_constraint(call_path_filename);
+
+    klee::Query sat_query(constraints, expr);
+    klee::ref<klee::ConstantExpr> result;
+
+    bool success = solver->getValue(sat_query, result);
+    assert(success);
+
+    auto value = result.get()->getZExtValue(expr->getWidth());
+
+    klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
+
+    auto is_only_solution = evaluate_expr_must_be_true(exprBuilder->Eq(expr, result), call_path_filename);
+
+    if (!is_only_solution) {
+      std::cerr << RED << "expression: " << expr_to_string(expr) << "\n";
+      assert(false && "Value from evaluated expression is not the only solution");
+    }
+
+    return value;
+  }
+
+  std::vector<unsigned> readLSB_byte_indexes(klee::ReadExpr *expr, std::string call_path_filename) {
+    std::vector<unsigned> bytes;
+    uint64_t index = evaluate_expr(expr->index, call_path_filename);
+    bytes.push_back(index);
+    return bytes;
+  }
+
+  std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, std::string call_path_filename) {
+    std::vector<unsigned> bytes;
+    std::vector<unsigned> right_bytes, left_bytes;
+
+    if (klee::ConcatExpr *right = dyn_cast<klee::ConcatExpr>(expr->getRight())) {
+      right_bytes = readLSB_byte_indexes(right, call_path_filename);
+    } else if (klee::ReadExpr *right =
+                   dyn_cast<klee::ReadExpr>(expr->getRight())) {
+      right_bytes = readLSB_byte_indexes(right, call_path_filename);
+    } else {
+      assert(false && "Unknown expression on readLSB_byte_indexes");
+    }
+
+    bytes.insert(bytes.end(), right_bytes.begin(), right_bytes.end());
+
+    if (klee::ConcatExpr *left = dyn_cast<klee::ConcatExpr>(expr->getLeft())) {
+      left_bytes = readLSB_byte_indexes(left, call_path_filename);
+    } else if (klee::ReadExpr *left = dyn_cast<klee::ReadExpr>(expr->getLeft())) {
+      left_bytes = readLSB_byte_indexes(left, call_path_filename);
+    } else {
+      assert(false && "Unknown expression on readLSB_byte_indexes");
+    }
+
+    bytes.insert(bytes.end(), left_bytes.begin(), left_bytes.end());
+
+    return bytes;
+  }
+
+  unsigned int readLSB_parse(klee::expr::ExprHandle expr, std::string call_path_filename) {
+    std::vector<unsigned> bytes_read;
+
+    if (klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr)) {
+      bytes_read = readLSB_byte_indexes(read, call_path_filename);
+    } else if (klee::ConcatExpr *concat = dyn_cast<klee::ConcatExpr>(expr)) {
+      bytes_read = readLSB_byte_indexes(concat, call_path_filename);
+    } else {
+      assert(false && "cast missing");
+    }
+
+    return *std::min_element(bytes_read.begin(), bytes_read.end());
+  }
+};
+
+klee::expr::ExprHandle get_arg_expr_from_call(const call_t& call, const std::string& arg_name) {
+  if (!call.args.count(arg_name)) {
+    std::cerr << RED;
+    std::cerr << "Argument not in function" << "\n";
+    std::cerr << "  function:      " << call.function_name << "\n";
+    std::cerr << "  requested arg: " << arg_name << "\n";
+    std::cerr << "  args:          ";
+    for (const auto& arg : call.args)
+      std::cerr << arg.first << " ";
+    std::cerr << "\n";
+    std::cerr << RESET;
+
+    assert(call.args.count(arg_name) && "Argument not present on this call");
+  }
+
+  const auto& target_arg = call.args.at(arg_name);
+  return target_arg.second.get() ? target_arg.second : target_arg.first;
 }
 
 struct packet_chunk_t {
@@ -189,10 +234,10 @@ struct packet_chunk_t {
 
   struct fragment_t {
     unsigned int offset;
-    unsigned int length;
+    klee::expr::ExprHandle length;
     klee::expr::ExprHandle expr;
 
-    fragment_t(unsigned int _offset, unsigned int _length, klee::expr::ExprHandle _expr)
+    fragment_t(unsigned int _offset, klee::expr::ExprHandle _length, klee::expr::ExprHandle _expr)
       : offset(_offset), length(_length), expr(_expr) {
     }
 
@@ -206,25 +251,36 @@ struct packet_chunk_t {
     }
   };
 
+  std::shared_ptr<KleeInterface> klee_interface;
+  std::string call_path_filename;
+
   std::vector<fragment_t> fragments;
   unsigned int layer;
   protocol_t protocol;
 
   std::vector<unsigned int> packet_fields_dependencies;
 
-  packet_chunk_t(unsigned int _offset, unsigned int _length, klee::expr::ExprHandle _expr) {
+  packet_chunk_t(unsigned int _offset, klee::expr::ExprHandle _length,
+                 klee::expr::ExprHandle _expr, std::shared_ptr<KleeInterface> _klee_interface,
+                 const std::string& _call_path_filename) {
     fragments.emplace_back(_offset, _length, _expr);
     protocol.state = protocol_t::state_t::NO_INFO;
+    klee_interface = _klee_interface;
+    call_path_filename = _call_path_filename;
   }
 
   packet_chunk_t(const packet_chunk_t& chunk)
     : fragments(chunk.fragments), layer(chunk.layer),
       protocol(chunk.protocol),
-      packet_fields_dependencies(chunk.packet_fields_dependencies) {}
+      packet_fields_dependencies(chunk.packet_fields_dependencies) {
+    klee_interface = chunk.klee_interface;
+    call_path_filename = chunk.call_path_filename;
+  }
 
 
-  void set_protocol_from_previous_chunk(const packet_chunk_t& prev_chunk,
-                        klee::ConstraintManager constraints, klee::Solver *solver) {
+  void set_protocol_from_previous_chunk(const packet_chunk_t& prev_chunk) {
+    assert(klee_interface && "Trying to set protocol from previous chunk with invalid klee interface");
+
     klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
 
     const auto& previous_chunk_expr = prev_chunk.fragments[0].expr;
@@ -234,7 +290,7 @@ struct packet_chunk_t {
       klee::ref<klee::Expr> proto_expr =
           exprBuilder->Extract(previous_chunk_expr, 12 * 8, klee::Expr::Int16);
 
-      protocol.code = evaluate_expr(proto_expr, constraints, solver);
+      protocol.code = klee_interface->evaluate_expr(proto_expr, call_path_filename);
       protocol.code = UINT_16_SWAP_ENDIANNESS(protocol.code);
 
       // IP
@@ -245,7 +301,7 @@ struct packet_chunk_t {
                 exprBuilder->Constant(0b1111, klee::Expr::Int8)),
             exprBuilder->Constant(5, klee::Expr::Int8));
 
-        bool ihl_gt_5 = evaluate_expr_must_be_false(ihl_le_5_expr, constraints, solver);
+        bool ihl_gt_5 = klee_interface->evaluate_expr_must_be_false(ihl_le_5_expr, call_path_filename);
         protocol.state = !ihl_gt_5 ? protocol_t::state_t::COMPLETE : protocol_t::state_t::INCOMPLETE;
 
       } else {
@@ -259,12 +315,7 @@ struct packet_chunk_t {
       klee::ref<klee::Expr> proto_expr =
           exprBuilder->Extract(previous_chunk_expr, 9 * 8, klee::Expr::Int8);
 
-      klee::Query proto_query(constraints, proto_expr);
-      klee::ref<klee::ConstantExpr> proto_value;
-
-      assert(solver->getValue(proto_query, proto_value));
-
-      protocol.code = proto_value.get()->getZExtValue(klee::Expr::Int8);
+      protocol.code  = klee_interface->evaluate_expr(proto_expr, call_path_filename);
       protocol.state = protocol_t::state_t::COMPLETE;
     }
 
@@ -275,30 +326,50 @@ struct packet_chunk_t {
   }
 
   bool is_complete() {
-    return !(protocol.state == protocol_t::state_t::INCOMPLETE);
+    return protocol.state != protocol_t::state_t::INCOMPLETE;
   }
 
   void append_fragment(const packet_chunk_t& fragment) {
-    assert(protocol.state == protocol_t::state_t::NO_INFO && "Trying to append fragment without setting the protocol first");
+    assert(protocol.state == protocol_t::state_t::INCOMPLETE && "Trying to append fragment without setting the protocol first");
     fragments.emplace_back(fragment);
 
     // FIXME: careful...
     protocol.state = protocol_t::state_t::COMPLETE;
   }
 
+  bool is_dependency_inside_boundaries(unsigned int dependency, const fragment_t& fragment) {
+    klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
+
+    // dependency >= fragment.offset && dependency <= fragment.offset + fragment.length
+    klee::ref<klee::Expr> dependency_inside_boundaries = exprBuilder->And(
+      exprBuilder->Uge(
+        exprBuilder->Constant(dependency, klee::Expr::Int32),
+        exprBuilder->Constant(fragment.offset, klee::Expr::Int32)
+      ),
+      exprBuilder->Ule(
+        exprBuilder->Constant(dependency, klee::Expr::Int32),
+        exprBuilder->Add(
+          exprBuilder->Constant(fragment.offset, klee::Expr::Int32),
+          fragment.length
+        )
+      )
+    );
+
+    return klee_interface->evaluate_expr_must_be_true(dependency_inside_boundaries, call_path_filename);
+  }
+
   bool add_dependency(unsigned int dependency) {
     for (auto fragment : fragments) {
-      if (dependency >= fragment.offset && dependency <= fragment.offset + fragment.length) {
-        packet_fields_dependencies.push_back(dependency - (fragments[0].offset + fragments[0].length));
+      if (is_dependency_inside_boundaries(dependency, fragment)) {
+        assert(false && "Dependency inside boundaries but byte position is uncertain");
+        auto length_val = klee_interface->evaluate_expr(fragment.length, call_path_filename);
+        // packet_fields_dependencies.push_back(dependency - (fragments[0].offset + fragments[0].length));
+        packet_fields_dependencies.push_back(dependency - (fragment.offset + length_val));
         return true;
       }
     }
 
-    if (dependency < fragments[0].offset || dependency > fragments[0].offset + fragments[0].length)
-      return false;
-
-    packet_fields_dependencies.push_back(dependency - fragments[0].offset);
-    return true;
+    return false;
   }
 
   void print() const {
@@ -339,9 +410,9 @@ private:
 
   unsigned int src_device;
   std::vector<packet_chunk_t> chunks;
+  std::string call_path_filename;
 
-  klee::ConstraintManager constraints;
-  klee::Solver *solver;
+  std::shared_ptr<KleeInterface> klee_interface;
   packet_manager_call_handler_map_t call_handler_map;
 
 private:
@@ -351,7 +422,7 @@ private:
     assert(call.args.count("src_devices") && "Packet receive handler without argument \"src_devices\"");
     assert(!call.args.at("src_devices").first.isNull() && "Packet receive handler with invalid value on argument \"src_devices\"");
 
-    src_device = evaluate_expr(call.args.at("src_devices").first, constraints, solver);
+    src_device = klee_interface->evaluate_expr(call.args.at("src_devices").first, call_path_filename);
   }
 
   void packet_send(const call_t& call) {
@@ -360,7 +431,6 @@ private:
   }
 
   void packet_borrow_next_chunk(const call_t& call) {
-    std::cerr << "packet borrow next chunk handler" << "\n";
     assert(call.extra_vars.count("the_chunk") && "packet_borrow_next_chunk without \"the_chunk\" extra var");
     assert(!call.extra_vars.at("the_chunk").second.isNull() && "packet_borrow_next_chunk with invalid \"the_chunk\" expression");
 
@@ -368,46 +438,39 @@ private:
     assert(!call.args.at("length").first.isNull() && "packet_borrow_next_chunk with invalid \"length\" expression");
 
     auto expr = call.extra_vars.at("the_chunk").second;
+    auto length = call.args.at("length").first;
+    auto offset = klee_interface->readLSB_parse(expr, call_path_filename);
 
-    // FIXME: the length doesnt always return a specific pinpointed value.
-    //
-    // Later when we need to evaluate it to retrieve packet field dependencies (offset + length),
-    // we need to do it by asking the solver, and not by trying to force a specific value
-    // to come out of this expression.
-    //
-    // Maybe store the length expression instead of the value.
-    auto length = evaluate_expr(call.args.at("length").first, constraints, solver);
-
-    auto offset = readLSB_parse(expr, constraints, solver);
-
-    packet_chunk_t packet_chunk(offset, length, expr);
+    packet_chunk_t packet_chunk(offset, length, expr, klee_interface, call_path_filename);
 
     if (chunks.size() && !chunks.back().is_complete()) {
-      // this is a fragment, not a full packet_chunk
       chunks.back().append_fragment(packet_chunk);
       return;
     }
 
-    // start in layer 2 and increment from there
     if (chunks.size() == 0) {
+      // start in layer 2 and increment from there
       packet_chunk.layer = 2;
-    } else {
+    }
+
+    else {
       const auto& previous_chunk = chunks.back();
       packet_chunk.layer = previous_chunk.layer + 1;
-      packet_chunk.set_protocol_from_previous_chunk(previous_chunk, constraints, solver);
+      packet_chunk.set_protocol_from_previous_chunk(previous_chunk);
     }
 
     chunks.push_back(packet_chunk);
   }
 
-  void nop(const call_t& call) {
-    std::cerr << "nop handler" << "\n";
-    std::cerr << "device " << src_device++ << "\n";
-  }
+  void nop(const call_t& call) {}
 
 public:
-  PacketManager(klee::ConstraintManager _constraints, klee::Solver *_solver)
-    : src_device(0), constraints(_constraints), solver(_solver) {
+  PacketManager() {}
+
+  PacketManager(std::shared_ptr<KleeInterface> _klee_interface, const std::string& _call_path_filename)
+    : src_device(0) {
+    klee_interface = _klee_interface;
+    call_path_filename = _call_path_filename;
 
     call_handler_map["packet_send"] = &PacketManager::packet_send;
     call_handler_map["packet_receive"] = &PacketManager::packet_receive;
@@ -419,7 +482,9 @@ public:
   }
 
   PacketManager(const PacketManager& pm)
-    : src_device(pm.get_src_device()), constraints(pm.get_constraints()), solver(pm.get_solver()) { }
+    : src_device(pm.get_src_device()), chunks(pm.get_chunks()) {
+    klee_interface = pm.klee_interface;
+  }
 
   bool process_packet_call(const call_t& call) {
     if (!call_handler_map.count(call.function_name))
@@ -432,12 +497,69 @@ public:
   }
 
   const unsigned int& get_src_device() const { return src_device; }
-  const klee::ConstraintManager& get_constraints() const { return constraints; }
-  klee::Solver* get_solver() const { return solver; }
+  const std::vector<packet_chunk_t>& get_chunks() const { return chunks; }
 
   void print() const {
+    std::cerr << "========================================" << "\n";
+    std::cerr << "Packet manager" << "\n";
+    std::cerr << "src device   " << src_device << "\n";
     for (const auto& chunk : chunks)
       chunk.print();
+    std::cerr << "========================================" << "\n";
+  }
+};
+
+class LibvigAccessExpressionArgument {
+private:
+  std::pair<bool, std::string> name;
+  std::pair<bool, klee::expr::ExprHandle> expr;
+
+  PacketManager packet_dependencies;
+
+public:
+  LibvigAccessExpressionArgument() {
+    name = std::make_pair(false, "");
+    expr = std::make_pair(false, nullptr);
+  }
+
+  LibvigAccessExpressionArgument(const LibvigAccessExpressionArgument& expr_arg)
+    : LibvigAccessExpressionArgument() {
+    if (expr_arg.is_name_set()) {
+      name = std::make_pair(true, expr_arg.get_name());
+    }
+
+    if (expr_arg.is_expr_set()) {
+      expr = std::make_pair(true, expr_arg.get_expr());
+    }
+
+    packet_dependencies = expr_arg.get_packet_dependencies();
+  }
+
+  bool is_name_set() const { return name.first; }
+  bool is_expr_set() const { return expr.first; }
+
+  const std::string& get_name() const {
+    assert(name.first && "Trying to get unset name");
+    return name.second;
+  }
+
+  const klee::expr::ExprHandle& get_expr() const {
+    assert(expr.first && "Trying to get unset expression");
+    return expr.second;
+  }
+
+  const PacketManager& get_packet_dependencies() const { return packet_dependencies; }
+
+  void set_name(const std::string& _name) { name = std::make_pair(true, _name); }
+
+  void set_expr(const call_t& call) {
+    assert(name.first && "Trying to set expression with unset name");
+    expr = std::make_pair(true, get_arg_expr_from_call(call, name.second));
+  }
+
+  void set_packet_dependencies(const PacketManager& _packet_dependencies) {
+    packet_dependencies = _packet_dependencies;
+    // TODO: process dependencies
   }
 };
 
@@ -458,52 +580,39 @@ private:
   std::pair<bool, unsigned int> device;
 
   std::string interface;
-  std::pair<std::string, klee::expr::ExprHandle> obj;
-  std::pair<std::string, klee::expr::ExprHandle> read_arg;
-  std::pair<std::string, klee::expr::ExprHandle> write_arg;
-  std::pair<std::string, klee::expr::ExprHandle> result_arg;
+  std::pair<std::string, unsigned int> obj;
+
+  LibvigAccessExpressionArgument read_arg;
+  LibvigAccessExpressionArgument write_arg;
+  LibvigAccessExpressionArgument result_arg;
 
   operation op;
 
-  klee::ConstraintManager constraints;
+  std::string call_path_filename;
+  std::shared_ptr<KleeInterface> klee_interface;
 
   LibvigAccess(operation _op) : op(_op) {
     device = std::make_pair(false, 0);
     id = std::make_pair(false, 0);
   }
 
-  const klee::expr::ExprHandle get_arg_expr_from_call(const call_t& call, const std::string& arg_name) {
-    if (!call.args.count(arg_name)) {
-      std::cerr << RED;
-      std::cerr << "Argument not in function" << "\n";
-      std::cerr << "  function:      " << call.function_name << "\n";
-      std::cerr << "  requested arg: " << arg_name << "\n";
-      std::cerr << "  args:          ";
-      for (const auto& arg : call.args)
-        std::cerr << arg.first << " ";
-      std::cerr << "\n";
-      std::cerr << RESET;
-
-      assert(call.args.count(arg_name) && "Argument not present on this call");
-    }
-    const auto& target_arg = call.args.at(arg_name);
-    return target_arg.second.get() ? target_arg.second : target_arg.first;
-  }
-
 public:
 
-  // Copy constructor doesn't increment static id counter.
   LibvigAccess(const LibvigAccess &lva) {
     id = lva.id;
     device = lva.device;
 
     interface = lva.interface;
     obj = lva.obj;
+
     read_arg = lva.read_arg;
     write_arg = lva.write_arg;
     result_arg = lva.result_arg;
 
     op = lva.op;
+
+    call_path_filename = lva.call_path_filename;
+    klee_interface = lva.klee_interface;
   }
 
   // consume, but ignore
@@ -525,9 +634,9 @@ public:
     obj.first = _obj_name;
 
     if (_op == CREATE) {
-      result_arg.first = _read_result_name;
+      result_arg.set_name(_read_result_name);
     } else {
-      read_arg.first = _read_result_name;
+      read_arg.set_name(_read_result_name);
     }
 
   }
@@ -539,44 +648,55 @@ public:
 
     interface = _interface;
     obj.first = _obj_name;
-    read_arg.first = _arg_name;
+    read_arg.set_name(_arg_name);
 
     if (_op == READ) {
-      result_arg.first = _second_arg_name;
+      result_arg.set_name(_second_arg_name);
     } else {
-      write_arg.first = _second_arg_name;
+      write_arg.set_name(_second_arg_name);
     }
   }
 
   void fill_exprs(const call_t& call) {
+    assert(klee_interface && "Filling expression without setting a klee interface");
+    assert(call_path_filename != "" && "Filling expression without setting call_path filename");
+
     switch (op) {
       case NOP:
         break;
       case INIT:
-        obj.second = get_arg_expr_from_call(call, obj.first);
+        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
         break;
       case CREATE:
-        obj.second = get_arg_expr_from_call(call, obj.first);
-        result_arg.second = get_arg_expr_from_call(call, result_arg.first);
+        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
+        result_arg.set_expr(call);
         break;
       case VERIFY:
       case DESTROY:
-        obj.second = get_arg_expr_from_call(call, obj.first);
-        read_arg.second = get_arg_expr_from_call(call, read_arg.first);
+        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
+        read_arg.set_expr(call);
         break;
       case READ:
-        obj.second = get_arg_expr_from_call(call, obj.first);
-        read_arg.second = get_arg_expr_from_call(call, read_arg.first);
-        result_arg.second = get_arg_expr_from_call(call, result_arg.first);
+        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
+        read_arg.set_expr(call);
+        result_arg.set_expr(call);
         break;
       case WRITE:
-        obj.second = get_arg_expr_from_call(call, obj.first);
-        read_arg.second = get_arg_expr_from_call(call, read_arg.first);
-        write_arg.second = get_arg_expr_from_call(call, write_arg.first);
+        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
+        read_arg.set_expr(call);
+        write_arg.set_expr(call);
         break;
       default:
         assert(false && "Unknown operation");
     }
+  }
+
+  void set_call_path_filename(const std::string& _call_path_filename) {
+    call_path_filename = _call_path_filename;
+  }
+
+  void set_klee_interface(std::shared_ptr<KleeInterface> _klee_interface) {
+    klee_interface = _klee_interface;
   }
 
   void set_device(unsigned int _device) {
@@ -601,6 +721,7 @@ public:
 
   void print() const {
     std::cerr << "Access " << get_id() << "\n";
+    std::cerr << "  file       " << call_path_filename << "\n";
     std::cerr << "  interface  " << interface << "\n";
 
     switch (op) {
@@ -609,34 +730,34 @@ public:
         break;
       case INIT:
         std::cerr << "  operation  " << "INIT" << "\n";
-        std::cerr << "  object     " << expr_to_string(obj.second) << "\n";
+        std::cerr << "  object     " << obj.second << "\n";
         break;
       case CREATE:
         std::cerr << "  operation  " << "CREATE" << "\n";
-        std::cerr << "  object     " << expr_to_string(obj.second) << "\n";
-        std::cerr << "  result     " << expr_to_string(result_arg.second) << "\n";
+        std::cerr << "  object     " << obj.second << "\n";
+        std::cerr << "  result     " << expr_to_string(result_arg.get_expr()) << "\n";
         break;
       case VERIFY:
         std::cerr << "  operation  " << "VERIFY" << "\n";
-        std::cerr << "  object     " << expr_to_string(obj.second) << "\n";
-        std::cerr << "  read       " << expr_to_string(read_arg.second) << "\n";
+        std::cerr << "  object     " << obj.second << "\n";
+        std::cerr << "  read       " << expr_to_string(read_arg.get_expr()) << "\n";
         break;
       case DESTROY:
         std::cerr << "  operation  " << "DESTROY" << "\n";
-        std::cerr << "  object     " << expr_to_string(obj.second) << "\n";
-        std::cerr << "  read       " << expr_to_string(read_arg.second) << "\n";
+        std::cerr << "  object     " << obj.second << "\n";
+        std::cerr << "  read       " << expr_to_string(read_arg.get_expr()) << "\n";
         break;
       case READ:
         std::cerr << "  operation  " << "READ" << "\n";
-        std::cerr << "  object     " << expr_to_string(obj.second) << "\n";
-        std::cerr << "  read       " << expr_to_string(read_arg.second) << "\n";
-        std::cerr << "  result     " << expr_to_string(result_arg.second) << "\n";
+        std::cerr << "  object     " << obj.second << "\n";
+        std::cerr << "  read       " << expr_to_string(read_arg.get_expr()) << "\n";
+        std::cerr << "  result     " << expr_to_string(result_arg.get_expr()) << "\n";
         break;
       case WRITE:
         std::cerr << "  operation  " << "WRITE" << "\n";
-        std::cerr << "  object     " << expr_to_string(obj.second) << "\n";
-        std::cerr << "  read       " << expr_to_string(read_arg.second) << "\n";
-        std::cerr << "  write      " << expr_to_string(write_arg.second) << "\n";
+        std::cerr << "  object     " << obj.second << "\n";
+        std::cerr << "  read       " << expr_to_string(read_arg.get_expr()) << "\n";
+        std::cerr << "  write      " << expr_to_string(write_arg.get_expr()) << "\n";
         break;
       default:
         assert(false && "Unknown operation");
@@ -647,20 +768,11 @@ public:
 class LibvigAccessesManager {
 private:
   std::map<const std::string, LibvigAccess> access_lookup_table;
+  std::shared_ptr<KleeInterface> klee_interface;
   std::vector<LibvigAccess> accesses;
 
   std::map<std::string, PacketManager> packet_manager_per_call_path;
   std::map<std::string, unsigned int> device_per_call_path;
-  klee::Solver *solver;
-
-  void init_solver() {
-    solver = klee::createCoreSolver(klee::Z3_SOLVER);
-    assert(solver);
-
-    solver = createCexCachingSolver(solver);
-    solver = createCachingSolver(solver);
-    solver = createIndependentSolver(solver);
-  }
 
   void set_device(const std::string& call_path_filename, const bool& _device) {
     auto it = device_per_call_path.find(call_path_filename);
@@ -722,15 +834,6 @@ private:
     add_access_lookup_table(LibvigAccess("loop_invariant_consume"));
     add_access_lookup_table(LibvigAccess("loop_invariant_produce"));
 
-    // these are all special, deserve another class
-    /*
-    add_access_lookup_table(LibvigAccess("packet_return_chunk", "p", LibvigAccess::NOP));
-    add_access_lookup_table(LibvigAccess("packet_state_total_length", "p", LibvigAccess::NOP));
-    add_access_lookup_table(LibvigAccess("packet_send", "p", "dst_device", LibvigAccess::NOP));
-    add_access_lookup_table(LibvigAccess("packet_free", "p", LibvigAccess::DESTROY));
-    add_access_lookup_table(LibvigAccess("packet_get_unread_length", "p", LibvigAccess::NOP));
-    */
-
     add_access_lookup_table(LibvigAccess("packet_return_chunk"));
     add_access_lookup_table(LibvigAccess("packet_state_total_length"));
     add_access_lookup_table(LibvigAccess("packet_send"));
@@ -750,11 +853,12 @@ private:
 public:
   LibvigAccessesManager() {
     fill_access_lookup_table();
-    init_solver();
+    klee_interface = std::make_shared<KleeInterface>();
   }
 
   void analyse_call_path(const std::string& call_path_filename, const call_path_t *call_path) {
-    PacketManager pm(call_path->constraints, solver);
+    klee_interface->add_constraints(call_path_filename, call_path->constraints);
+    PacketManager pm(klee_interface, call_path_filename);
 
     for (const auto& call : call_path->calls) {
 
@@ -774,6 +878,8 @@ public:
 
       auto access = found_access_it->second;
 
+      access.set_klee_interface(klee_interface);
+      access.set_call_path_filename(call_path_filename);
       access.fill_exprs(call);
       access.set_id(accesses.size());
 
