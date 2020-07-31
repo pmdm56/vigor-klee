@@ -99,7 +99,7 @@ public:
     call_path_constraints[call_path_filename] = constraints;
   }
 
-  bool evaluate_expr_must_be_false(klee::expr::ExprHandle expr, std::string call_path_filename) {
+  bool evaluate_expr_must_be_false(klee::expr::ExprHandle expr, std::string call_path_filename) const {
     const auto& constraints = get_constraint(call_path_filename);
 
     klee::Query sat_query(constraints, expr);
@@ -113,7 +113,7 @@ public:
     return result;
   }
 
-  bool evaluate_expr_must_be_true(klee::expr::ExprHandle expr, std::string call_path_filename) {
+  bool evaluate_expr_must_be_true(klee::expr::ExprHandle expr, std::string call_path_filename) const {
     const auto& constraints = get_constraint(call_path_filename);
 
     klee::Query sat_query(constraints, expr);
@@ -127,7 +127,7 @@ public:
     return result;
   }
 
-  uint64_t evaluate_expr(klee::expr::ExprHandle expr, std::string call_path_filename) {
+  uint64_t evaluate_expr(klee::expr::ExprHandle expr, std::string call_path_filename) const {
     const auto& constraints = get_constraint(call_path_filename);
 
     klee::Query sat_query(constraints, expr);
@@ -150,14 +150,14 @@ public:
     return value;
   }
 
-  std::vector<unsigned> readLSB_byte_indexes(klee::ReadExpr *expr, std::string call_path_filename) {
+  std::vector<unsigned> readLSB_byte_indexes(klee::ReadExpr *expr, std::string call_path_filename) const {
     std::vector<unsigned> bytes;
     uint64_t index = evaluate_expr(expr->index, call_path_filename);
     bytes.push_back(index);
     return bytes;
   }
 
-  std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, std::string call_path_filename) {
+  std::vector<unsigned> readLSB_byte_indexes(klee::ConcatExpr *expr, std::string call_path_filename) const {
     std::vector<unsigned> bytes;
     std::vector<unsigned> right_bytes, left_bytes;
 
@@ -185,7 +185,7 @@ public:
     return bytes;
   }
 
-  unsigned int readLSB_parse(klee::expr::ExprHandle expr, std::string call_path_filename) {
+  unsigned int readLSB_parse(klee::expr::ExprHandle expr, std::string call_path_filename) const {
     std::vector<unsigned> bytes_read;
 
     if (klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr)) {
@@ -198,6 +198,39 @@ public:
 
     return *std::min_element(bytes_read.begin(), bytes_read.end());
   }
+
+  bool has_packet(klee::expr::ExprHandle expr,
+                  std::vector<unsigned> &bytes_read,
+                  std::string call_path_filename) const {
+    if (klee::ConcatExpr *concat = dyn_cast<klee::ConcatExpr>(expr)) {
+      bool hp = false;
+
+      hp |= has_packet(concat->getLeft(), bytes_read, call_path_filename);
+      hp |= has_packet(concat->getRight(), bytes_read, call_path_filename);
+
+      return hp;
+    }
+
+    else if (klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr)) {
+      if (read->updates.root == nullptr)
+        return false;
+      if (read->updates.root->getName() != "packet_chunks")
+        return false;
+
+      uint64_t index = evaluate_expr(read->index, call_path_filename);
+
+      bytes_read.push_back(index);
+
+      return true;
+    }
+
+    for (unsigned i = 0; i < expr->getNumKids(); i++)
+      if (has_packet(expr->getKid(i), bytes_read, call_path_filename))
+        return true;
+
+    return false;
+  }
+
 };
 
 klee::expr::ExprHandle get_arg_expr_from_call(const call_t& call, const std::string& arg_name) {
@@ -325,8 +358,12 @@ struct packet_chunk_t {
     }
   }
 
-  bool is_complete() {
+  bool is_complete() const {
     return protocol.state != protocol_t::state_t::INCOMPLETE;
+  }
+
+  bool has_dependencies() const {
+    return packet_fields_dependencies.size() > 0;
   }
 
   void append_fragment(const packet_chunk_t& fragment) {
@@ -340,11 +377,11 @@ struct packet_chunk_t {
   bool is_dependency_inside_boundaries(unsigned int dependency, const fragment_t& fragment) {
     klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
 
-    // dependency >= fragment.offset && dependency <= fragment.offset + fragment.length
+    // fragment.offset <= dependency && dependency <= fragment.offset + fragment.length
     klee::ref<klee::Expr> dependency_inside_boundaries = exprBuilder->And(
-      exprBuilder->Uge(
-        exprBuilder->Constant(dependency, klee::Expr::Int32),
-        exprBuilder->Constant(fragment.offset, klee::Expr::Int32)
+      exprBuilder->Ule(
+        exprBuilder->Constant(fragment.offset, klee::Expr::Int32),
+        exprBuilder->Constant(dependency, klee::Expr::Int32)
       ),
       exprBuilder->Ule(
         exprBuilder->Constant(dependency, klee::Expr::Int32),
@@ -359,12 +396,9 @@ struct packet_chunk_t {
   }
 
   bool add_dependency(unsigned int dependency) {
-    for (auto fragment : fragments) {
+    for (const auto& fragment : fragments) {
       if (is_dependency_inside_boundaries(dependency, fragment)) {
-        assert(false && "Dependency inside boundaries but byte position is uncertain");
-        auto length_val = klee_interface->evaluate_expr(fragment.length, call_path_filename);
-        // packet_fields_dependencies.push_back(dependency - (fragments[0].offset + fragments[0].length));
-        packet_fields_dependencies.push_back(dependency - (fragment.offset + length_val));
+        packet_fields_dependencies.push_back(dependency - fragment.offset);
         return true;
       }
     }
@@ -373,7 +407,6 @@ struct packet_chunk_t {
   }
 
   void print() const {
-    std::cerr << "Packet chunk:  " << "\n";
     std::cerr << "  layer        " << layer << "\n";
 
     if (protocol.state != protocol_t::state_t::NO_INFO) {
@@ -393,8 +426,9 @@ struct packet_chunk_t {
       std::cerr << "\n";
     }
 
+    if (packet_fields_dependencies.size() == 0) return;
+
     std::cerr << "  dependencies ";
-    if (packet_fields_dependencies.size() == 0) std::cerr << "\n";
     for (unsigned int i = 0; i < packet_fields_dependencies.size(); i++) {
       const auto& dependency = packet_fields_dependencies[i];
       if (i > 0) std::cerr << "               ";
@@ -498,14 +532,43 @@ public:
 
   const unsigned int& get_src_device() const { return src_device; }
   const std::vector<packet_chunk_t>& get_chunks() const { return chunks; }
+  const std::shared_ptr<KleeInterface>& get_klee_interface() const { return klee_interface; }
+  const std::string& get_call_path_filename() const { return call_path_filename; }
+
+  void add_dependencies(const std::vector<unsigned int>& bytes) {
+    for (const auto& byte : bytes) {
+      auto found = false;
+
+      for (auto& chunk : chunks) {
+        if (chunk.add_dependency(byte)) {
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        std::cerr << RED;
+        std::cerr << "[ERROR] byte " << byte << " not associated with any chunk." << "\n";
+        std::cerr << RESET;
+
+        assert(false && "Byte dependency not associated with any chunk");
+      }
+    }
+  }
+
+  bool has_dependencies() const {
+    for (const auto& chunk : chunks)
+      if (chunk.has_dependencies())
+        return true;
+    return false;
+  }
 
   void print() const {
-    std::cerr << "========================================" << "\n";
-    std::cerr << "Packet manager" << "\n";
-    std::cerr << "src device   " << src_device << "\n";
-    for (const auto& chunk : chunks)
+    std::cerr << "  src device   " << src_device << "\n";
+    for (const auto& chunk : chunks) {
+      std::cerr << "\n";
       chunk.print();
-    std::cerr << "========================================" << "\n";
+    }
   }
 };
 
@@ -538,6 +601,10 @@ public:
   bool is_name_set() const { return name.first; }
   bool is_expr_set() const { return expr.first; }
 
+  bool has_packet_dependencies() const {
+    return packet_dependencies.has_dependencies();
+  }
+
   const std::string& get_name() const {
     assert(name.first && "Trying to get unset name");
     return name.second;
@@ -553,13 +620,22 @@ public:
   void set_name(const std::string& _name) { name = std::make_pair(true, _name); }
 
   void set_expr(const call_t& call) {
-    assert(name.first && "Trying to set expression with unset name");
+    if (!name.first) return;
     expr = std::make_pair(true, get_arg_expr_from_call(call, name.second));
   }
 
   void set_packet_dependencies(const PacketManager& _packet_dependencies) {
+    if (!name.first || !expr.first) return;
     packet_dependencies = _packet_dependencies;
-    // TODO: process dependencies
+
+    std::vector<unsigned int> bytes_read;
+
+    const auto& klee_interface = packet_dependencies.get_klee_interface();
+    const auto& call_path_filename = packet_dependencies.get_call_path_filename();
+
+    if (klee_interface->has_packet(expr.second, bytes_read, call_path_filename)) {
+      packet_dependencies.add_dependencies(bytes_read);
+    }
   }
 };
 
@@ -658,37 +734,22 @@ public:
   }
 
   void fill_exprs(const call_t& call) {
+    if (op == NOP) return;
+
     assert(klee_interface && "Filling expression without setting a klee interface");
     assert(call_path_filename != "" && "Filling expression without setting call_path filename");
 
-    switch (op) {
-      case NOP:
-        break;
-      case INIT:
-        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
-        break;
-      case CREATE:
-        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
-        result_arg.set_expr(call);
-        break;
-      case VERIFY:
-      case DESTROY:
-        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
-        read_arg.set_expr(call);
-        break;
-      case READ:
-        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
-        read_arg.set_expr(call);
-        result_arg.set_expr(call);
-        break;
-      case WRITE:
-        obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
-        read_arg.set_expr(call);
-        write_arg.set_expr(call);
-        break;
-      default:
-        assert(false && "Unknown operation");
-    }
+    obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
+
+    read_arg.set_expr(call);
+    write_arg.set_expr(call);
+    result_arg.set_expr(call);
+  }
+
+  void search_packet_dependencies(const PacketManager& pm) {
+    read_arg.set_packet_dependencies(pm);
+    write_arg.set_packet_dependencies(pm);
+    result_arg.set_packet_dependencies(pm);
   }
 
   void set_call_path_filename(const std::string& _call_path_filename) {
@@ -720,48 +781,73 @@ public:
   const std::string& get_interface() const { return interface; }
 
   void print() const {
+    std::cerr << "\n";
+    std::cerr << "========================================" << "\n";
     std::cerr << "Access " << get_id() << "\n";
-    std::cerr << "  file       " << call_path_filename << "\n";
-    std::cerr << "  interface  " << interface << "\n";
+    std::cerr << "  file         " << call_path_filename << "\n";
+    std::cerr << "  interface    " << interface << "\n";
 
+    std::cerr << "  operation    ";
     switch (op) {
-      case NOP:
-        std::cerr << "  operation  " << "NOP" << "\n";
-        break;
-      case INIT:
-        std::cerr << "  operation  " << "INIT" << "\n";
-        std::cerr << "  object     " << obj.second << "\n";
-        break;
-      case CREATE:
-        std::cerr << "  operation  " << "CREATE" << "\n";
-        std::cerr << "  object     " << obj.second << "\n";
-        std::cerr << "  result     " << expr_to_string(result_arg.get_expr()) << "\n";
-        break;
-      case VERIFY:
-        std::cerr << "  operation  " << "VERIFY" << "\n";
-        std::cerr << "  object     " << obj.second << "\n";
-        std::cerr << "  read       " << expr_to_string(read_arg.get_expr()) << "\n";
-        break;
-      case DESTROY:
-        std::cerr << "  operation  " << "DESTROY" << "\n";
-        std::cerr << "  object     " << obj.second << "\n";
-        std::cerr << "  read       " << expr_to_string(read_arg.get_expr()) << "\n";
-        break;
-      case READ:
-        std::cerr << "  operation  " << "READ" << "\n";
-        std::cerr << "  object     " << obj.second << "\n";
-        std::cerr << "  read       " << expr_to_string(read_arg.get_expr()) << "\n";
-        std::cerr << "  result     " << expr_to_string(result_arg.get_expr()) << "\n";
-        break;
-      case WRITE:
-        std::cerr << "  operation  " << "WRITE" << "\n";
-        std::cerr << "  object     " << obj.second << "\n";
-        std::cerr << "  read       " << expr_to_string(read_arg.get_expr()) << "\n";
-        std::cerr << "  write      " << expr_to_string(write_arg.get_expr()) << "\n";
-        break;
-      default:
-        assert(false && "Unknown operation");
+
+    case NOP:
+      std::cerr << "NOP" << "\n";
+      break;
+    case INIT:
+      std::cerr << "INIT" << "\n";
+      break;
+    case CREATE:
+      std::cerr << "CREATE" << "\n";
+      break;
+    case VERIFY:
+      std::cerr << "VERIFY" << "\n";
+      break;
+    case DESTROY:
+      std::cerr << "DESTROY" << "\n";
+      break;
+    case READ:
+      std::cerr << "READ" << "\n";
+      break;
+    case WRITE:
+      std::cerr << "WRITE" << "\n";
+      break;
+    default:
+      assert(false && "Unknown operation");
     }
+
+    if (op != NOP) {
+      std::cerr << "  object       " << obj.second << "\n";
+
+      if (read_arg.is_name_set()) {
+        std::cerr << "  read         " << expr_to_string(read_arg.get_expr()) << "\n";
+
+        if (read_arg.has_packet_dependencies()) {
+          std::cerr << "  packet dep   " << "\n";
+          read_arg.get_packet_dependencies().print();
+        }
+      }
+
+      if (write_arg.is_name_set()) {
+        std::cerr << "  write        " << expr_to_string(write_arg.get_expr()) << "\n";
+
+        if (write_arg.has_packet_dependencies()) {
+          std::cerr << "  packet dep   " << "\n";
+          write_arg.get_packet_dependencies().print();
+        }
+      }
+
+      if (result_arg.is_name_set()) {
+        std::cerr << "  result       " << expr_to_string(result_arg.get_expr()) << "\n";
+
+        if (result_arg.has_packet_dependencies()) {
+          std::cerr << "  packet dep   " << "\n";
+          result_arg.get_packet_dependencies().print();
+        }
+      }
+    }
+
+
+    std::cerr << "========================================" << "\n";
   }
 };
 
@@ -880,8 +966,10 @@ public:
 
       access.set_klee_interface(klee_interface);
       access.set_call_path_filename(call_path_filename);
-      access.fill_exprs(call);
       access.set_id(accesses.size());
+
+      access.fill_exprs(call);
+      access.search_packet_dependencies(pm);
 
       accesses.emplace_back(access);
     }
