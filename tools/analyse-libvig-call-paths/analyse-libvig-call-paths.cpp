@@ -143,7 +143,9 @@ public:
     auto is_only_solution = evaluate_expr_must_be_true(exprBuilder->Eq(expr, result), call_path_filename);
 
     if (!is_only_solution) {
-      std::cerr << RED << "expression: " << expr_to_string(expr) << "\n";
+      std::cerr << RED << "expression:        " << expr_to_string(expr) << "\n" << RESET;
+      std::cerr << RED << "solution (expr):   " << value << "\n" << RESET;
+      std::cerr << RED << "solution (value):  " << expr_to_string(result) << "\n" << RESET;
       assert(false && "Value from evaluated expression is not the only solution");
     }
 
@@ -974,7 +976,6 @@ public:
       accesses.emplace_back(access);
     }
 
-    pm.print();
     packet_manager_per_call_path.emplace(std::make_pair(call_path_filename, pm));
   }
 
