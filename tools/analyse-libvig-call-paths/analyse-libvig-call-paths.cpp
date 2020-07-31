@@ -519,8 +519,7 @@ private:
   }
 
   void packet_send(const call_t& call) {
-    std::cerr << "packet send handler" << "\n";
-    std::cerr << "device " << src_device++ << "\n";
+    // TODO:
   }
 
   void packet_borrow_next_chunk(const call_t& call) {
@@ -624,10 +623,11 @@ public:
   }
 
   void print() const {
-    std::cerr << "  src device   " << src_device << "\n";
     for (const auto& chunk : chunks) {
-      std::cerr << "\n";
-      chunk.print();
+      if (chunk.has_dependencies()) {
+        chunk.print();
+        std::cerr << "\n";
+      }
     }
   }
 };
@@ -841,13 +841,20 @@ public:
     return id.second;
   }
 
+  const std::string& get_call_path_filename() const { return call_path_filename; }
+
   const std::string& get_interface() const { return interface; }
 
   void print() const {
+    assert(device.first && "Unset device");
+
+    if (op == NOP) return;
+
     std::cerr << "\n";
     std::cerr << "========================================" << "\n";
     std::cerr << "Access " << get_id() << "\n";
     std::cerr << "  file         " << call_path_filename << "\n";
+    std::cerr << "  device       " << device.second << "\n";
     std::cerr << "  interface    " << interface << "\n";
 
     std::cerr << "  operation    ";
@@ -878,34 +885,32 @@ public:
       assert(false && "Unknown operation");
     }
 
-    if (op != NOP) {
-      std::cerr << "  object       " << obj.second << "\n";
+    std::cerr << "  object       " << obj.second << "\n";
 
-      if (read_arg.is_name_set()) {
-        std::cerr << "  read         " << expr_to_string(read_arg.get_expr()) << "\n";
+    if (read_arg.is_name_set()) {
+      std::cerr << "  read         " << expr_to_string(read_arg.get_expr()) << "\n";
 
-        if (read_arg.has_packet_dependencies()) {
-          std::cerr << "  packet dep   " << "\n";
-          read_arg.get_packet_dependencies().print();
-        }
+      if (read_arg.has_packet_dependencies()) {
+        std::cerr << "\n";
+        read_arg.get_packet_dependencies().print();
       }
+    }
 
-      if (write_arg.is_name_set()) {
-        std::cerr << "  write        " << expr_to_string(write_arg.get_expr()) << "\n";
+    if (write_arg.is_name_set()) {
+      std::cerr << "  write        " << expr_to_string(write_arg.get_expr()) << "\n";
 
-        if (write_arg.has_packet_dependencies()) {
-          std::cerr << "  packet dep   " << "\n";
-          write_arg.get_packet_dependencies().print();
-        }
+      if (write_arg.has_packet_dependencies()) {
+        std::cerr << "  packet dep   " << "\n";
+        write_arg.get_packet_dependencies().print();
       }
+    }
 
-      if (result_arg.is_name_set()) {
-        std::cerr << "  result       " << expr_to_string(result_arg.get_expr()) << "\n";
+    if (result_arg.is_name_set()) {
+      std::cerr << "  result       " << expr_to_string(result_arg.get_expr()) << "\n";
 
-        if (result_arg.has_packet_dependencies()) {
-          std::cerr << "  packet dep   " << "\n";
-          result_arg.get_packet_dependencies().print();
-        }
+      if (result_arg.has_packet_dependencies()) {
+        std::cerr << "  packet dep   " << "\n";
+        result_arg.get_packet_dependencies().print();
       }
     }
 
@@ -930,17 +935,9 @@ private:
 
     device_per_call_path[call_path_filename] = _device;
     for (auto& access : accesses) {
-      access.set_device(_device);
+      if (access.get_call_path_filename() == call_path_filename)
+        access.set_device(_device);
     }
-  }
-
-  void store_access(const std::string& call_path_filename, LibvigAccess& access) {
-    auto it = device_per_call_path.find(call_path_filename);
-
-    if (it != device_per_call_path.end())
-      access.set_device(device_per_call_path[call_path_filename]);
-
-    accesses.push_back(access);
   }
 
   void add_access_lookup_table(const LibvigAccess& access) {
@@ -1037,6 +1034,7 @@ public:
       accesses.emplace_back(access);
     }
 
+    set_device(call_path_filename, pm.get_src_device());
     packet_manager_per_call_path.emplace(std::make_pair(call_path_filename, pm));
   }
 
