@@ -127,34 +127,52 @@ public:
     return result;
   }
 
-  uint64_t evaluate_expr(klee::expr::ExprHandle expr, std::string call_path_filename) const {
-    const auto& constraints = get_constraint(call_path_filename);
-
-    klee::Query sat_query(constraints, expr);
-    klee::ref<klee::ConstantExpr> result;
-
-    bool success = solver->getValue(sat_query, result);
-    assert(success);
-
-    auto value = result.get()->getZExtValue(expr->getWidth());
-
+  std::vector<uint64_t> evaluate_expr(klee::expr::ExprHandle expr, std::string call_path_filename) const {
     klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
+    std::vector<uint64_t> solutions;
 
-    auto is_only_solution = evaluate_expr_must_be_true(exprBuilder->Eq(expr, result), call_path_filename);
+    auto constraints = get_constraint(call_path_filename);
 
-    if (!is_only_solution) {
-      std::cerr << RED << "expression:        " << expr_to_string(expr) << "\n" << RESET;
-      std::cerr << RED << "solution (expr):   " << value << "\n" << RESET;
-      std::cerr << RED << "solution (value):  " << expr_to_string(result) << "\n" << RESET;
-      assert(false && "Value from evaluated expression is not the only solution");
+    for (;;) {
+      klee::Query sat_query(constraints, expr);
+      klee::ref<klee::ConstantExpr> result;
+
+      bool success = solver->getValue(sat_query, result);
+
+      if (!success && solutions.size() > 0) break;
+
+      else if (!success) {
+        std::cerr << RED << "expression: " << expr_to_string(expr) << "\n" << RESET;
+        assert(false && "Solver unable to obtain value for given expression");
+      }
+
+      auto new_solution = result.get()->getZExtValue(expr->getWidth());
+      solutions.push_back(new_solution);
+
+      constraints.addConstraint(exprBuilder->Not(exprBuilder->Eq(expr, result)));
+
+      klee::expr::ExprHandle solutions_set = exprBuilder->Eq(expr, exprBuilder->Constant(solutions[0], expr->getWidth()));
+      for (unsigned int i = 1; i < solutions.size(); i++) {
+        solutions_set = exprBuilder->Or(
+              solutions_set,
+              exprBuilder->Eq(expr, exprBuilder->Constant(solutions[i], expr->getWidth()))
+        );
+      }
+
+      auto solution_set_complete = evaluate_expr_must_be_true(solutions_set, call_path_filename);
+      if (solution_set_complete)
+        break;
     }
 
-    return value;
+    return solutions;
   }
 
   std::vector<unsigned> readLSB_byte_indexes(klee::ReadExpr *expr, std::string call_path_filename) const {
     std::vector<unsigned> bytes;
-    uint64_t index = evaluate_expr(expr->index, call_path_filename);
+    auto solutions = evaluate_expr(expr->index, call_path_filename);
+    assert(solutions.size() == 1);
+
+    auto index = solutions[0];
     bytes.push_back(index);
     return bytes;
   }
@@ -219,8 +237,10 @@ public:
       if (read->updates.root->getName() != "packet_chunks")
         return false;
 
-      uint64_t index = evaluate_expr(read->index, call_path_filename);
+      auto solutions = evaluate_expr(read->index, call_path_filename);
+      assert(solutions.size() == 1);
 
+      auto index = solutions[0];
       bytes_read.push_back(index);
 
       return true;
@@ -312,22 +332,13 @@ struct packet_chunk_t {
     call_path_filename = chunk.call_path_filename;
   }
 
-
-  void set_protocol_from_previous_chunk(const packet_chunk_t& prev_chunk) {
-    assert(klee_interface && "Trying to set protocol from previous chunk with invalid klee interface");
-
+  void set_and_verify_protocol(unsigned int code) {
     klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
 
-    const auto& previous_chunk_expr = prev_chunk.fragments[0].expr;
     const auto& expr = fragments[0].expr;
+    protocol.code = code;
 
     if (layer == 3) {
-      klee::ref<klee::Expr> proto_expr =
-          exprBuilder->Extract(previous_chunk_expr, 12 * 8, klee::Expr::Int16);
-
-      protocol.code = klee_interface->evaluate_expr(proto_expr, call_path_filename);
-      protocol.code = UINT_16_SWAP_ENDIANNESS(protocol.code);
-
       // IP
       if (protocol.code == 0x0800) {
         klee::ref<klee::Expr> ihl_le_5_expr = exprBuilder->Ule(
@@ -339,7 +350,9 @@ struct packet_chunk_t {
         bool ihl_gt_5 = klee_interface->evaluate_expr_must_be_false(ihl_le_5_expr, call_path_filename);
         protocol.state = !ihl_gt_5 ? protocol_t::state_t::COMPLETE : protocol_t::state_t::INCOMPLETE;
 
-      } else {
+      }
+
+      else {
         std::cerr << MAGENTA
                   << "[WARNING] Layer 3 protocol not in set { IP, VLAN }" << RESET
                   << std::endl;
@@ -347,10 +360,6 @@ struct packet_chunk_t {
     }
 
     else if (layer == 4) {
-      klee::ref<klee::Expr> proto_expr =
-          exprBuilder->Extract(previous_chunk_expr, 9 * 8, klee::Expr::Int8);
-
-      protocol.code  = klee_interface->evaluate_expr(proto_expr, call_path_filename);
       protocol.state = protocol_t::state_t::COMPLETE;
     }
 
@@ -358,6 +367,51 @@ struct packet_chunk_t {
       std::cerr << RED << "[WARNING] Not implemented: trying to parse layer "
                 << layer << RESET << std::endl;
     }
+  }
+
+  std::vector<packet_chunk_t> set_protocol_from_previous_chunk(const packet_chunk_t& prev_chunk) {
+    assert(klee_interface && "Trying to set protocol from previous chunk with invalid klee interface");
+
+    klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
+
+    // In case there are multiple solutions for the protocol value,
+    // we need to fork this chunk into multiple chunks,
+    // and all of them together complete the set of all
+    // possible values for the protocol.
+    std::vector<packet_chunk_t> forked_chunks;
+
+    const auto& previous_chunk_expr = prev_chunk.fragments[0].expr;
+
+    klee::ref<klee::Expr> proto_expr;
+
+    if (layer == 3) {
+      proto_expr = exprBuilder->Extract(previous_chunk_expr, 12 * 8, klee::Expr::Int16);
+    }
+
+    else if (layer == 4) {
+      proto_expr = exprBuilder->Extract(previous_chunk_expr, 9 * 8, klee::Expr::Int8);
+    }
+
+    else {
+      std::cerr << RED << "[WARNING] Not implemented: trying to parse layer "
+                << layer << RESET << std::endl;
+    }
+
+    auto protocol_code_solutions = klee_interface->evaluate_expr(proto_expr, call_path_filename);
+
+    unsigned int protocol_code = protocol_code_solutions[0];
+    set_and_verify_protocol(layer == 3 ? UINT_16_SWAP_ENDIANNESS(protocol_code) : protocol_code);
+
+    for (unsigned int i = 1; i < protocol_code_solutions.size(); i++) {
+      packet_chunk_t forked_chunk(*this);
+
+      unsigned int protocol_code = protocol_code_solutions[i];
+      set_and_verify_protocol(layer == 3 ? UINT_16_SWAP_ENDIANNESS(protocol_code) : protocol_code);
+
+      forked_chunks.emplace_back(forked_chunk);
+    }
+
+    return forked_chunks;
   }
 
   bool is_complete() const {
@@ -458,7 +512,10 @@ private:
     assert(call.args.count("src_devices") && "Packet receive handler without argument \"src_devices\"");
     assert(!call.args.at("src_devices").first.isNull() && "Packet receive handler with invalid value on argument \"src_devices\"");
 
-    src_device = klee_interface->evaluate_expr(call.args.at("src_devices").first, call_path_filename);
+    auto solutions = klee_interface->evaluate_expr(call.args.at("src_devices").first, call_path_filename);
+    assert(solutions.size() == 1);
+
+    src_device = solutions[0];
   }
 
   void packet_send(const call_t& call) {
@@ -492,7 +549,9 @@ private:
     else {
       const auto& previous_chunk = chunks.back();
       packet_chunk.layer = previous_chunk.layer + 1;
-      packet_chunk.set_protocol_from_previous_chunk(previous_chunk);
+
+      auto forked_chunks = packet_chunk.set_protocol_from_previous_chunk(previous_chunk);
+      chunks.insert(chunks.end(), forked_chunks.begin(), forked_chunks.end());
     }
 
     chunks.push_back(packet_chunk);
@@ -544,7 +603,6 @@ public:
       for (auto& chunk : chunks) {
         if (chunk.add_dependency(byte)) {
           found = true;
-          break;
         }
       }
 
@@ -741,7 +799,10 @@ public:
     assert(klee_interface && "Filling expression without setting a klee interface");
     assert(call_path_filename != "" && "Filling expression without setting call_path filename");
 
-    obj.second = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
+    auto solutions = klee_interface->evaluate_expr(get_arg_expr_from_call(call, obj.first), call_path_filename);
+    assert(solutions.size() == 1);
+
+    obj.second = solutions[0];
 
     read_arg.set_expr(call);
     write_arg.set_expr(call);
