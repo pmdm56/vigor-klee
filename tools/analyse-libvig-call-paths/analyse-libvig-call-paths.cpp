@@ -27,6 +27,7 @@
 #include <regex>
 #include <vector>
 #include <memory>
+#include <stack>
 
 #include "../load-call-paths/load-call-paths.h"
 
@@ -414,6 +415,13 @@ struct packet_chunk_t {
     return forked_chunks;
   }
 
+  unsigned int get_fragments_size() const { return fragments.size(); }
+
+  const klee::expr::ExprHandle& get_fragment_expr(unsigned int idx) const {
+    assert(idx < fragments.size());
+    return fragments[0].expr;
+  }
+
   bool is_complete() const {
     return protocol.state != protocol_t::state_t::INCOMPLETE;
   }
@@ -501,7 +509,9 @@ private:
   std::pair<bool, unsigned int> src_device;
   std::pair<bool, unsigned int> dst_device;
 
-  std::vector<packet_chunk_t> chunks;
+  std::stack<std::pair<klee::expr::ExprHandle, unsigned int> > borrowed_chunk_layer_pairs;
+  std::vector<packet_chunk_t> borrowed_chunks_processed;
+
   std::string call_path_filename;
 
   std::shared_ptr<KleeInterface> klee_interface;
@@ -541,31 +551,69 @@ private:
     assert(call.args.find("length") != call.args.end() && "packet_borrow_next_chunk without \"length\" variable");
     assert(!call.args.at("length").first.isNull() && "packet_borrow_next_chunk with invalid \"length\" expression");
 
-    auto expr = call.extra_vars.at("the_chunk").second;
-    auto length = call.args.at("length").first;
-    auto offset = klee_interface->readLSB_parse(expr, call_path_filename);
+    auto the_chunk_expr = call.extra_vars.at("the_chunk").second;
+    auto length_expr = call.args.at("length").first;
+    auto offset = klee_interface->readLSB_parse(the_chunk_expr, call_path_filename);
 
-    packet_chunk_t packet_chunk(offset, length, expr, klee_interface, call_path_filename);
+    packet_chunk_t packet_chunk(offset, length_expr, the_chunk_expr, klee_interface, call_path_filename);
 
-    if (chunks.size() && !chunks.back().is_complete()) {
-      chunks.back().append_fragment(packet_chunk);
+    if (borrowed_chunks_processed.size() && !borrowed_chunks_processed.back().is_complete()) {
+      borrowed_chunks_processed.back().append_fragment(packet_chunk);
+      borrowed_chunk_layer_pairs.push(std::make_pair(the_chunk_expr, borrowed_chunks_processed.back().layer));
       return;
     }
 
-    if (chunks.size() == 0) {
+    if (borrowed_chunks_processed.size() == 0) {
       // start in layer 2 and increment from there
       packet_chunk.layer = 2;
     }
 
     else {
-      const auto& previous_chunk = chunks.back();
+      const auto& previous_chunk = borrowed_chunks_processed.back();
       packet_chunk.layer = previous_chunk.layer + 1;
 
       auto forked_chunks = packet_chunk.set_protocol_from_previous_chunk(previous_chunk);
-      chunks.insert(chunks.end(), forked_chunks.begin(), forked_chunks.end());
+      borrowed_chunks_processed.insert(borrowed_chunks_processed.end(), forked_chunks.begin(), forked_chunks.end());
     }
 
-    chunks.push_back(packet_chunk);
+    borrowed_chunk_layer_pairs.push(std::make_pair(the_chunk_expr, packet_chunk.layer));
+    borrowed_chunks_processed.push_back(packet_chunk);
+  }
+
+  void packet_return_chunk(const call_t& call) {
+    klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
+
+    assert(call.args.count("the_chunk") && "packet_return_chunk handler without argument \"the_chunk\"");
+    assert(!call.args.at("the_chunk").first.isNull() && "packet_return_chunk handler with invalid value on argument \"the_chunk\"");
+
+    auto the_chunk_expr = get_arg_expr_from_call(call, "the_chunk");
+    auto borrowed_expr = borrowed_chunk_layer_pairs.top().first;
+    auto borrowed_layer = borrowed_chunk_layer_pairs.top().second;
+    auto expr_width = borrowed_expr->getWidth();
+
+    if (borrowed_layer == 2) {
+      borrowed_chunk_layer_pairs.pop();
+      return;
+    }
+
+    std::cerr << CYAN << "layer:          " << borrowed_layer << "\n" << RESET;
+    std::cerr << CYAN << "returned chunk: " << expr_to_string(the_chunk_expr) << "\n" << RESET;
+    std::cerr << CYAN << "borrowed chunk: " << expr_to_string(borrowed_expr) << "\n" << RESET;
+
+    for (unsigned int w = 0; w < expr_width; w += 8) {
+      auto chunks_byte_eq_expr = exprBuilder->Eq(
+            exprBuilder->Extract(the_chunk_expr, w, klee::Expr::Int8),
+            exprBuilder->Extract(borrowed_expr, w, klee::Expr::Int8)
+      );
+
+      auto chunks_byte_eq = klee_interface->evaluate_expr_must_be_true(chunks_byte_eq_expr, call_path_filename);
+
+      if (!chunks_byte_eq) {
+        std::cerr << BLUE << "Difference in byte " << w / 8 << "/" << expr_width / 8 - 1 << "\n" << RESET;
+      }
+    }
+
+    borrowed_chunk_layer_pairs.pop();
   }
 
   void nop(const call_t& call) {}
@@ -583,14 +631,16 @@ public:
     call_handler_map["packet_send"] = &PacketManager::packet_send;
     call_handler_map["packet_receive"] = &PacketManager::packet_receive;
     call_handler_map["packet_borrow_next_chunk"] = &PacketManager::packet_borrow_next_chunk;
-    call_handler_map["packet_return_chunk"] = &PacketManager::nop;
+    call_handler_map["packet_return_chunk"] = &PacketManager::packet_return_chunk;
     call_handler_map["packet_state_total_length"] = &PacketManager::nop;
     call_handler_map["packet_free"] = &PacketManager::nop;
     call_handler_map["packet_get_unread_length"] = &PacketManager::nop;
   }
 
   PacketManager(const PacketManager& pm)
-    : src_device(pm.src_device), dst_device(pm.dst_device), chunks(pm.get_chunks()) {
+    : src_device(pm.src_device), dst_device(pm.dst_device),
+      borrowed_chunk_layer_pairs(pm.borrowed_chunk_layer_pairs),
+      borrowed_chunks_processed(pm.borrowed_chunks_processed) {
     klee_interface = pm.klee_interface;
   }
 
@@ -618,7 +668,7 @@ public:
     return dst_device.second;
   }
 
-  const std::vector<packet_chunk_t>& get_chunks() const { return chunks; }
+  const std::vector<packet_chunk_t>& get_chunks() const { return borrowed_chunks_processed; }
   const std::shared_ptr<KleeInterface>& get_klee_interface() const { return klee_interface; }
   const std::string& get_call_path_filename() const { return call_path_filename; }
 
@@ -636,7 +686,7 @@ public:
     for (const auto& byte : bytes) {
       auto found = false;
 
-      for (auto& chunk : chunks) {
+      for (auto& chunk : borrowed_chunks_processed) {
         if (chunk.add_dependency(byte)) {
           found = true;
         }
@@ -653,14 +703,14 @@ public:
   }
 
   bool has_dependencies() const {
-    for (const auto& chunk : chunks)
+    for (const auto& chunk : borrowed_chunks_processed)
       if (chunk.has_dependencies())
         return true;
     return false;
   }
 
   void print() const {
-    for (const auto& chunk : chunks) {
+    for (const auto& chunk : borrowed_chunks_processed) {
       if (chunk.has_dependencies()) {
         chunk.print();
         std::cerr << "\n";
