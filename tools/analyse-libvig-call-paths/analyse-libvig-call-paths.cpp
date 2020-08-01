@@ -498,7 +498,9 @@ private:
   typedef void (PacketManager::*packet_manager_call_handler_t)(const call_t& call);
   typedef std::map<std::string, packet_manager_call_handler_t> packet_manager_call_handler_map_t;
 
-  unsigned int src_device;
+  std::pair<bool, unsigned int> src_device;
+  std::pair<bool, unsigned int> dst_device;
+
   std::vector<packet_chunk_t> chunks;
   std::string call_path_filename;
 
@@ -509,17 +511,27 @@ private:
 
   // Handlers
   void packet_receive(const call_t& call) {
-    assert(call.args.count("src_devices") && "Packet receive handler without argument \"src_devices\"");
-    assert(!call.args.at("src_devices").first.isNull() && "Packet receive handler with invalid value on argument \"src_devices\"");
+    assert(call.args.count("src_devices") && "packet_receive handler without argument \"src_devices\"");
+    assert(!call.args.at("src_devices").first.isNull() && "packet_receive handler with invalid value on argument \"src_devices\"");
 
-    auto solutions = klee_interface->evaluate_expr(call.args.at("src_devices").first, call_path_filename);
+    auto src_device_expr = get_arg_expr_from_call(call, "src_devices");
+
+    auto solutions = klee_interface->evaluate_expr(src_device_expr, call_path_filename);
     assert(solutions.size() == 1);
 
-    src_device = solutions[0];
+    src_device = std::make_pair(true, solutions[0]);
   }
 
   void packet_send(const call_t& call) {
-    // TODO:
+    assert(call.args.count("dst_device") && "packet_send handler without argument \"dst_device\"");
+    assert(!call.args.at("dst_device").first.isNull() && "packet_send handler with invalid value on argument \"dst_device\"");
+
+    auto dst_device_expr = get_arg_expr_from_call(call, "dst_device");
+
+    auto solutions = klee_interface->evaluate_expr(dst_device_expr, call_path_filename);
+    assert(solutions.size() == 1);
+
+    dst_device = std::make_pair(true, solutions[0]);
   }
 
   void packet_borrow_next_chunk(const call_t& call) {
@@ -561,8 +573,10 @@ private:
 public:
   PacketManager() {}
 
-  PacketManager(std::shared_ptr<KleeInterface> _klee_interface, const std::string& _call_path_filename)
-    : src_device(0) {
+  PacketManager(std::shared_ptr<KleeInterface> _klee_interface, const std::string& _call_path_filename) {
+    src_device.first = false;
+    dst_device.first = false;
+
     klee_interface = _klee_interface;
     call_path_filename = _call_path_filename;
 
@@ -576,7 +590,7 @@ public:
   }
 
   PacketManager(const PacketManager& pm)
-    : src_device(pm.get_src_device()), chunks(pm.get_chunks()) {
+    : src_device(pm.src_device), dst_device(pm.dst_device), chunks(pm.get_chunks()) {
     klee_interface = pm.klee_interface;
   }
 
@@ -590,10 +604,33 @@ public:
     return true;
   }
 
-  const unsigned int& get_src_device() const { return src_device; }
+  bool is_src_device_set() const { return src_device.first; }
+
+  const unsigned int& get_src_device() const {
+    assert(src_device.first && "Unset source device");
+    return src_device.second;
+  }
+
+  bool is_dst_device_set() const { return dst_device.first; }
+
+  const unsigned int& get_dst_device() const {
+    assert(dst_device.first && "Unset destination device");
+    return dst_device.second;
+  }
+
   const std::vector<packet_chunk_t>& get_chunks() const { return chunks; }
   const std::shared_ptr<KleeInterface>& get_klee_interface() const { return klee_interface; }
   const std::string& get_call_path_filename() const { return call_path_filename; }
+
+  void update_devices(const PacketManager& pm) {
+    if (pm.is_src_device_set()) {
+      src_device = std::make_pair(true, pm.get_src_device());
+    }
+
+    if (pm.is_dst_device_set()) {
+      dst_device = std::make_pair(true, pm.get_dst_device());
+    }
+  }
 
   void add_dependencies(const std::vector<unsigned int>& bytes) {
     for (const auto& byte : bytes) {
@@ -697,6 +734,11 @@ public:
       packet_dependencies.add_dependencies(bytes_read);
     }
   }
+
+  void update_dependencies_devices(const PacketManager& pm) {
+    if (!name.first) return;
+    packet_dependencies.update_devices(pm);
+  }
 };
 
 class LibvigAccess {
@@ -713,7 +755,9 @@ public:
 
 private:
   std::pair<bool, unsigned int> id;
-  std::pair<bool, unsigned int> device;
+
+  std::pair<bool, unsigned int> src_device;
+  std::pair<bool, unsigned int> dst_device;
 
   std::string interface;
   std::pair<std::string, unsigned int> obj;
@@ -728,26 +772,30 @@ private:
   std::shared_ptr<KleeInterface> klee_interface;
 
   LibvigAccess(operation _op) : op(_op) {
-    device = std::make_pair(false, 0);
-    id = std::make_pair(false, 0);
+    src_device.first = false;
+    dst_device.first = false;
+    id.first = false;
+  }
+
+  void set_src_device(unsigned int _src_device) {
+    if (src_device.first)
+      assert(src_device.second == _src_device && "Already set source device with different value");
+    src_device = std::make_pair(true, _src_device);
+  }
+
+  void set_dst_device(unsigned int _dst_device) {
+    if (dst_device.first)
+      assert(dst_device.second == _dst_device && "Already set destination device with different value");
+    dst_device = std::make_pair(true, _dst_device);
   }
 
 public:
 
-  LibvigAccess(const LibvigAccess &lva) {
-    id = lva.id;
-    device = lva.device;
-
-    interface = lva.interface;
-    obj = lva.obj;
-
-    read_arg = lva.read_arg;
-    write_arg = lva.write_arg;
-    result_arg = lva.result_arg;
-
-    op = lva.op;
-
-    call_path_filename = lva.call_path_filename;
+  LibvigAccess(const LibvigAccess &lva)
+    : id(lva.id), src_device(lva.src_device), dst_device(lva.dst_device),
+      interface(lva.interface), obj(lva.obj),
+      read_arg(lva.read_arg), write_arg(lva.write_arg), result_arg(lva.result_arg),
+      op(lva.op), call_path_filename(lva.call_path_filename) {
     klee_interface = lva.klee_interface;
   }
 
@@ -815,21 +863,24 @@ public:
     result_arg.set_packet_dependencies(pm);
   }
 
+  void update_devices(const PacketManager& pm) {
+    if (pm.is_src_device_set())
+      set_src_device(pm.get_src_device());
+
+    if (pm.is_dst_device_set())
+      set_dst_device(pm.get_dst_device());
+
+    read_arg.update_dependencies_devices(pm);
+    write_arg.update_dependencies_devices(pm);
+    result_arg.update_dependencies_devices(pm);
+  }
+
   void set_call_path_filename(const std::string& _call_path_filename) {
     call_path_filename = _call_path_filename;
   }
 
   void set_klee_interface(std::shared_ptr<KleeInterface> _klee_interface) {
     klee_interface = _klee_interface;
-  }
-
-  void set_device(unsigned int _device) {
-    device = std::make_pair(true, _device);
-  }
-
-  unsigned int get_device() const {
-    assert(device.first && "Trying to get unset device");
-    return device.second;
   }
 
   void set_id(unsigned int _id) {
@@ -846,7 +897,7 @@ public:
   const std::string& get_interface() const { return interface; }
 
   void print() const {
-    assert(device.first && "Unset device");
+    assert(src_device.first && "Unset source device");
 
     if (op == NOP) return;
 
@@ -854,7 +905,10 @@ public:
     std::cerr << "========================================" << "\n";
     std::cerr << "Access " << get_id() << "\n";
     std::cerr << "  file         " << call_path_filename << "\n";
-    std::cerr << "  device       " << device.second << "\n";
+    std::cerr << "  src device   " << src_device.second << "\n";
+
+    if (dst_device.first)
+      std::cerr << "  dst device   " << dst_device.second << "\n";
     std::cerr << "  interface    " << interface << "\n";
 
     std::cerr << "  operation    ";
@@ -926,19 +980,6 @@ private:
   std::vector<LibvigAccess> accesses;
 
   std::map<std::string, PacketManager> packet_manager_per_call_path;
-  std::map<std::string, unsigned int> device_per_call_path;
-
-  void set_device(const std::string& call_path_filename, const bool& _device) {
-    auto it = device_per_call_path.find(call_path_filename);
-
-    assert(it == device_per_call_path.end() && "Already set device.");
-
-    device_per_call_path[call_path_filename] = _device;
-    for (auto& access : accesses) {
-      if (access.get_call_path_filename() == call_path_filename)
-        access.set_device(_device);
-    }
-  }
 
   void add_access_lookup_table(const LibvigAccess& access) {
     access_lookup_table.emplace(std::make_pair(access.get_interface(), access));
@@ -979,14 +1020,6 @@ private:
 
     add_access_lookup_table(LibvigAccess("loop_invariant_consume"));
     add_access_lookup_table(LibvigAccess("loop_invariant_produce"));
-
-    add_access_lookup_table(LibvigAccess("packet_return_chunk"));
-    add_access_lookup_table(LibvigAccess("packet_state_total_length"));
-    add_access_lookup_table(LibvigAccess("packet_send"));
-    add_access_lookup_table(LibvigAccess("packet_receive"));
-    add_access_lookup_table(LibvigAccess("packet_borrow_next_chunk"));
-    add_access_lookup_table(LibvigAccess("packet_free"));
-    add_access_lookup_table(LibvigAccess("packet_get_unread_length"));
 
     add_access_lookup_table(LibvigAccess("expire_items"));
     add_access_lookup_table(LibvigAccess("expire_items_single_map"));
@@ -1034,7 +1067,9 @@ public:
       accesses.emplace_back(access);
     }
 
-    set_device(call_path_filename, pm.get_src_device());
+    for (auto& access : accesses)
+      access.update_devices(pm);
+
     packet_manager_per_call_path.emplace(std::make_pair(call_path_filename, pm));
   }
 
