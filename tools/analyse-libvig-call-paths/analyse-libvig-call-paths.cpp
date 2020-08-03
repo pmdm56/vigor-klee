@@ -499,6 +499,26 @@ struct packet_chunk_t {
       std::cerr << dependency << "\n";
     }
   }
+
+  void report() const {
+    assert(protocol.state != protocol_t::state_t::INCOMPLETE);
+    if (packet_fields_dependencies.size() == 0) return;
+
+    std::cout << "BEGIN CHUNK" << "\n";
+
+    std::cout << "layer " << layer << "\n";
+
+    std::cout << "protocol? ";
+    if (protocol.state == protocol_t::state_t::COMPLETE)
+      std::cout << protocol.code;
+    std::cout << "\n";
+
+    for (const auto& dependency : packet_fields_dependencies) {
+      std::cout << "dependency " << dependency << "\n";
+    }
+
+    std::cout << "END CHUNK" << "\n";
+  }
 };
 
 class PacketManager {
@@ -717,23 +737,42 @@ public:
       }
     }
   }
+
+  void report() const {
+    if (!has_dependencies()) return;
+
+    std::cout << "BEGIN PACKET DEPENDENCIES" << "\n";
+
+    for (const auto& chunk : borrowed_chunks_processed)
+      chunk.report();
+
+    std::cout << "END PACKET DEPENDENCIES" << "\n";
+  }
 };
 
 class LibvigAccessExpressionArgument {
+public:
+  enum Type {
+    READ, WRITE, RESULT
+  };
+
 private:
+  Type type;
+
   std::pair<bool, std::string> name;
   std::pair<bool, klee::expr::ExprHandle> expr;
 
   PacketManager packet_dependencies;
 
 public:
-  LibvigAccessExpressionArgument() {
+  LibvigAccessExpressionArgument(Type _type) {
+    type = _type;
     name = std::make_pair(false, "");
     expr = std::make_pair(false, nullptr);
   }
 
   LibvigAccessExpressionArgument(const LibvigAccessExpressionArgument& expr_arg)
-    : LibvigAccessExpressionArgument() {
+    : LibvigAccessExpressionArgument(expr_arg.type) {
     if (expr_arg.is_name_set()) {
       name = std::make_pair(true, expr_arg.get_name());
     }
@@ -751,6 +790,8 @@ public:
   bool has_packet_dependencies() const {
     return packet_dependencies.has_dependencies();
   }
+
+  const Type& get_type() const { return type; }
 
   const std::string& get_name() const {
     assert(name.first && "Trying to get unset name");
@@ -789,6 +830,34 @@ public:
     if (!name.first) return;
     packet_dependencies.update_devices(pm);
   }
+
+  void report() const {
+    if (!name.first) return;
+    assert(expr.first);
+
+    std::cout << "BEGIN ARGUMENT" << "\n";
+
+    std::cout << "type ";
+    switch (type) {
+    case READ:
+      std::cout << "read";
+      break;
+    case WRITE:
+      std::cout << "write";
+      break;
+    case RESULT:
+      std::cout << "result";
+      break;
+    default:
+      assert(false);
+    }
+    std::cout << "\n";
+
+    std::cout << "expression " << expr_to_string(expr.second) << "\n";
+    packet_dependencies.report();
+
+    std::cout << "END ARGUMENT" << "\n";
+  }
 };
 
 class LibvigAccess {
@@ -821,15 +890,21 @@ private:
   std::string call_path_filename;
   std::shared_ptr<KleeInterface> klee_interface;
 
-  LibvigAccess(operation _op) : op(_op) {
-    src_device.first = false;
-    dst_device.first = false;
-    id.first = false;
+  LibvigAccess(operation _op)
+    : read_arg(LibvigAccessExpressionArgument(LibvigAccessExpressionArgument::Type::READ)),
+      write_arg(LibvigAccessExpressionArgument(LibvigAccessExpressionArgument::Type::WRITE)),
+      result_arg(LibvigAccessExpressionArgument(LibvigAccessExpressionArgument::Type::RESULT)),
+      op(_op)
+  {
+    reset();
   }
 
   void set_src_device(unsigned int _src_device) {
-    if (src_device.first)
+    if (src_device.first) {
+      std::cerr << RED << "current " << src_device.second << "\n";
       assert(src_device.second == _src_device && "Already set source device with different value");
+    }
+
     src_device = std::make_pair(true, _src_device);
   }
 
@@ -842,8 +917,10 @@ private:
 public:
 
   LibvigAccess(const LibvigAccess &lva)
-    : id(lva.id), src_device(lva.src_device), dst_device(lva.dst_device),
-      interface(lva.interface), obj(lva.obj),
+    : id(lva.id),
+      src_device(lva.src_device), dst_device(lva.dst_device),
+      interface(lva.interface),
+      obj(lva.obj),
       read_arg(lva.read_arg), write_arg(lva.write_arg), result_arg(lva.result_arg),
       op(lva.op), call_path_filename(lva.call_path_filename) {
     klee_interface = lva.klee_interface;
@@ -889,6 +966,12 @@ public:
     } else {
       write_arg.set_name(_second_arg_name);
     }
+  }
+
+  void reset() {
+    id.first = false;
+    src_device.first = false;
+    dst_device.first = false;
   }
 
   void fill_exprs(const call_t& call) {
@@ -947,9 +1030,8 @@ public:
   const std::string& get_interface() const { return interface; }
 
   void print() const {
+    if (op == NOP || (!src_device.first && op == INIT)) return;
     assert(src_device.first && "Unset source device");
-
-    if (op == NOP) return;
 
     std::cerr << "\n";
     std::cerr << "========================================" << "\n";
@@ -963,7 +1045,6 @@ public:
 
     std::cerr << "  operation    ";
     switch (op) {
-
     case NOP:
       std::cerr << "NOP" << "\n";
       break;
@@ -1020,6 +1101,61 @@ public:
 
 
     std::cerr << "========================================" << "\n";
+  }
+
+  void report() const {
+    if (op == NOP || (!src_device.first && op == INIT)) return;
+    assert(src_device.first && "Unset source device");
+
+    std::cout << "BEGIN ACCESS" << "\n";
+
+    std::cout << "id " << get_id() << "\n";
+    std::cout << "src_device " << src_device.second << "\n";
+
+    std::cout << "dst_device? ";
+    if (dst_device.first) std::cout << dst_device.second;
+    std::cout << "\n";
+
+    std::cout << "operation ";
+    switch (op) {
+    case NOP:
+      std::cout << "NOP";
+      break;
+    case INIT:
+      std::cout << "INIT";
+      break;
+    case CREATE:
+      std::cout << "CREATE";
+      break;
+    case VERIFY:
+      std::cout << "VERIFY";
+      break;
+    case DESTROY:
+      std::cout << "DESTROY";
+      break;
+    case READ:
+      std::cout << "READ";
+      break;
+    case WRITE:
+      std::cout << "WRITE";
+      break;
+    default:
+      assert(false && "Unknown operation");
+    }
+    std::cout << "\n";
+
+    std::cout << "object " << obj.second << "\n";
+
+    read_arg.report();
+    write_arg.report();
+    result_arg.report();
+
+    std::cout << "BEGIN METADATA" << "\n";
+    std::cout << "interface " << interface << "\n";
+    std::cout << "file " << call_path_filename << "\n";
+    std::cout << "END METADATA" << "\n";
+
+    std::cout << "END ACCESS" << "\n";
   }
 };
 
@@ -1087,7 +1223,9 @@ public:
 
   void analyse_call_path(const std::string& call_path_filename, const call_path_t *call_path) {
     klee_interface->add_constraints(call_path_filename, call_path->constraints);
+
     PacketManager pm(klee_interface, call_path_filename);
+    std::vector<LibvigAccess> call_path_accesses;
 
     for (const auto& call : call_path->calls) {
 
@@ -1109,23 +1247,31 @@ public:
 
       access.set_klee_interface(klee_interface);
       access.set_call_path_filename(call_path_filename);
-      access.set_id(accesses.size());
+      access.set_id(accesses.size() + call_path_accesses.size());
 
       access.fill_exprs(call);
       access.search_packet_dependencies(pm);
 
-      accesses.emplace_back(access);
+      call_path_accesses.emplace_back(access);
+      access.reset();
     }
 
-    for (auto& access : accesses)
+    for (auto& access : call_path_accesses) {
       access.update_devices(pm);
+    }
 
+    accesses.insert(accesses.begin(), call_path_accesses.begin(), call_path_accesses.end());
     packet_manager_per_call_path.emplace(std::make_pair(call_path_filename, pm));
   }
 
   void print() const {
     for (const auto& access : accesses)
       access.print();
+  }
+
+  void report() const {
+    for (const auto& access : accesses)
+      access.report();
   }
 };
 
@@ -1146,9 +1292,7 @@ int main(int argc, char **argv) {
   }
 
   libvig_manager.print();
-
-  // mas.print();
-  // mas.report();
+  libvig_manager.report();
 
   return 0;
 }
