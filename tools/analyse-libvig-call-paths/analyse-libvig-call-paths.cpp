@@ -853,7 +853,10 @@ public:
     }
     std::cout << "\n";
 
-    std::cout << "expression " << expr_to_string(expr.second) << "\n";
+    std::cout << "BEGIN EXPRESSION" << "\n";
+    std::cout << expr_to_string(expr.second) << "\n";
+    std::cout << "END EXPRESSION" << "\n";
+
     packet_dependencies.report();
 
     std::cout << "END ARGUMENT" << "\n";
