@@ -71,6 +71,61 @@ std::string expr_to_string(klee::expr::ExprHandle expr) {
   return expr_str;
 }
 
+class RenameChunks : public klee::ExprVisitor::ExprVisitor {
+private:
+  int ref_counter;
+  static constexpr auto marker_signature = "__ref_";
+  klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
+  std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
+
+  klee::ArrayCache arr_cache;
+  std::vector<const klee::Array *> new_arrays;
+  std::vector<klee::UpdateList> new_uls;
+
+public:
+  RenameChunks(const int& id) : ExprVisitor(true) { ref_counter = id; }
+
+  klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
+    std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>>::const_iterator it =
+        replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e)));
+
+    if (it != replacements.end()) {
+      return Action::changeTo(it->second);
+    } else {
+      return Action::doChildren();
+    }
+  }
+
+  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::UpdateList ul = e.updates;
+    const klee::Array *root = ul.root;
+
+    size_t marker = root->name.find(marker_signature);
+    std::string original_name = marker == std::string::npos ? root->name : root->name.substr(0, marker);
+    std::string new_name = original_name + marker_signature + std::to_string(ref_counter);
+
+    if (root->name != new_name) {
+      const klee::Array *new_root = arr_cache.CreateArray(
+          new_name, root->getSize(), root->constantValues.begin().base(),
+          root->constantValues.end().base(), root->getDomain(),
+          root->getRange());
+
+      new_arrays.push_back(new_root);
+      new_uls.emplace_back(new_root, ul.head);
+
+      klee::expr::ExprHandle replacement =
+          builder->Read(new_uls.back(), e.index);
+
+      replacements.insert(
+          {klee::expr::ExprHandle(const_cast<klee::ReadExpr *>(&e)),
+           replacement});
+
+      return Action::changeTo(replacement);
+    }
+
+    return klee::ExprVisitor::Action::doChildren();
+  }
+};
 
 class KleeInterface {
 private:
@@ -849,7 +904,7 @@ public:
     packet_dependencies.update_devices(pm);
   }
 
-  void report() const {
+  void report(const unsigned int& id) const {
     if (!name.first) return;
     assert(expr.first);
     const auto& klee_interface = packet_dependencies.get_klee_interface();
@@ -873,7 +928,11 @@ public:
     std::cout << "\n";
 
     std::cout << "BEGIN EXPRESSION" << "\n";
-    std::cout << klee_interface->expr_to_smt(expr.second) << "\n";
+
+    RenameChunks renamed(id);
+    auto renamed_expr = renamed.visit(expr.second);
+
+    std::cout << klee_interface->expr_to_smt(renamed_expr) << "\n";
     std::cout << "END EXPRESSION" << "\n";
 
     packet_dependencies.report();
@@ -1168,9 +1227,9 @@ public:
 
     std::cout << "object " << obj.second << "\n";
 
-    read_arg.report();
-    write_arg.report();
-    result_arg.report();
+    read_arg.report(id.second);
+    write_arg.report(id.second);
+    result_arg.report(id.second);
 
     std::cout << "BEGIN METADATA" << "\n";
     std::cout << "interface " << interface << "\n";
