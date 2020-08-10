@@ -96,6 +96,24 @@ public:
     call_path_constraints = interface.call_path_constraints;
   }
 
+  std::string expr_to_smt(klee::expr::ExprHandle expr) {
+    klee::ConstraintManager empty_constraints;
+    klee::ExprSMTLIBPrinter smtPrinter;
+    std::string expr_str;
+    llvm::raw_string_ostream os(expr_str);
+
+    smtPrinter.setOutput(os);
+
+    klee::Query sat_query(empty_constraints, expr);
+
+    smtPrinter.setQuery(sat_query);
+
+    smtPrinter.generateOutput();
+    os.str();
+
+    return expr_str;
+  }
+
   void add_constraints(const std::string& call_path_filename, klee::ConstraintManager constraints) {
     call_path_constraints[call_path_filename] = constraints;
   }
@@ -834,6 +852,7 @@ public:
   void report() const {
     if (!name.first) return;
     assert(expr.first);
+    const auto& klee_interface = packet_dependencies.get_klee_interface();
 
     std::cout << "BEGIN ARGUMENT" << "\n";
 
@@ -854,7 +873,7 @@ public:
     std::cout << "\n";
 
     std::cout << "BEGIN EXPRESSION" << "\n";
-    std::cout << expr_to_string(expr.second) << "\n";
+    std::cout << klee_interface->expr_to_smt(expr.second) << "\n";
     std::cout << "END EXPRESSION" << "\n";
 
     packet_dependencies.report();
