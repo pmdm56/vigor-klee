@@ -186,18 +186,6 @@ call_path_t *load_call_path(std::string file_name,
           }
         }
 
-        std::cerr << "\n ======================== PARSING BEFORE ============================ \n";
-        std::cerr << "line  " << line << "\n";
-        std::cerr << "num exprs : " << exprs.size() << "\n";
-        for (unsigned int i = 0; i < 10 && i < exprs.size(); i++) {
-          std::cerr << "\t";
-          exprs[i]->dump();
-        }
-        for (unsigned int i = 0; i < current_exprs_str.size(); i++) {
-          auto expr = current_exprs_str[i];
-          std::cerr << call_path->calls.back().function_name << " " << i << " : " << expr << "\n";
-        }
-
         if (parenthesis_level > 0) {
           state = STATE_CALLS_MULTILINE;
         } else {
@@ -279,21 +267,6 @@ call_path_t *load_call_path(std::string file_name,
 
 
           if (current_exprs_str.size()) {
-            std::cerr << "\n ======================== PARSING AFTER ============================ \n";
-            std::cerr << "num exprs : " << exprs.size() << "\n";
-            for (unsigned int i = 0; i < 10 && i < exprs.size(); i++) {
-              std::cerr << "\t";
-              exprs[i]->dump();
-            }
-            std::cerr << call_path->calls.back().function_name << "\n";
-            for (unsigned int i = 0; i < current_exprs_str.size(); i++) {
-              auto expr = current_exprs_str[i];
-              std::cerr << "current_exprs_str " << i << ":" << "\n";
-              std::cerr << "      " << expr << "\n";
-              std::cerr << "      ";
-              exprs[0]->dump();
-            }
-
             call_path->calls.back().ret = exprs[0];
             exprs.erase(exprs.begin());
           }
@@ -332,18 +305,6 @@ call_path_t *load_call_path(std::string file_name,
           auto ret = remainder.substr(ret_symbol.size()+1);
           current_exprs_str.push_back(ret);
         }
-      }
-
-      std::cerr << "\n ======================== PARSING BEFORE MULTILINE ============================ \n";
-      std::cerr << "line " << line << "\n";
-      std::cerr << "num exprs : " << exprs.size() << "\n";
-      for (unsigned int i = 0; i < 10 && i < exprs.size(); i++) {
-        std::cerr << "\t";
-        exprs[i]->dump();
-      }
-      for (unsigned int i = 0; i < current_exprs_str.size(); i++) {
-        auto expr = current_exprs_str[i];
-        std::cerr << call_path->calls.back().function_name << " " << i << " : " << expr << "\n";
       }
 
       if (parenthesis_level == 0) {
@@ -425,21 +386,6 @@ call_path_t *load_call_path(std::string file_name,
 
 
         if (current_exprs_str.size()) {
-          std::cerr << "\n ======================== PARSING AFTER MULTILINE ============================ \n";
-          std::cerr << "num exprs : " << exprs.size() << "\n";
-          for (unsigned int i = 0; i < 10 && i < exprs.size(); i++) {
-            std::cerr << "\t";
-            exprs[i]->dump();
-          }
-          std::cerr << call_path->calls.back().function_name << "\n";
-          for (unsigned int i = 0; i < current_exprs_str.size(); i++) {
-            auto expr = current_exprs_str[i];
-            std::cerr << "current_exprs_str " << i << ":" << "\n";
-            std::cerr << "      " << expr << "\n";
-            std::cerr << "      ";
-            exprs[0]->dump();
-          }
-
           call_path->calls.back().ret = exprs[0];
           exprs.erase(exprs.begin());
         }
