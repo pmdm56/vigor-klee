@@ -1207,13 +1207,17 @@ public:
     std::cout << "id " << get_id() << "\n";
     std::cout << "src_device " << src_device.second << "\n";
 
-    std::cout << "dst_device? ";
-    if (dst_device.first) std::cout << dst_device.second;
-    std::cout << "\n";
+    if (dst_device.first) {
+      std::cout << "dst_device? ";
+      std::cout << dst_device.second;
+      std::cout << "\n";
+    }
 
-    std::cout << "success? ";
-    if (success.first) std::cout << success.second;
-    std::cout << "\n";
+    if (success.first) {
+      std::cout << "success? ";
+      std::cout << success.second;
+      std::cout << "\n";
+    }
 
     std::cout << "operation ";
     switch (op) {
