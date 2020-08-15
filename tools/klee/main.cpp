@@ -984,6 +984,11 @@ void KleeHandler::dumpCallPath(const ExecutionState &state, llvm::raw_ostream *f
         evalExprs.push_back(e.second.pointee.outVal);
       }
     }
+
+    if (!ci.ret.expr.isNull()) {
+      evalExprs.push_back(ci.ret.expr);
+    }
+
   }
 
   ExprBuilder *exprBuilder = createDefaultExprBuilder();

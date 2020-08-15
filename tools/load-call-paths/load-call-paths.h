@@ -9,6 +9,8 @@ typedef struct {
                                   klee::ref<klee::Expr> > > extra_vars;
   std::map<std::string,
            std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr> > > args;
+
+  klee::ref<klee::Expr> ret;
 } call_t;
 
 typedef struct {

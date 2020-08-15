@@ -172,6 +172,32 @@ call_path_t *load_call_path(std::string file_name,
           }
         }
 
+        if (current_exprs_str.size() && parenthesis_level == 0) {
+          auto last_store = current_exprs_str.back();
+          if (line.size() < last_store.size())
+            last_store = last_store.substr(last_store.size() - line.size());
+          auto remainder_delim = line.find(last_store);
+          auto remainder = line.substr(remainder_delim+last_store.size());
+          auto ret_symbol = std::string("-> ");
+          auto ret_delim = remainder.find(ret_symbol);
+          if (ret_delim != std::string::npos && remainder.substr(ret_symbol.size()+1) != "[]") {
+            auto ret = remainder.substr(ret_symbol.size()+1);
+            current_exprs_str.push_back(ret);
+          }
+        }
+
+        std::cerr << "\n ======================== PARSING BEFORE ============================ \n";
+        std::cerr << "line  " << line << "\n";
+        std::cerr << "num exprs : " << exprs.size() << "\n";
+        for (unsigned int i = 0; i < 10 && i < exprs.size(); i++) {
+          std::cerr << "\t";
+          exprs[i]->dump();
+        }
+        for (unsigned int i = 0; i < current_exprs_str.size(); i++) {
+          auto expr = current_exprs_str[i];
+          std::cerr << call_path->calls.back().function_name << " " << i << " : " << expr << "\n";
+        }
+
         if (parenthesis_level > 0) {
           state = STATE_CALLS_MULTILINE;
         } else {
@@ -182,13 +208,15 @@ call_path_t *load_call_path(std::string file_name,
               assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
               call_path->calls.back().extra_vars[current_extra_var].first =
                   exprs[0];
-              exprs.erase(exprs.begin(), exprs.begin() + 1);
+              exprs.erase(exprs.begin());
+              current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
             }
             if (current_exprs_str[1] != "(...)") {
               assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
               call_path->calls.back().extra_vars[current_extra_var].second =
                   exprs[0];
-              exprs.erase(exprs.begin(), exprs.begin() + 1);
+              exprs.erase(exprs.begin());
+              current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
             }
           } else {
             bool parsed_last_arg = false;
@@ -246,6 +274,28 @@ call_path_t *load_call_path(std::string file_name,
                 }
               }
             }
+            current_exprs_str.erase(current_exprs_str.begin());
+          }
+
+
+          if (current_exprs_str.size()) {
+            std::cerr << "\n ======================== PARSING AFTER ============================ \n";
+            std::cerr << "num exprs : " << exprs.size() << "\n";
+            for (unsigned int i = 0; i < 10 && i < exprs.size(); i++) {
+              std::cerr << "\t";
+              exprs[i]->dump();
+            }
+            std::cerr << call_path->calls.back().function_name << "\n";
+            for (unsigned int i = 0; i < current_exprs_str.size(); i++) {
+              auto expr = current_exprs_str[i];
+              std::cerr << "current_exprs_str " << i << ":" << "\n";
+              std::cerr << "      " << expr << "\n";
+              std::cerr << "      ";
+              exprs[0]->dump();
+            }
+
+            call_path->calls.back().ret = exprs[0];
+            exprs.erase(exprs.begin());
           }
         }
       }
@@ -270,6 +320,32 @@ call_path_t *load_call_path(std::string file_name,
         }
       }
 
+      if (current_exprs_str.size() && parenthesis_level == 0) {
+        auto last_store = current_exprs_str.back();
+        if (line.size() < last_store.size())
+          last_store = last_store.substr(last_store.size() - line.size());
+        auto remainder_delim = line.find(last_store);
+        auto remainder = line.substr(remainder_delim+last_store.size());
+        auto ret_symbol = std::string("-> ");
+        auto ret_delim = remainder.find(ret_symbol);
+        if (ret_delim != std::string::npos && remainder.substr(ret_symbol.size()+1) != "[]") {
+          auto ret = remainder.substr(ret_symbol.size()+1);
+          current_exprs_str.push_back(ret);
+        }
+      }
+
+      std::cerr << "\n ======================== PARSING BEFORE MULTILINE ============================ \n";
+      std::cerr << "line " << line << "\n";
+      std::cerr << "num exprs : " << exprs.size() << "\n";
+      for (unsigned int i = 0; i < 10 && i < exprs.size(); i++) {
+        std::cerr << "\t";
+        exprs[i]->dump();
+      }
+      for (unsigned int i = 0; i < current_exprs_str.size(); i++) {
+        auto expr = current_exprs_str[i];
+        std::cerr << call_path->calls.back().function_name << " " << i << " : " << expr << "\n";
+      }
+
       if (parenthesis_level == 0) {
         if (!current_extra_var.empty()) {
           assert(current_exprs_str.size() == 2 &&
@@ -278,13 +354,15 @@ call_path_t *load_call_path(std::string file_name,
             assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
             call_path->calls.back().extra_vars[current_extra_var].first =
                 exprs[0];
-            exprs.erase(exprs.begin(), exprs.begin() + 1);
+            exprs.erase(exprs.begin());
+            current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
           }
           if (current_exprs_str[1] != "(...)") {
             assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
             call_path->calls.back().extra_vars[current_extra_var].second =
                 exprs[0];
-            exprs.erase(exprs.begin(), exprs.begin() + 1);
+            exprs.erase(exprs.begin());
+            current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
           }
         } else {
           bool parsed_last_arg = false;
@@ -341,6 +419,29 @@ call_path_t *load_call_path(std::string file_name,
               }
             }
           }
+
+          current_exprs_str.erase(current_exprs_str.begin());
+        }
+
+
+        if (current_exprs_str.size()) {
+          std::cerr << "\n ======================== PARSING AFTER MULTILINE ============================ \n";
+          std::cerr << "num exprs : " << exprs.size() << "\n";
+          for (unsigned int i = 0; i < 10 && i < exprs.size(); i++) {
+            std::cerr << "\t";
+            exprs[i]->dump();
+          }
+          std::cerr << call_path->calls.back().function_name << "\n";
+          for (unsigned int i = 0; i < current_exprs_str.size(); i++) {
+            auto expr = current_exprs_str[i];
+            std::cerr << "current_exprs_str " << i << ":" << "\n";
+            std::cerr << "      " << expr << "\n";
+            std::cerr << "      ";
+            exprs[0]->dump();
+          }
+
+          call_path->calls.back().ret = exprs[0];
+          exprs.erase(exprs.begin());
         }
 
         state = STATE_CALLS;

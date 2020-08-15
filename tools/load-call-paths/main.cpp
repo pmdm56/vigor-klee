@@ -75,6 +75,11 @@ int main(int argc, char **argv, char **envp) {
           }
         }
       }
+
+      if (!call.ret.isNull()) {
+        std::cout << "      With Ret:" << std::endl;
+        call.ret->dump();
+      }
     }
   }
 
