@@ -966,6 +966,8 @@ private:
   LibvigAccessExpressionArgument write_arg;
   LibvigAccessExpressionArgument result_arg;
 
+  std::pair<bool, uint64_t> success;
+
   operation op;
 
   std::string call_path_filename;
@@ -1003,6 +1005,7 @@ public:
       interface(lva.interface),
       obj(lva.obj),
       read_arg(lva.read_arg), write_arg(lva.write_arg), result_arg(lva.result_arg),
+      success(lva.success),
       op(lva.op), call_path_filename(lva.call_path_filename) {
     klee_interface = lva.klee_interface;
   }
@@ -1069,6 +1072,13 @@ public:
     read_arg.set_expr(call);
     write_arg.set_expr(call);
     result_arg.set_expr(call);
+
+    if (!call.ret.isNull()) {
+      klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
+      auto ret_zero = exprBuilder->Eq(call.ret, exprBuilder->Constant(0, call.ret->getWidth()));
+      auto ret_is_zero = klee_interface->evaluate_expr_must_be_true(ret_zero, call_path_filename);
+      success = std::make_pair(true, !ret_is_zero);
+    }
   }
 
   void search_packet_dependencies(const PacketManager& pm) {
@@ -1180,6 +1190,10 @@ public:
       }
     }
 
+    if (success.first) {
+      std::cerr << "  success      " << success.second << "\n";
+    }
+
 
     std::cerr << "========================================" << "\n";
   }
@@ -1195,6 +1209,10 @@ public:
 
     std::cout << "dst_device? ";
     if (dst_device.first) std::cout << dst_device.second;
+    std::cout << "\n";
+
+    std::cout << "success? ";
+    if (success.first) std::cout << success.second;
     std::cout << "\n";
 
     std::cout << "operation ";
@@ -1322,6 +1340,18 @@ public:
         std::cerr << "  function: " << call.function_name << "\n";
         std::cerr << RESET;
         assert(false && "Unexpected function call");
+      }
+
+      if (call.function_name == "dchain_is_index_allocated") {
+        std::cerr << "==========================================" << "\n";
+        for (const auto& arg : call.args) {
+          std::cerr << arg.first << "\t" << expr_to_string(arg.second.first) << "\n";
+          std::cerr << arg.first << "\t" << expr_to_string(arg.second.second) << "\n";
+        }
+        for (const auto& ev : call.extra_vars) {
+          std::cerr << ev.first << "\t" << expr_to_string(ev.second.first) << "\n";
+          std::cerr << ev.first << "\t" << expr_to_string(ev.second.second) << "\n";
+        }
       }
 
       auto access = found_access_it->second;
