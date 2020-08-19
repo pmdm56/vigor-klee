@@ -71,62 +71,6 @@ std::string expr_to_string(klee::expr::ExprHandle expr) {
   return expr_str;
 }
 
-class RenameChunks : public klee::ExprVisitor::ExprVisitor {
-private:
-  int ref_counter;
-  static constexpr auto marker_signature = "__ref_";
-  klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
-  std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
-
-  klee::ArrayCache arr_cache;
-  std::vector<const klee::Array *> new_arrays;
-  std::vector<klee::UpdateList> new_uls;
-
-public:
-  RenameChunks(const int& id) : ExprVisitor(true) { ref_counter = id; }
-
-  klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
-    std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>>::const_iterator it =
-        replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e)));
-
-    if (it != replacements.end()) {
-      return Action::changeTo(it->second);
-    } else {
-      return Action::doChildren();
-    }
-  }
-
-  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
-    klee::UpdateList ul = e.updates;
-    const klee::Array *root = ul.root;
-
-    size_t marker = root->name.find(marker_signature);
-    std::string original_name = marker == std::string::npos ? root->name : root->name.substr(0, marker);
-    std::string new_name = original_name + marker_signature + std::to_string(ref_counter);
-
-    if (root->name != new_name) {
-      const klee::Array *new_root = arr_cache.CreateArray(
-          new_name, root->getSize(), root->constantValues.begin().base(),
-          root->constantValues.end().base(), root->getDomain(),
-          root->getRange());
-
-      new_arrays.push_back(new_root);
-      new_uls.emplace_back(new_root, ul.head);
-
-      klee::expr::ExprHandle replacement =
-          builder->Read(new_uls.back(), e.index);
-
-      replacements.insert(
-          {klee::expr::ExprHandle(const_cast<klee::ReadExpr *>(&e)),
-           replacement});
-
-      return Action::changeTo(replacement);
-    }
-
-    return klee::ExprVisitor::Action::doChildren();
-  }
-};
-
 class KleeInterface {
 private:
   std::map<std::string, klee::ConstraintManager> call_path_constraints;
@@ -320,13 +264,171 @@ public:
       return true;
     }
 
+    bool hp = false;
     for (unsigned i = 0; i < expr->getNumKids(); i++)
-      if (has_packet(expr->getKid(i), bytes_read, call_path_filename))
-        return true;
+      hp = has_packet(expr->getKid(i), bytes_read, call_path_filename) || hp;
 
-    return false;
+    return hp;
   }
 
+};
+
+class RetrieveUniqueSymbolsNames : public klee::ExprVisitor::ExprVisitor {
+private:
+  std::vector<std::string> retrieved;
+
+public:
+  RetrieveUniqueSymbolsNames() : ExprVisitor(true) {}
+
+  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::UpdateList ul = e.updates;
+    const klee::Array *root = ul.root;
+
+    auto found_it = std::find(retrieved.begin(), retrieved.end(), root->name);
+    if (found_it == retrieved.end()) {
+      retrieved.push_back(root->name);
+    }
+
+    return klee::ExprVisitor::Action::doChildren();
+  }
+
+  std::vector<std::string> get_retrieved() {
+    return retrieved;
+  }
+};
+
+class RetrieveReadsOnSymbol : public klee::ExprVisitor::ExprVisitor {
+private:
+  struct read_expr_t {
+    klee::expr::ExprHandle expr;
+    unsigned int index;
+
+    read_expr_t(klee::expr::ExprHandle _expr, unsigned int _index)
+      : expr(_expr), index(_index) {}
+  };
+
+  klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
+
+  std::vector<read_expr_t> retrieved;
+  std::string symbol_name;
+
+  KleeInterface klee_interface;
+
+public:
+  unsigned int size;
+
+  RetrieveReadsOnSymbol(const std::string& _symbol_name) : ExprVisitor(true) {
+    symbol_name = _symbol_name;
+    klee_interface.add_constraints("", klee::ConstraintManager());
+  }
+
+  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::UpdateList ul = e.updates;
+    const klee::Array *root = ul.root;
+
+    if (root->name == symbol_name) {
+      size = root->getSize();
+
+      klee::expr::ExprHandle index = e.index;
+      assert(index->getKind() == klee::Expr::Kind::Constant);
+
+      auto solutions = klee_interface.evaluate_expr(index, "");
+      assert(solutions.size() == 1);
+
+      read_expr_t read(klee::expr::ExprHandle(const_cast<klee::ReadExpr *>(&e)), solutions[0]);
+      retrieved.push_back(read);
+    }
+
+    return klee::ExprVisitor::Action::doChildren();
+  }
+
+  std::vector<read_expr_t> get_retrieved() {
+    return retrieved;
+  }
+};
+
+class RenameChunks : public klee::ExprVisitor::ExprVisitor {
+private:
+  int ref_counter;
+  std::pair< bool, std::pair<std::string, std::string> > name_swapper;
+
+  static constexpr auto marker_signature = "__ref_";
+  klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
+  std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
+
+  klee::ArrayCache arr_cache;
+  std::vector<const klee::Array *> new_arrays;
+  std::vector<klee::UpdateList> new_uls;
+
+public:
+  RenameChunks() : ExprVisitor(true) {}
+  RenameChunks(const int& id) : ExprVisitor(true) { set_counter(id);}
+
+  klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
+    std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>>::const_iterator it =
+        replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e)));
+
+    if (it != replacements.end()) {
+      return Action::changeTo(it->second);
+    } else {
+      return Action::doChildren();
+    }
+  }
+
+  void set_name_swapper(std::string before, std::string after) {
+    name_swapper = std::make_pair(true, std::make_pair(before, after));
+  }
+
+  void set_counter(int _counter) {
+    ref_counter = _counter;
+    name_swapper.first = false;
+  }
+
+  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::UpdateList ul = e.updates;
+    const klee::Array *root = ul.root;
+
+    std::string original_name;
+    std::string new_name;
+
+    if (name_swapper.first) {
+      original_name = name_swapper.second.first;
+      new_name = name_swapper.second.second;
+    }
+
+    else if (ref_counter >= 0) {
+      size_t marker = root->name.find(marker_signature);
+      original_name = marker == std::string::npos ? root->name : root->name.substr(0, marker);
+      new_name = original_name + marker_signature + std::to_string(ref_counter);
+    }
+
+    else {
+      size_t marker = root->name.find(marker_signature);
+      new_name = marker == std::string::npos ? root->name : root->name.substr(0, marker);
+      original_name = new_name + marker_signature + std::to_string(ref_counter);
+    }
+
+    if (root->name == original_name) {
+      const klee::Array *new_root = arr_cache.CreateArray(
+          new_name, root->getSize(), root->constantValues.begin().base(),
+          root->constantValues.end().base(), root->getDomain(),
+          root->getRange());
+
+      new_arrays.push_back(new_root);
+      new_uls.emplace_back(new_root, ul.head);
+
+      klee::expr::ExprHandle replacement =
+          builder->Read(new_uls.back(), e.index);
+
+      replacements.insert(
+          {klee::expr::ExprHandle(const_cast<klee::ReadExpr *>(&e)),
+           replacement});
+
+      return Action::changeTo(replacement);
+    }
+
+    return Action::doChildren();
+  }
 };
 
 klee::expr::ExprHandle get_arg_expr_from_call(const call_t& call, const std::string& arg_name) {
@@ -1120,6 +1222,11 @@ public:
 
   const std::string& get_interface() const { return interface; }
 
+  const LibvigAccessExpressionArgument& get_write_argument() const {
+    assert(op == WRITE);
+    return write_arg;
+  }
+
   void print() const {
     if (op == NOP || (!src_device.first && op == INIT)) return;
     assert(src_device.first && "Unset source device");
@@ -1388,12 +1495,258 @@ public:
     for (const auto& access : accesses)
       access.report();
   }
+
+  std::vector<LibvigAccess>& get_accesses() { return accesses; }
+
+  const PacketManager& get_packet_manager(const std::string& call_path) const {
+    if (packet_manager_per_call_path.find(call_path) == packet_manager_per_call_path.end()) {
+      assert(false && "No packet manager associated with this call path");
+    }
+
+    return packet_manager_per_call_path.at(call_path);
+  }
+};
+
+struct CallPathConstraint {
+  std::vector<std::string> call_path_filenames;
+  std::string write_interface;
+  std::string chunks_connector;
+  klee::expr::ExprHandle constraint;
+
+  CallPathConstraint(const std::string& _call_path_filename, const std::string& _write_interface,
+                     const std::string& _chunks_connector, const klee::expr::ExprHandle& _constraint)
+    : write_interface(_write_interface), chunks_connector(_chunks_connector), constraint(_constraint) {
+    call_path_filenames.push_back(_call_path_filename);
+  }
+
+  bool expr_has_connector(klee::expr::ExprHandle expr) const {
+    auto expr_str = expr_to_string(expr);
+    return expr_str.find(chunks_connector) != std::string::npos;
+  }
+};
+
+struct ConstraintBetweenCallPaths {
+  klee::expr::ExprHandle expression;
+
+  std::string original_call_path_filename;
+  std::string other_call_path_filename;
+
+  PacketManager original_call_path_packet_manager;
+  PacketManager other_call_path_packet_manager;
+
+  ConstraintBetweenCallPaths(const klee::expr::ExprHandle& _expression,
+                             const std::string& _original_call_path_filename,
+                             const std::string& _other_call_path_filename,
+                             const PacketManager& _original_call_path_packet_manager,
+                             const PacketManager& _other_call_path_packet_manager)
+    : expression(_expression),
+      original_call_path_filename(_original_call_path_filename),
+      other_call_path_filename(_other_call_path_filename),
+      original_call_path_packet_manager(_original_call_path_packet_manager),
+      other_call_path_packet_manager(_other_call_path_packet_manager) {}
+
+  ConstraintBetweenCallPaths(const klee::expr::ExprHandle& _expression)
+    : expression(_expression) {}
+
+  void print() const {
+
+    std::cerr << "\n";
+    std::cerr << CYAN;
+    std::cerr << "========================================" << "\n";
+    std::cerr << "Constraint between call paths" << "\n";
+    std::cerr << "  source     " << original_call_path_filename << "\n";
+    std::cerr << "  other      " << other_call_path_filename << "\n";
+
+    std::cerr << "  constraint " << expr_to_string(expression) << "\n";
+
+    std::cerr << "  source dependencies" << "\n";
+    original_call_path_packet_manager.print();
+
+    std::cerr << "  other dependencies" << "\n";
+    other_call_path_packet_manager.print();
+
+    std::cerr << "========================================" << "\n";
+    std::cerr << RESET;
+  }
+};
+
+class ConstraintsAnalyser {
+private:
+  klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
+  LibvigAccessesManager accesses_manager;
+
+  RenameChunks renameChunks = RenameChunks(-1);
+
+public:
+  void set_accesses_manager(const LibvigAccessesManager& _accesses_manager) {
+    accesses_manager = _accesses_manager;
+  }
+
+private:
+  std::vector<CallPathConstraint> packet_constraints;
+  std::vector<ConstraintBetweenCallPaths> generated_constraints_between_call_paths;
+  std::map<std::string, klee::ConstraintManager> constraints_per_call_path;
+
+  KleeInterface build_klee_interface_between_call_paths(const CallPathConstraint& call_path_constraint,
+                                                        const klee::expr::ExprHandle& write_expr) {
+
+    klee::ConstraintManager shared_constraints;
+    shared_constraints.addConstraint(call_path_constraint.constraint);
+
+    RetrieveReadsOnSymbol retrieveReadsOnVectorDataResetSymbol(call_path_constraint.chunks_connector);
+    retrieveReadsOnVectorDataResetSymbol.visit(call_path_constraint.constraint);
+
+    for (const auto& read : retrieveReadsOnVectorDataResetSymbol.get_retrieved()) {
+      auto new_constraint = builder->Eq(
+                read.expr,
+                builder->Extract(write_expr, read.index * 8, klee::Expr::Int8));
+      shared_constraints.addConstraint(new_constraint);
+    }
+
+    KleeInterface klee_interface;
+    klee_interface.add_constraints("merged", shared_constraints);
+
+    return klee_interface;
+  }
+
+  void retrieve_packet_constraints_between_call_paths(const CallPathConstraint& call_path_constraint, LibvigAccess& write_access) {
+    auto write_data = write_access.get_write_argument();
+
+    if (call_path_constraint.expr_has_connector(write_data.get_expr()))
+      return;
+
+    renameChunks.set_counter(write_access.get_id());
+    auto write_expr = renameChunks.visit(write_data.get_expr());
+
+    RetrieveReadsOnSymbol retrieveReadsOnConstraint("packet_chunks");
+    retrieveReadsOnConstraint.visit(call_path_constraint.constraint);
+    auto constraint_reads = retrieveReadsOnConstraint.get_retrieved();
+
+    RetrieveUniqueSymbolsNames retrieve_unique_symbols_names;
+    retrieve_unique_symbols_names.visit(write_expr);
+
+    auto symbol_names = retrieve_unique_symbols_names.get_retrieved();
+    assert(symbol_names.size() == 1);
+    auto packet_chunks_access_name = symbol_names[0];
+
+    RetrieveReadsOnSymbol retrieveReadsOnAccess(packet_chunks_access_name);
+    retrieveReadsOnAccess.visit(write_expr);
+    auto access_reads = retrieveReadsOnAccess.get_retrieved();
+
+    auto klee_interface = build_klee_interface_between_call_paths(call_path_constraint, write_expr);
+
+    klee::expr::ExprHandle final_constraint;
+
+    for (const auto& constraint_read : constraint_reads) {
+      for (const auto& access_read : access_reads) {
+
+        auto equal = builder->Eq(constraint_read.expr, access_read.expr);
+        auto are_equal = klee_interface.evaluate_expr_must_be_true(equal, "merged");
+        auto are_not_equal = klee_interface.evaluate_expr_must_be_false(equal, "merged");
+
+        if (are_equal) {
+          if (final_constraint.isNull()) {
+            final_constraint = equal;
+          } else {
+            final_constraint = builder->And(final_constraint, equal);
+          }
+        }
+
+        if (are_not_equal) {
+          assert(false && "What should I do?");
+        }
+      }
+    }
+
+    if (final_constraint.isNull())
+      return;
+
+    PacketManager pm_constraint, pm_access;
+
+    {
+      pm_constraint = accesses_manager.get_packet_manager(call_path_constraint.call_path_filenames[0]);
+
+      std::vector<unsigned int> bytes_read;
+      const auto& klee_interface = pm_constraint.get_klee_interface();
+
+      if (klee_interface->has_packet(final_constraint, bytes_read, call_path_constraint.call_path_filenames[0])) {
+        pm_constraint.add_dependencies(bytes_read);
+      }
+    }
+
+    {
+      RenameChunks eraser;
+      eraser.set_name_swapper("packet_chunks", "_");
+      auto packet_chunks_eraser = eraser.visit(final_constraint);
+
+      RenameChunks packet_chunks;
+      packet_chunks.set_name_swapper(packet_chunks_access_name, "packet_chunks");
+      auto all_good = packet_chunks.visit(packet_chunks_eraser);
+
+      pm_access = accesses_manager.get_packet_manager(write_access.get_call_path_filename());
+
+      std::vector<unsigned int> bytes_read;
+      const auto& klee_interface = pm_access.get_klee_interface();
+
+      if (klee_interface->has_packet(all_good, bytes_read, write_access.get_call_path_filename())) {
+        pm_access.add_dependencies(bytes_read);
+      }
+    }
+
+    generated_constraints_between_call_paths.emplace_back(final_constraint,
+                                                          call_path_constraint.call_path_filenames[0],
+                                                          write_access.get_call_path_filename(),
+                                                          pm_constraint,
+                                                          pm_access);
+
+  }
+
+public:
+  void store_libvig_packet_constraints(std::string call_path_filename, call_path_t* call_path) {
+    if (constraints_per_call_path.find(call_path_filename) == constraints_per_call_path.end()) {
+      constraints_per_call_path[call_path_filename] = call_path->constraints;
+    }
+
+    for (const klee::expr::ExprHandle& constraint: call_path->constraints) {
+      if (expr_to_string(constraint).find("packet_chunks") == std::string::npos)
+        continue;
+
+      if (expr_to_string(constraint).find("vector_data_reset") == std::string::npos)
+        continue;
+
+      auto found = std::find_if(packet_constraints.begin(), packet_constraints.end(), [&](const CallPathConstraint& call_path_constraint) {
+        return call_path_constraint.constraint.compare(constraint) == 0;
+      });
+
+      if (found == packet_constraints.end()) {
+        packet_constraints.emplace_back(call_path_filename, "vector_return", "vector_data_reset", constraint);
+      } else {
+        found->call_path_filenames.push_back(call_path_filename);
+      }
+    }
+  }
+
+  void analyse_constraints(std::vector<LibvigAccess>& accesses) {
+    for (const auto& packet_constraint : packet_constraints) {
+      for (auto& access : accesses) {
+        if (access.get_interface() == packet_constraint.write_interface) {
+          retrieve_packet_constraints_between_call_paths(packet_constraint, access);
+        }
+      }
+    }
+  }
+
+  void print() {
+    for (const auto& generated : generated_constraints_between_call_paths)
+      generated.print();
+  }
 };
 
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   LibvigAccessesManager libvig_manager;
+  ConstraintsAnalyser constraints_analyser;
 
   for (auto file : InputCallPathFiles) {
     std::cerr << "Loading: " << file << std::endl;
@@ -1404,9 +1757,15 @@ int main(int argc, char **argv) {
     call_path_t *call_path = load_call_path(file, expressions_str, expressions);
 
     libvig_manager.analyse_call_path(file, call_path);
+    constraints_analyser.store_libvig_packet_constraints(file, call_path);
   }
 
+  constraints_analyser.set_accesses_manager(libvig_manager);
+  constraints_analyser.analyse_constraints(libvig_manager.get_accesses());
+
   libvig_manager.print();
+  constraints_analyser.print();
+
   libvig_manager.report();
 
   return 0;
