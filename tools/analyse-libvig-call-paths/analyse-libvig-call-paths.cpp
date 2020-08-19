@@ -1568,6 +1568,29 @@ struct ConstraintBetweenCallPaths {
     std::cerr << "========================================" << "\n";
     std::cerr << RESET;
   }
+
+  void report() const {
+    const auto& klee_interface = original_call_path_packet_manager.get_klee_interface();
+
+    std::cout << "BEGIN CALL PATHS CONSTRAINT" << "\n";
+
+
+    std::cout << "BEGIN EXPRESSION" << "\n";
+    std::cout << klee_interface->expr_to_smt(expression);
+    std::cout << "END EXPRESSION" << "\n";
+
+    std::cout << "BEGIN SOURCE INFO" << "\n";
+    std::cout << "call_path " << original_call_path_filename << "\n";
+    original_call_path_packet_manager.report();
+    std::cout << "END SOURCE INFO" << "\n";
+
+    std::cout << "BEGIN PAIR INFO" << "\n";
+    std::cout << "other_cp " << other_call_path_filename << "\n";
+    other_call_path_packet_manager.report();
+    std::cout << "END PAIR INFO" << "\n";
+
+    std::cout << "END CALL PATHS CONSTRAINT" << "\n";
+  }
 };
 
 class ConstraintsAnalyser {
@@ -1736,9 +1759,14 @@ public:
     }
   }
 
-  void print() {
+  void print() const {
     for (const auto& generated : generated_constraints_between_call_paths)
       generated.print();
+  }
+
+  void report() const {
+    for (const auto& generated : generated_constraints_between_call_paths)
+      generated.report();
   }
 };
 
@@ -1767,6 +1795,7 @@ int main(int argc, char **argv) {
   constraints_analyser.print();
 
   libvig_manager.report();
+  constraints_analyser.report();
 
   return 0;
 }
