@@ -1528,22 +1528,29 @@ struct CallPathConstraint {
 struct ConstraintBetweenCallPaths {
   klee::expr::ExprHandle expression;
 
-  std::string original_call_path_filename;
-  std::string other_call_path_filename;
+  std::string source_chunk_name;
+  std::string pair_chunk_name;
 
-  PacketManager original_call_path_packet_manager;
-  PacketManager other_call_path_packet_manager;
+  std::string source_call_path_filename;
+  std::string pair_call_path_filename;
+
+  PacketManager source_call_path_packet_manager;
+  PacketManager pair_call_path_packet_manager;
 
   ConstraintBetweenCallPaths(const klee::expr::ExprHandle& _expression,
-                             const std::string& _original_call_path_filename,
-                             const std::string& _other_call_path_filename,
-                             const PacketManager& _original_call_path_packet_manager,
-                             const PacketManager& _other_call_path_packet_manager)
+                             const std::string& _source_chunk_name,
+                             const std::string& _pair_chunk_name,
+                             const std::string& _source_call_path_filename,
+                             const std::string& _pair_call_path_filename,
+                             const PacketManager& _source_call_path_packet_manager,
+                             const PacketManager& _pair_call_path_packet_manager)
     : expression(_expression),
-      original_call_path_filename(_original_call_path_filename),
-      other_call_path_filename(_other_call_path_filename),
-      original_call_path_packet_manager(_original_call_path_packet_manager),
-      other_call_path_packet_manager(_other_call_path_packet_manager) {}
+      source_chunk_name(_source_chunk_name),
+      pair_chunk_name(_pair_chunk_name),
+      source_call_path_filename(_source_call_path_filename),
+      pair_call_path_filename(_pair_call_path_filename),
+      source_call_path_packet_manager(_source_call_path_packet_manager),
+      pair_call_path_packet_manager(_pair_call_path_packet_manager) {}
 
   ConstraintBetweenCallPaths(const klee::expr::ExprHandle& _expression)
     : expression(_expression) {}
@@ -1554,40 +1561,43 @@ struct ConstraintBetweenCallPaths {
     std::cerr << CYAN;
     std::cerr << "========================================" << "\n";
     std::cerr << "Constraint between call paths" << "\n";
-    std::cerr << "  source     " << original_call_path_filename << "\n";
-    std::cerr << "  other      " << other_call_path_filename << "\n";
+    std::cerr << "  source     " << source_call_path_filename << "\n";
+    std::cerr << "  pair      " << pair_call_path_filename << "\n";
 
     std::cerr << "  constraint " << expr_to_string(expression) << "\n";
 
     std::cerr << "  source dependencies" << "\n";
-    original_call_path_packet_manager.print();
+    source_call_path_packet_manager.print();
 
-    std::cerr << "  other dependencies" << "\n";
-    other_call_path_packet_manager.print();
+    std::cerr << "  pair dependencies" << "\n";
+    pair_call_path_packet_manager.print();
 
     std::cerr << "========================================" << "\n";
     std::cerr << RESET;
   }
 
   void report() const {
-    const auto& klee_interface = original_call_path_packet_manager.get_klee_interface();
+    const auto& klee_interface = source_call_path_packet_manager.get_klee_interface();
 
     std::cout << "BEGIN CALL PATHS CONSTRAINT" << "\n";
-
 
     std::cout << "BEGIN EXPRESSION" << "\n";
     std::cout << klee_interface->expr_to_smt(expression);
     std::cout << "END EXPRESSION" << "\n";
 
-    std::cout << "BEGIN SOURCE INFO" << "\n";
-    std::cout << "call_path " << original_call_path_filename << "\n";
-    original_call_path_packet_manager.report();
-    std::cout << "END SOURCE INFO" << "\n";
+    std::cout << "BEGIN CALL PATH INFO" << "\n";
+    std::cout << "call_path " << source_call_path_filename << "\n";
+    std::cout << "type " << "source" << "\n";
+    std::cout << "symbol " << source_chunk_name << "\n";
+    source_call_path_packet_manager.report();
+    std::cout << "END CALL PATH INFO" << "\n";
 
-    std::cout << "BEGIN PAIR INFO" << "\n";
-    std::cout << "other_cp " << other_call_path_filename << "\n";
-    other_call_path_packet_manager.report();
-    std::cout << "END PAIR INFO" << "\n";
+    std::cout << "BEGIN CALL PATH INFO" << "\n";
+    std::cout << "call_path " << pair_call_path_filename << "\n";
+    std::cout << "type " << "pair" << "\n";
+    std::cout << "symbol " << pair_chunk_name << "\n";
+    pair_call_path_packet_manager.report();
+    std::cout << "END CALL PATH INFO" << "\n";
 
     std::cout << "END CALL PATHS CONSTRAINT" << "\n";
   }
@@ -1717,6 +1727,8 @@ private:
     }
 
     generated_constraints_between_call_paths.emplace_back(final_constraint,
+                                                          "packet_chunks",
+                                                          packet_chunks_access_name,
                                                           call_path_constraint.call_path_filenames[0],
                                                           write_access.get_call_path_filename(),
                                                           pm_constraint,
