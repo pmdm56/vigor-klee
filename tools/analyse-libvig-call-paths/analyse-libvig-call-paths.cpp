@@ -391,21 +391,27 @@ public:
     std::string original_name;
     std::string new_name;
 
+    auto is_chunk = root->name.find("packet_chunks") != std::string::npos;
+
     if (name_swapper.first) {
       original_name = name_swapper.second.first;
       new_name = name_swapper.second.second;
     }
 
-    else if (ref_counter >= 0) {
+    else if (ref_counter >= 0 && is_chunk) {
       size_t marker = root->name.find(marker_signature);
       original_name = marker == std::string::npos ? root->name : root->name.substr(0, marker);
       new_name = original_name + marker_signature + std::to_string(ref_counter);
     }
 
-    else {
+    else if (is_chunk) {
       size_t marker = root->name.find(marker_signature);
       new_name = marker == std::string::npos ? root->name : root->name.substr(0, marker);
       original_name = new_name + marker_signature + std::to_string(ref_counter);
+    }
+
+    else {
+      return Action::doChildren();
     }
 
     if (root->name == original_name) {
@@ -432,7 +438,17 @@ public:
 };
 
 klee::expr::ExprHandle get_arg_expr_from_call(const call_t& call, const std::string& arg_name) {
-  if (!call.args.count(arg_name)) {
+  std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr> > target;
+
+  if (call.extra_vars.count(arg_name)) {
+    target = call.extra_vars.at(arg_name);
+  }
+
+  else if (call.args.count(arg_name)) {
+    target = call.args.at(arg_name);
+  }
+
+  else {
     std::cerr << RED;
     std::cerr << "Argument not in function" << "\n";
     std::cerr << "  function:      " << call.function_name << "\n";
@@ -446,8 +462,7 @@ klee::expr::ExprHandle get_arg_expr_from_call(const call_t& call, const std::str
     assert(call.args.count(arg_name) && "Argument not present on this call");
   }
 
-  const auto& target_arg = call.args.at(arg_name);
-  return target_arg.second.get() ? target_arg.second : target_arg.first;
+  return target.second.get() ? target.second : target.first;
 }
 
 struct packet_chunk_t {
@@ -1396,7 +1411,7 @@ private:
     add_access_lookup_table(LibvigAccess("dmap_get_value", "dmap", "index", "value_out", LibvigAccess::READ));
 
     add_access_lookup_table(LibvigAccess("vector_allocate", "vector_out", LibvigAccess::INIT));
-    add_access_lookup_table(LibvigAccess("vector_borrow", "vector", "index", "val_out", LibvigAccess::READ));
+    add_access_lookup_table(LibvigAccess("vector_borrow", "vector", "index", "borrowed_cell", LibvigAccess::READ));
     add_access_lookup_table(LibvigAccess("vector_return", "vector", "index", "value", LibvigAccess::WRITE));
 
     add_access_lookup_table(LibvigAccess("dchain_allocate", "chain_out", LibvigAccess::INIT));
