@@ -711,6 +711,14 @@ struct packet_chunk_t {
   }
 };
 
+struct translation_unit_t {
+  unsigned int layer;
+  unsigned int offset;
+
+  klee::expr::ExprHandle received;
+  klee::expr::ExprHandle translated;
+};
+
 class PacketManager {
 private:
   typedef void (PacketManager::*packet_manager_call_handler_t)(const call_t& call);
@@ -721,6 +729,7 @@ private:
 
   std::stack<std::pair<klee::expr::ExprHandle, unsigned int> > borrowed_chunk_layer_pairs;
   std::vector<packet_chunk_t> borrowed_chunks_processed;
+  std::vector<translation_unit_t> translations;
 
   std::string call_path_filename;
 
@@ -806,20 +815,16 @@ private:
       return;
     }
 
-    std::cerr << CYAN << "layer:          " << borrowed_layer << "\n" << RESET;
-    std::cerr << CYAN << "returned chunk: " << expr_to_string(the_chunk_expr) << "\n" << RESET;
-    std::cerr << CYAN << "borrowed chunk: " << expr_to_string(borrowed_expr) << "\n" << RESET;
-
     for (unsigned int w = 0; w < expr_width; w += 8) {
-      auto chunks_byte_eq_expr = exprBuilder->Eq(
-            exprBuilder->Extract(the_chunk_expr, w, klee::Expr::Int8),
-            exprBuilder->Extract(borrowed_expr, w, klee::Expr::Int8)
-      );
+      auto returned_byte = exprBuilder->Extract(the_chunk_expr, w, klee::Expr::Int8);
+      auto borrowed_byte = exprBuilder->Extract(borrowed_expr, w, klee::Expr::Int8);
+
+      auto chunks_byte_eq_expr = exprBuilder->Eq(returned_byte, borrowed_byte);
 
       auto chunks_byte_eq = klee_interface->evaluate_expr_must_be_true(chunks_byte_eq_expr, call_path_filename);
 
       if (!chunks_byte_eq) {
-        std::cerr << BLUE << "Difference in byte " << w / 8 << "/" << expr_width / 8 - 1 << "\n" << RESET;
+        translations.push_back(translation_unit_t{borrowed_layer, w / 8, borrowed_byte, returned_byte});
       }
     }
 
@@ -850,7 +855,8 @@ public:
   PacketManager(const PacketManager& pm)
     : src_device(pm.src_device), dst_device(pm.dst_device),
       borrowed_chunk_layer_pairs(pm.borrowed_chunk_layer_pairs),
-      borrowed_chunks_processed(pm.borrowed_chunks_processed) {
+      borrowed_chunks_processed(pm.borrowed_chunks_processed),
+      translations(pm.translations) {
     klee_interface = pm.klee_interface;
   }
 
@@ -917,6 +923,10 @@ public:
       if (chunk.has_dependencies())
         return true;
     return false;
+  }
+
+  std::vector<translation_unit_t> get_translation_units() const {
+    return translations;
   }
 
   void print() const {
@@ -1468,18 +1478,6 @@ public:
         assert(false && "Unexpected function call");
       }
 
-      if (call.function_name == "dchain_is_index_allocated") {
-        std::cerr << "==========================================" << "\n";
-        for (const auto& arg : call.args) {
-          std::cerr << arg.first << "\t" << expr_to_string(arg.second.first) << "\n";
-          std::cerr << arg.first << "\t" << expr_to_string(arg.second.second) << "\n";
-        }
-        for (const auto& ev : call.extra_vars) {
-          std::cerr << ev.first << "\t" << expr_to_string(ev.second.first) << "\n";
-          std::cerr << ev.first << "\t" << expr_to_string(ev.second.second) << "\n";
-        }
-      }
-
       auto access = found_access_it->second;
 
       access.set_klee_interface(klee_interface);
@@ -1520,6 +1518,13 @@ public:
 
     return packet_manager_per_call_path.at(call_path);
   }
+
+  std::vector<PacketManager> get_packet_managers() const {
+    std::vector<PacketManager> packet_managers;
+    for (const auto& packet_manager_call_path_pair : packet_manager_per_call_path)
+      packet_managers.push_back(packet_manager_call_path_pair.second);
+    return packet_managers;
+  }
 };
 
 struct CallPathConstraint {
@@ -1537,6 +1542,24 @@ struct CallPathConstraint {
   bool expr_has_connector(klee::expr::ExprHandle expr) const {
     auto expr_str = expr_to_string(expr);
     return expr_str.find(chunks_connector) != std::string::npos;
+  }
+};
+
+struct CallPathTranslation : CallPathConstraint {
+  translation_unit_t tu;
+
+  CallPathTranslation(const std::string& _call_path_filename, const std::string& _write_interface,
+                     const std::string& _chunks_connector, const translation_unit_t& _tu)
+    : CallPathConstraint(_call_path_filename, _write_interface, _chunks_connector, _tu.translated),
+      tu(_tu) {}
+
+  void print() const {
+    std::cerr << "\n";
+    std::cerr << CYAN << "write interface: "  << write_interface << "\n" << RESET;
+    std::cerr << CYAN << "layer:        "  << tu.layer << "\n" << RESET;
+    std::cerr << CYAN << "received:     "  << expr_to_string(tu.received) << "\n" << RESET;
+    std::cerr << CYAN << "translated:   "  << expr_to_string(tu.translated) << "\n" << RESET;
+    std::cerr << CYAN << "Byte diff pos "  << tu.offset << "\n" << RESET;
   }
 };
 
@@ -1625,13 +1648,10 @@ private:
 
   RenameChunks renameChunks = RenameChunks(-1);
 
-public:
-  void set_accesses_manager(const LibvigAccessesManager& _accesses_manager) {
-    accesses_manager = _accesses_manager;
-  }
-
 private:
   std::vector<CallPathConstraint> packet_constraints;
+  std::vector<CallPathTranslation> translations;
+
   std::vector<ConstraintBetweenCallPaths> generated_constraints_between_call_paths;
   std::map<std::string, klee::ConstraintManager> constraints_per_call_path;
 
@@ -1640,6 +1660,7 @@ private:
 
     klee::ConstraintManager shared_constraints;
     shared_constraints.addConstraint(call_path_constraint.constraint);
+    std::cerr << GREEN << "new constraint " << expr_to_string(call_path_constraint.constraint) << "\n";
 
     RetrieveReadsOnSymbol retrieveReadsOnVectorDataResetSymbol(call_path_constraint.chunks_connector);
     retrieveReadsOnVectorDataResetSymbol.visit(call_path_constraint.constraint);
@@ -1648,6 +1669,7 @@ private:
       auto new_constraint = builder->Eq(
                 read.expr,
                 builder->Extract(write_expr, read.index * 8, klee::Expr::Int8));
+      std::cerr << GREEN << "new constraint " << expr_to_string(new_constraint) << "\n";
       shared_constraints.addConstraint(new_constraint);
     }
 
@@ -1655,6 +1677,124 @@ private:
     klee_interface.add_constraints("merged", shared_constraints);
 
     return klee_interface;
+  }
+
+  KleeInterface build_klee_interface_between_call_paths(const CallPathTranslation& translation,
+                                                        const klee::expr::ExprHandle& write_expr) {
+
+    klee::ConstraintManager shared_constraints;
+
+    RetrieveReadsOnSymbol retrieveReadsOnVectorDataResetSymbol(translation.chunks_connector);
+    retrieveReadsOnVectorDataResetSymbol.visit(translation.constraint);
+
+    for (const auto& read : retrieveReadsOnVectorDataResetSymbol.get_retrieved()) {
+      auto new_constraint = builder->Eq(
+                read.expr,
+                builder->Extract(write_expr, read.index * 8, klee::Expr::Int8));
+      std::cerr << GREEN << "new constraint " << expr_to_string(new_constraint) << "\n";
+      shared_constraints.addConstraint(new_constraint);
+    }
+
+    KleeInterface klee_interface;
+    klee_interface.add_constraints("merged", shared_constraints);
+
+    return klee_interface;
+  }
+
+  void retrieve_packet_constraints_between_call_paths(const CallPathTranslation& translation, LibvigAccess& write_access) {
+    auto write_data = write_access.get_write_argument();
+
+    if (translation.expr_has_connector(write_data.get_expr()))
+      return;
+
+    renameChunks.set_counter(write_access.get_id());
+    auto write_expr = renameChunks.visit(write_data.get_expr());
+
+    std::cerr << "\n";
+    std::cerr << CYAN << "write:        "  << expr_to_string(write_access.get_write_argument().get_expr()) << "\n" << RESET;
+    std::cerr << CYAN << "layer:        "  << translation.tu.layer << "\n" << RESET;
+    std::cerr << CYAN << "received:     "  << expr_to_string(translation.tu.received) << "\n" << RESET;
+    std::cerr << CYAN << "translated:   "  << expr_to_string(translation.tu.translated) << "\n" << RESET;
+    std::cerr << CYAN << "Byte diff pos "  << translation.tu.offset << "\n" << RESET;
+
+    RetrieveUniqueSymbolsNames retrieve_unique_symbols_names;
+    retrieve_unique_symbols_names.visit(write_expr);
+
+    auto symbol_names = retrieve_unique_symbols_names.get_retrieved();
+    assert(symbol_names.size() == 1);
+    auto packet_chunks_access_name = symbol_names[0];
+
+    RetrieveReadsOnSymbol retrieveReadsOnAccess(packet_chunks_access_name);
+    retrieveReadsOnAccess.visit(write_expr);
+    auto access_reads = retrieveReadsOnAccess.get_retrieved();
+
+    auto klee_interface = build_klee_interface_between_call_paths(translation, write_expr);
+
+    for (const auto& access_read : access_reads) {
+      auto equal = builder->Eq(translation.tu.translated, access_read.expr);
+      auto are_equal = klee_interface.evaluate_expr_must_be_true(equal, "merged");
+      auto are_not_equal = klee_interface.evaluate_expr_must_be_false(equal, "merged");
+
+      if (are_equal) {
+        std::cerr << CYAN << "EQUAL!" << "\n";
+        std::cerr << CYAN << expr_to_string(equal) << "\n";
+
+        PacketManager pm_access = accesses_manager.get_packet_manager(write_access.get_call_path_filename());
+        RenameChunks packet_chunks;
+        packet_chunks.set_name_swapper(packet_chunks_access_name, "packet_chunks");
+        auto access_read_cleanup = packet_chunks.visit(access_read.expr);
+
+        std::vector<unsigned int> bytes_read;
+        const auto& klee_interface = pm_access.get_klee_interface();
+
+        if (klee_interface->has_packet(access_read_cleanup, bytes_read, write_access.get_call_path_filename())) {
+          pm_access.add_dependencies(bytes_read);
+        }
+
+        pm_access.report();
+        exit(0);
+      }
+
+      if (are_not_equal) {
+        assert(false && "What should I do?");
+      }
+    }
+
+    exit(0);
+
+    /*
+    PacketManager pm_constraint, pm_access;
+
+    {
+      pm_constraint = accesses_manager.get_packet_manager(call_path_constraint.call_path_filenames[0]);
+
+      std::vector<unsigned int> bytes_read;
+      const auto& klee_interface = pm_constraint.get_klee_interface();
+
+      if (klee_interface->has_packet(final_constraint, bytes_read, call_path_constraint.call_path_filenames[0])) {
+        pm_constraint.add_dependencies(bytes_read);
+      }
+    }
+
+    {
+      RenameChunks eraser;
+      eraser.set_name_swapper("packet_chunks", "_");
+      auto packet_chunks_eraser = eraser.visit(final_constraint);
+
+      RenameChunks packet_chunks;
+      packet_chunks.set_name_swapper(packet_chunks_access_name, "packet_chunks");
+      auto all_good = packet_chunks.visit(packet_chunks_eraser);
+
+      pm_access = accesses_manager.get_packet_manager(write_access.get_call_path_filename());
+
+      std::vector<unsigned int> bytes_read;
+      const auto& klee_interface = pm_access.get_klee_interface();
+
+      if (klee_interface->has_packet(all_good, bytes_read, write_access.get_call_path_filename())) {
+        pm_access.add_dependencies(bytes_read);
+      }
+    }
+    */
   }
 
   void retrieve_packet_constraints_between_call_paths(const CallPathConstraint& call_path_constraint, LibvigAccess& write_access) {
@@ -1687,7 +1827,6 @@ private:
 
     for (const auto& constraint_read : constraint_reads) {
       for (const auto& access_read : access_reads) {
-
         auto equal = builder->Eq(constraint_read.expr, access_read.expr);
         auto are_equal = klee_interface.evaluate_expr_must_be_true(equal, "merged");
         auto are_not_equal = klee_interface.evaluate_expr_must_be_false(equal, "merged");
@@ -1752,6 +1891,19 @@ private:
   }
 
 public:
+  void set_accesses_manager(const LibvigAccessesManager& _accesses_manager) {
+    accesses_manager = _accesses_manager;
+
+    for (const auto& pm : accesses_manager.get_packet_managers()) {
+      for (const auto& translation : pm.get_translation_units()) {
+        if (expr_to_string(translation.translated).find("vector_data_reset") == std::string::npos)
+          continue;
+
+        translations.emplace_back(pm.get_call_path_filename(), "vector_return", "vector_data_reset", translation);
+      }
+    }
+  }
+
   void store_libvig_packet_constraints(std::string call_path_filename, call_path_t* call_path) {
     if (constraints_per_call_path.find(call_path_filename) == constraints_per_call_path.end()) {
       constraints_per_call_path[call_path_filename] = call_path->constraints;
@@ -1776,11 +1928,22 @@ public:
     }
   }
 
-  void analyse_constraints(std::vector<LibvigAccess>& accesses) {
+  void analyse_constraints() {
     for (const auto& packet_constraint : packet_constraints) {
-      for (auto& access : accesses) {
+      for (auto& access : accesses_manager.get_accesses()) {
         if (access.get_interface() == packet_constraint.write_interface) {
           retrieve_packet_constraints_between_call_paths(packet_constraint, access);
+        }
+      }
+    }
+  }
+
+  void analyse_translations() {
+    for (const auto& translation : translations) {
+      for (auto& access : accesses_manager.get_accesses()) {
+        if (access.get_interface() == translation.write_interface) {
+          retrieve_packet_constraints_between_call_paths(translation, access);
+          exit(0);
         }
       }
     }
@@ -1816,13 +1979,16 @@ int main(int argc, char **argv) {
   }
 
   constraints_analyser.set_accesses_manager(libvig_manager);
-  constraints_analyser.analyse_constraints(libvig_manager.get_accesses());
+  //constraints_analyser.analyse_constraints();
+  constraints_analyser.analyse_translations();
 
+  /*
   libvig_manager.print();
   constraints_analyser.print();
 
   libvig_manager.report();
   constraints_analyser.report();
+  */
 
   return 0;
 }
