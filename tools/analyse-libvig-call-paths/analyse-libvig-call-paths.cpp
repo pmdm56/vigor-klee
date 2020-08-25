@@ -660,6 +660,10 @@ struct packet_chunk_t {
     return false;
   }
 
+  void add_dependency_by_offset(unsigned int offset) {
+    packet_fields_dependencies.push_back(offset);
+  }
+
   void print() const {
     std::cerr << "  layer        " << layer << "\n";
 
@@ -856,7 +860,8 @@ public:
     : src_device(pm.src_device), dst_device(pm.dst_device),
       borrowed_chunk_layer_pairs(pm.borrowed_chunk_layer_pairs),
       borrowed_chunks_processed(pm.borrowed_chunks_processed),
-      translations(pm.translations) {
+      translations(pm.translations),
+      call_path_filename(pm.call_path_filename) {
     klee_interface = pm.klee_interface;
   }
 
@@ -914,6 +919,14 @@ public:
         std::cerr << RESET;
 
         assert(false && "Byte dependency not associated with any chunk");
+      }
+    }
+  }
+
+  void add_dependency(unsigned int layer, unsigned int offset_in_layer) {
+    for (auto& chunk : borrowed_chunks_processed) {
+      if (chunk.layer == layer) {
+        chunk.add_dependency_by_offset(offset_in_layer);
       }
     }
   }
@@ -1641,6 +1654,67 @@ struct ConstraintBetweenCallPaths {
   }
 };
 
+struct TranslationBetweenCallPaths {
+    PacketManager source_call_path_packet_manager;
+    PacketManager pair_call_path_packet_manager;
+
+    std::string source_call_path_filename;
+    std::string pair_call_path_filename;
+
+    TranslationBetweenCallPaths(
+            const PacketManager& _source,
+            const PacketManager& _pair,
+            const std::string& _source_call_path,
+            const std::string& _pair_call_path)
+        : source_call_path_packet_manager(_source),
+          pair_call_path_packet_manager(_pair),
+          source_call_path_filename(_source_call_path),
+          pair_call_path_filename(_pair_call_path) {}
+
+    TranslationBetweenCallPaths(const TranslationBetweenCallPaths& translation)
+        : TranslationBetweenCallPaths(translation.source_call_path_packet_manager,
+                                      translation.pair_call_path_packet_manager,
+                                      translation.source_call_path_filename,
+                                      translation.pair_call_path_filename) {}
+
+    void print() const {
+
+      std::cerr << "\n";
+      std::cerr << CYAN;
+      std::cerr << "========================================" << "\n";
+      std::cerr << "Translation between call paths" << "\n";
+      std::cerr << "  source     " << source_call_path_filename << "\n";
+      std::cerr << "  pair      " << pair_call_path_filename << "\n";
+
+      std::cerr << "  source dependencies" << "\n";
+      source_call_path_packet_manager.print();
+
+      std::cerr << "  pair dependencies" << "\n";
+      pair_call_path_packet_manager.print();
+
+      std::cerr << "========================================" << "\n";
+      std::cerr << RESET;
+    }
+
+    void report() const {
+      std::cout << "BEGIN CALL PATHS TRANSLATION" << "\n";
+
+      std::cout << "BEGIN CALL PATH INFO" << "\n";
+      std::cout << "call_path " << source_call_path_filename << "\n";
+      std::cout << "type " << "source" << "\n";
+      source_call_path_packet_manager.report();
+      std::cout << "END CALL PATH INFO" << "\n";
+
+      std::cout << "BEGIN CALL PATH INFO" << "\n";
+      std::cout << "call_path " << pair_call_path_filename << "\n";
+      std::cout << "type " << "pair" << "\n";
+      pair_call_path_packet_manager.report();
+      std::cout << "END CALL PATH INFO" << "\n";
+
+      std::cout << "END CALL PATHS CONSTRAINT" << "\n";
+    }
+};
+
 class ConstraintsAnalyser {
 private:
   klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
@@ -1653,6 +1727,8 @@ private:
   std::vector<CallPathTranslation> translations;
 
   std::vector<ConstraintBetweenCallPaths> generated_constraints_between_call_paths;
+  std::vector<TranslationBetweenCallPaths> generated_translations_between_call_paths;
+
   std::map<std::string, klee::ConstraintManager> constraints_per_call_path;
 
   KleeInterface build_klee_interface_between_call_paths(const CallPathConstraint& call_path_constraint,
@@ -1660,7 +1736,6 @@ private:
 
     klee::ConstraintManager shared_constraints;
     shared_constraints.addConstraint(call_path_constraint.constraint);
-    std::cerr << GREEN << "new constraint " << expr_to_string(call_path_constraint.constraint) << "\n";
 
     RetrieveReadsOnSymbol retrieveReadsOnVectorDataResetSymbol(call_path_constraint.chunks_connector);
     retrieveReadsOnVectorDataResetSymbol.visit(call_path_constraint.constraint);
@@ -1669,7 +1744,6 @@ private:
       auto new_constraint = builder->Eq(
                 read.expr,
                 builder->Extract(write_expr, read.index * 8, klee::Expr::Int8));
-      std::cerr << GREEN << "new constraint " << expr_to_string(new_constraint) << "\n";
       shared_constraints.addConstraint(new_constraint);
     }
 
@@ -1691,7 +1765,6 @@ private:
       auto new_constraint = builder->Eq(
                 read.expr,
                 builder->Extract(write_expr, read.index * 8, klee::Expr::Int8));
-      std::cerr << GREEN << "new constraint " << expr_to_string(new_constraint) << "\n";
       shared_constraints.addConstraint(new_constraint);
     }
 
@@ -1709,13 +1782,6 @@ private:
 
     renameChunks.set_counter(write_access.get_id());
     auto write_expr = renameChunks.visit(write_data.get_expr());
-
-    std::cerr << "\n";
-    std::cerr << CYAN << "write:        "  << expr_to_string(write_access.get_write_argument().get_expr()) << "\n" << RESET;
-    std::cerr << CYAN << "layer:        "  << translation.tu.layer << "\n" << RESET;
-    std::cerr << CYAN << "received:     "  << expr_to_string(translation.tu.received) << "\n" << RESET;
-    std::cerr << CYAN << "translated:   "  << expr_to_string(translation.tu.translated) << "\n" << RESET;
-    std::cerr << CYAN << "Byte diff pos "  << translation.tu.offset << "\n" << RESET;
 
     RetrieveUniqueSymbolsNames retrieve_unique_symbols_names;
     retrieve_unique_symbols_names.visit(write_expr);
@@ -1736,9 +1802,6 @@ private:
       auto are_not_equal = klee_interface.evaluate_expr_must_be_false(equal, "merged");
 
       if (are_equal) {
-        std::cerr << CYAN << "EQUAL!" << "\n";
-        std::cerr << CYAN << expr_to_string(equal) << "\n";
-
         PacketManager pm_access = accesses_manager.get_packet_manager(write_access.get_call_path_filename());
         RenameChunks packet_chunks;
         packet_chunks.set_name_swapper(packet_chunks_access_name, "packet_chunks");
@@ -1751,8 +1814,14 @@ private:
           pm_access.add_dependencies(bytes_read);
         }
 
-        pm_access.report();
-        exit(0);
+        PacketManager pm_constraint = accesses_manager.get_packet_manager(translation.call_path_filenames[0]);
+        pm_constraint.add_dependency(translation.tu.layer, translation.tu.offset);
+
+        generated_translations_between_call_paths.emplace_back(
+                    pm_constraint,
+                    pm_access,
+                    translation.call_path_filenames[0],
+                    write_access.get_call_path_filename());
       }
 
       if (are_not_equal) {
@@ -1760,41 +1829,6 @@ private:
       }
     }
 
-    exit(0);
-
-    /*
-    PacketManager pm_constraint, pm_access;
-
-    {
-      pm_constraint = accesses_manager.get_packet_manager(call_path_constraint.call_path_filenames[0]);
-
-      std::vector<unsigned int> bytes_read;
-      const auto& klee_interface = pm_constraint.get_klee_interface();
-
-      if (klee_interface->has_packet(final_constraint, bytes_read, call_path_constraint.call_path_filenames[0])) {
-        pm_constraint.add_dependencies(bytes_read);
-      }
-    }
-
-    {
-      RenameChunks eraser;
-      eraser.set_name_swapper("packet_chunks", "_");
-      auto packet_chunks_eraser = eraser.visit(final_constraint);
-
-      RenameChunks packet_chunks;
-      packet_chunks.set_name_swapper(packet_chunks_access_name, "packet_chunks");
-      auto all_good = packet_chunks.visit(packet_chunks_eraser);
-
-      pm_access = accesses_manager.get_packet_manager(write_access.get_call_path_filename());
-
-      std::vector<unsigned int> bytes_read;
-      const auto& klee_interface = pm_access.get_klee_interface();
-
-      if (klee_interface->has_packet(all_good, bytes_read, write_access.get_call_path_filename())) {
-        pm_access.add_dependencies(bytes_read);
-      }
-    }
-    */
   }
 
   void retrieve_packet_constraints_between_call_paths(const CallPathConstraint& call_path_constraint, LibvigAccess& write_access) {
@@ -1916,7 +1950,10 @@ public:
       if (expr_to_string(constraint).find("vector_data_reset") == std::string::npos)
         continue;
 
-      auto found = std::find_if(packet_constraints.begin(), packet_constraints.end(), [&](const CallPathConstraint& call_path_constraint) {
+      auto found = std::find_if(
+                  packet_constraints.begin(),
+                  packet_constraints.end(),
+                  [&](const CallPathConstraint& call_path_constraint) {
         return call_path_constraint.constraint.compare(constraint) == 0;
       });
 
@@ -1943,7 +1980,6 @@ public:
       for (auto& access : accesses_manager.get_accesses()) {
         if (access.get_interface() == translation.write_interface) {
           retrieve_packet_constraints_between_call_paths(translation, access);
-          exit(0);
         }
       }
     }
@@ -1952,10 +1988,16 @@ public:
   void print() const {
     for (const auto& generated : generated_constraints_between_call_paths)
       generated.print();
+
+    for (const auto& generated : generated_translations_between_call_paths)
+      generated.print();
   }
 
   void report() const {
     for (const auto& generated : generated_constraints_between_call_paths)
+      generated.report();
+
+    for (const auto& generated : generated_translations_between_call_paths)
       generated.report();
   }
 };
@@ -1979,16 +2021,15 @@ int main(int argc, char **argv) {
   }
 
   constraints_analyser.set_accesses_manager(libvig_manager);
-  //constraints_analyser.analyse_constraints();
+  constraints_analyser.analyse_constraints();
   constraints_analyser.analyse_translations();
 
-  /*
+
   libvig_manager.print();
   constraints_analyser.print();
 
   libvig_manager.report();
   constraints_analyser.report();
-  */
 
   return 0;
 }
