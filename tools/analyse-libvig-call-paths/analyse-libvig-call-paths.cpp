@@ -1711,7 +1711,7 @@ struct TranslationBetweenCallPaths {
       pair_call_path_packet_manager.report();
       std::cout << "END CALL PATH INFO" << "\n";
 
-      std::cout << "END CALL PATHS CONSTRAINT" << "\n";
+      std::cout << "END CALL PATHS TRANSLATION" << "\n";
     }
 };
 
