@@ -352,7 +352,6 @@ private:
   int ref_counter;
   std::pair< bool, std::pair<std::string, std::string> > name_swapper;
 
-  static constexpr auto marker_signature = "__ref_";
   klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
   std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
 
@@ -361,8 +360,10 @@ private:
   std::vector<klee::UpdateList> new_uls;
 
 public:
+  static constexpr auto marker_signature = "__ref_";
+
   RenameChunks() : ExprVisitor(true) {}
-  RenameChunks(const int& id) : ExprVisitor(true) { set_counter(id);}
+  RenameChunks(const int& id) : ExprVisitor(true) { set_counter(id); }
 
   klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
     std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>>::const_iterator it =
@@ -1570,6 +1571,8 @@ struct ConstraintBetweenCallPaths {
   PacketManager source_call_path_packet_manager;
   PacketManager pair_call_path_packet_manager;
 
+  RenameChunks renamer_source;
+
   ConstraintBetweenCallPaths(const klee::expr::ExprHandle& _expression,
                              const std::string& _source_chunk_name,
                              const std::string& _pair_chunk_name,
@@ -1577,16 +1580,16 @@ struct ConstraintBetweenCallPaths {
                              const std::string& _pair_call_path_filename,
                              const PacketManager& _source_call_path_packet_manager,
                              const PacketManager& _pair_call_path_packet_manager)
-    : expression(_expression),
-      source_chunk_name(_source_chunk_name),
+    : source_chunk_name(_source_chunk_name),
       pair_chunk_name(_pair_chunk_name),
       source_call_path_filename(_source_call_path_filename),
       pair_call_path_filename(_pair_call_path_filename),
       source_call_path_packet_manager(_source_call_path_packet_manager),
-      pair_call_path_packet_manager(_pair_call_path_packet_manager) {}
+      pair_call_path_packet_manager(_pair_call_path_packet_manager) {
 
-  ConstraintBetweenCallPaths(const klee::expr::ExprHandle& _expression)
-    : expression(_expression) {}
+    renamer_source.set_name_swapper("packet_chunks", _source_chunk_name);
+    expression = renamer_source.visit(_expression);
+  }
 
   void print() const {
 
@@ -1646,7 +1649,7 @@ private:
 private:
   std::vector<CallPathConstraint> packet_constraints;
 
-  std::vector<ConstraintBetweenCallPaths> generated_constraints_between_call_paths;
+  std::vector< std::shared_ptr<ConstraintBetweenCallPaths> > generated_constraints_between_call_paths;
   std::map<std::string, klee::ConstraintManager> constraints_per_call_path;
 
   KleeInterface build_klee_interface_between_call_paths(const CallPathConstraint& call_path_constraint,
@@ -1671,7 +1674,7 @@ private:
     return klee_interface;
   }
 
-  void retrieve_packet_constraints_between_call_paths(const CallPathConstraint& call_path_constraint, LibvigAccess& write_access) {
+  void retrieve_packet_constraints_between_call_paths(const CallPathConstraint& call_path_constraint, LibvigAccess& write_access, unsigned int constraint_id) {
     auto write_data = write_access.get_write_argument();
 
     if (call_path_constraint.expr_has_connector(write_data.get_expr()))
@@ -1725,12 +1728,16 @@ private:
     PacketManager pm_constraint, pm_access;
 
     {
+      RenameChunks eraser;
+      eraser.set_name_swapper(packet_chunks_access_name, "_");
+      auto packet_chunks_eraser = eraser.visit(final_constraint);
+
       pm_constraint = accesses_manager.get_packet_manager(call_path_constraint.call_path_filenames[0]);
 
       std::vector<unsigned int> bytes_read;
       const auto& klee_interface = pm_constraint.get_klee_interface();
 
-      if (klee_interface->has_packet(final_constraint, bytes_read, call_path_constraint.call_path_filenames[0])) {
+      if (klee_interface->has_packet(packet_chunks_eraser, bytes_read, call_path_constraint.call_path_filenames[0])) {
         pm_constraint.add_dependencies(bytes_read);
       }
     }
@@ -1754,14 +1761,18 @@ private:
       }
     }
 
-    generated_constraints_between_call_paths.emplace_back(final_constraint,
-                                                          "packet_chunks",
-                                                          packet_chunks_access_name,
-                                                          call_path_constraint.call_path_filenames[0],
-                                                          write_access.get_call_path_filename(),
-                                                          pm_constraint,
-                                                          pm_access);
+    std::string constraint_packet_symbol = "packet_chunks";
+    constraint_packet_symbol += RenameChunks::marker_signature;
+    constraint_packet_symbol += std::to_string(constraint_id);
 
+    generated_constraints_between_call_paths.push_back(
+          std::shared_ptr<ConstraintBetweenCallPaths>(new ConstraintBetweenCallPaths(final_constraint,
+                                                                                     constraint_packet_symbol,
+                                                                                     packet_chunks_access_name,
+                                                                                     call_path_constraint.call_path_filenames[0],
+                                                                                     write_access.get_call_path_filename(),
+                                                                                     pm_constraint,
+                                                                                     pm_access)));
   }
 
 public:
@@ -1797,10 +1808,13 @@ public:
   }
 
   void analyse_constraints() {
+    unsigned int counter = 0;
     for (const auto& packet_constraint : packet_constraints) {
       for (auto& access : accesses_manager.get_accesses()) {
         if (access.get_interface() == packet_constraint.write_interface) {
-          retrieve_packet_constraints_between_call_paths(packet_constraint, access);
+          const auto constraint_id = accesses_manager.get_accesses().size() + counter;
+          retrieve_packet_constraints_between_call_paths(packet_constraint, access, constraint_id);
+          counter++;
         }
       }
     }
@@ -1808,12 +1822,12 @@ public:
 
   void print() const {
     for (const auto& generated : generated_constraints_between_call_paths)
-      generated.print();
+      generated->print();
   }
 
   void report() const {
     for (const auto& generated : generated_constraints_between_call_paths)
-      generated.report();
+      generated->report();
   }
 };
 
