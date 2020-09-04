@@ -1565,6 +1565,9 @@ struct ConstraintBetweenCallPaths {
   std::string source_chunk_name;
   std::string pair_chunk_name;
 
+  unsigned int source_chunk_id;
+  unsigned int pair_chunk_id;
+
   std::string source_call_path_filename;
   std::string pair_call_path_filename;
 
@@ -1576,12 +1579,16 @@ struct ConstraintBetweenCallPaths {
   ConstraintBetweenCallPaths(const klee::expr::ExprHandle& _expression,
                              const std::string& _source_chunk_name,
                              const std::string& _pair_chunk_name,
+                             unsigned int _source_chunk_id,
+                             unsigned int _pair_chunk_id,
                              const std::string& _source_call_path_filename,
                              const std::string& _pair_call_path_filename,
                              const PacketManager& _source_call_path_packet_manager,
                              const PacketManager& _pair_call_path_packet_manager)
     : source_chunk_name(_source_chunk_name),
       pair_chunk_name(_pair_chunk_name),
+      source_chunk_id(_source_chunk_id),
+      pair_chunk_id(_pair_chunk_id),
       source_call_path_filename(_source_call_path_filename),
       pair_call_path_filename(_pair_call_path_filename),
       source_call_path_packet_manager(_source_call_path_packet_manager),
@@ -1624,14 +1631,14 @@ struct ConstraintBetweenCallPaths {
     std::cout << "BEGIN CALL PATH INFO" << "\n";
     std::cout << "call_path " << source_call_path_filename << "\n";
     std::cout << "type " << "source" << "\n";
-    std::cout << "symbol " << source_chunk_name << "\n";
+    std::cout << "id " << source_chunk_id << "\n";
     source_call_path_packet_manager.report();
     std::cout << "END CALL PATH INFO" << "\n";
 
     std::cout << "BEGIN CALL PATH INFO" << "\n";
     std::cout << "call_path " << pair_call_path_filename << "\n";
     std::cout << "type " << "pair" << "\n";
-    std::cout << "symbol " << pair_chunk_name << "\n";
+    std::cout << "id " << pair_chunk_id << "\n";
     pair_call_path_packet_manager.report();
     std::cout << "END CALL PATH INFO" << "\n";
 
@@ -1769,6 +1776,8 @@ private:
           std::shared_ptr<ConstraintBetweenCallPaths>(new ConstraintBetweenCallPaths(final_constraint,
                                                                                      constraint_packet_symbol,
                                                                                      packet_chunks_access_name,
+                                                                                     constraint_id,
+                                                                                     write_access.get_id(),
                                                                                      call_path_constraint.call_path_filenames[0],
                                                                                      write_access.get_call_path_filename(),
                                                                                      pm_constraint,
