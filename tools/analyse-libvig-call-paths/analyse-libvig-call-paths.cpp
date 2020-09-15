@@ -1091,6 +1091,7 @@ public:
     INIT,
     CREATE,
     VERIFY,
+    UPDATE,
     DESTROY
   };
 
@@ -1165,7 +1166,7 @@ public:
 
   // create CREATE
   LibvigAccess(std::string _interface, std::string _obj_name, std::string _read_result_name, operation _op) : LibvigAccess(_op) {
-    assert((_op == CREATE || _op == VERIFY || _op == DESTROY) && "Wrong use of CREATE/VERIFY/DESTROY constructor");
+    assert((_op == CREATE || _op == VERIFY || _op == UPDATE || _op == DESTROY) && "Wrong use of CREATE/VERIFY/DESTROY constructor");
     interface = _interface;
     obj.first = _obj_name;
 
@@ -1294,6 +1295,9 @@ public:
     case VERIFY:
       std::cerr << "VERIFY" << "\n";
       break;
+    case UPDATE:
+      std::cerr << "UPDATE" << "\n";
+      break;
     case DESTROY:
       std::cerr << "DESTROY" << "\n";
       break;
@@ -1379,6 +1383,9 @@ public:
     case VERIFY:
       std::cout << "VERIFY";
       break;
+    case UPDATE:
+      std::cout << "UPDATE";
+      break;
     case DESTROY:
       std::cout << "DESTROY";
       break;
@@ -1440,7 +1447,7 @@ private:
 
     add_access_lookup_table(LibvigAccess("dchain_allocate", "chain_out", LibvigAccess::INIT));
     add_access_lookup_table(LibvigAccess("dchain_allocate_new_index", "chain", "index_out", LibvigAccess::CREATE));
-    add_access_lookup_table(LibvigAccess("dchain_rejuvenate_index"));
+    add_access_lookup_table(LibvigAccess("dchain_rejuvenate_index", "chain", "index", LibvigAccess::UPDATE));
     add_access_lookup_table(LibvigAccess("dchain_is_index_allocated", "chain", "index", LibvigAccess::VERIFY));
     add_access_lookup_table(LibvigAccess("dchain_free_index", "chain", "index", LibvigAccess::DESTROY));
 
