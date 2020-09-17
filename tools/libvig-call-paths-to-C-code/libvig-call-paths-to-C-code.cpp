@@ -192,7 +192,7 @@ class Block : public Node {
 private:
   std::vector<Node_ptr> nodes;
 
-  Block(const std::vector<Node_ptr> _nodes) : Node(BLOCK), nodes(_nodes) {}
+  Block(const std::vector<Node_ptr>& _nodes) : Node(BLOCK), nodes(_nodes) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -574,29 +574,95 @@ typedef std::shared_ptr<Assignment> Assignment_ptr;
 
 class AST {
 private:
-  std::string output_path;
-  std::vector<Variable_ptr> global_variables;
+  enum Context { INIT, PROCESS, DONE };
 
-  std::vector<Node_ptr> nodes;
+private:
+  std::string output_path;
+  std::vector<VariableDecl_ptr> global_variables;
+  std::vector<std::vector<VariableDecl_ptr>> local_variables;
+
+  Node_ptr nf_init;
+  Node_ptr nf_process;
+
+  Context context;
 
 public:
-  AST() {
-    Type_ptr type1 = NamedType::build("my_type_1");
-    Type_ptr type2 = NamedType::build("my_type_2");
-    Type_ptr type2_ptr = Pointer::build(type2);
-    Type_ptr return_type = NamedType::build("my_type_3");
+  AST() : context(INIT) {}
 
-    FunctionArgDecl_ptr arg_decl1 = FunctionArgDecl::build("arg1", type1);
-    FunctionArgDecl_ptr arg_decl2 = FunctionArgDecl::build("arg2", type2_ptr);
+  Node_ptr node_from_expr(klee::ref<klee::Expr> expr) {
+    return nullptr;
+  }
 
-    std::vector<FunctionArgDecl_ptr> args{ arg_decl1, arg_decl2 };
+  Node_ptr node_from_call(call_t call) {
+    return nullptr;
+  }
 
-    std::vector<Node_ptr> instructions{};
-    Block_ptr block = Block::build(instructions);
+  void context_switch() {
+    switch (context) {
+      case INIT: {
+        context = PROCESS;
+        break;
+      }
 
-    Function_ptr function = Function::build("foo", args, block, return_type);
+      case PROCESS: {
+        std::vector<VariableDecl_ptr> vars {
+          VariableDecl::build("device", NamedType::build("uint16_t")),
+          VariableDecl::build("buffer", Pointer::build(NamedType::build("uint8_t"))),
+          VariableDecl::build("buffer_length", NamedType::build("uint16_t")),
+          VariableDecl::build("now", NamedType::build("vigor_time_t"))
+        };
 
-    nodes.push_back(function);
+        local_variables.push_back(vars);
+
+        context = DONE;
+        break;
+      }
+
+      case DONE: {
+        break;
+      }
+    }
+  }
+
+  void commit(std::vector<Node_ptr> nodes) {
+    switch (context) {
+      case INIT: {
+        std::vector<FunctionArgDecl_ptr> _args;
+        Block_ptr _body = Block::build(nodes);
+        Type_ptr _return = NamedType::build("bool");
+
+        nf_init = Function::build("nf_init", _args, _body, _return);
+
+        nf_init->debug();
+        nf_init->synthesize(std::cout);
+
+        exit(0);
+
+        context_switch();
+        break;
+      }
+
+      case PROCESS: {
+        std::vector<FunctionArgDecl_ptr> _args{
+          FunctionArgDecl::build("device", NamedType::build("uint16_t")),
+          FunctionArgDecl::build("buffer", Pointer::build(NamedType::build("uint8_t"))),
+          FunctionArgDecl::build("buffer_length", NamedType::build("uint16_t")),
+          FunctionArgDecl::build("now", NamedType::build("vigor_time_t")),
+        };
+
+        Block_ptr _body = Block::build(nodes);
+        Type_ptr _return = NamedType::build("int");
+
+        nf_process = Function::build("nf_process", _args, _body, _return);
+
+        context_switch();
+        break;
+      }
+
+      case DONE: {
+        assert(false);
+      }
+    }
   }
 
   void dump() const {
@@ -607,17 +673,17 @@ public:
     }
     std::cerr << "\n";
 
-    std::cerr << "Nodes" << "\n";
-    for (const auto& node : nodes) {
-      node->debug(2);
-      std::cerr << "\n";
-    }
+    nf_init->debug();
     std::cerr << "\n";
 
-    for (const auto& node : nodes) {
-      node->synthesize(std::cout);
-      std::cout << "\n";
-    }
+    nf_process->debug();
+    std::cerr << "\n";
+
+    nf_init->synthesize(std::cout);
+    std::cout<< "\n";
+
+    nf_process->synthesize(std::cout);
+    std::cout<< "\n";
   }
 
 };
@@ -635,24 +701,111 @@ public:
   }
 };
 
-struct call_paths_manager_t {
-  std::vector<call_path_t*> call_paths;
-  klee::Solver *solver;
-  klee::ExprBuilder *exprBuilder;
+class RetrieveSymbols : public klee::ExprVisitor::ExprVisitor {
+private:
+  std::vector<klee::ref<klee::ReadExpr>> retrieved;
 
-  call_paths_manager_t(std::vector<call_path_t*> _call_paths)
-    : call_paths(_call_paths) {
+public:
+  RetrieveSymbols() : ExprVisitor(true) {}
 
-    solver = klee::createCoreSolver(klee::Z3_SOLVER);
-    assert(solver);
+  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    retrieved.emplace_back((const_cast<klee::ReadExpr *>(&e)));
+    return klee::ExprVisitor::Action::doChildren();
+  }
 
-    solver = createCexCachingSolver(solver);
-    solver = createCachingSolver(solver);
-    solver = createIndependentSolver(solver);
-
-    exprBuilder = klee::createDefaultExprBuilder();
+  std::vector<klee::ref<klee::ReadExpr>> get_retrieved() {
+    return retrieved;
   }
 };
+
+class ReplaceSymbols: public klee::ExprVisitor::ExprVisitor {
+private:
+  std::vector<klee::ref<klee::ReadExpr>> reads;
+
+  klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
+  std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
+
+public:
+  ReplaceSymbols(std::vector<klee::ref<klee::ReadExpr>> _reads)
+    : ExprVisitor(true), reads(_reads) {}
+
+  klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
+    std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>>::const_iterator it =
+        replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e)));
+
+    if (it != replacements.end()) {
+      return Action::changeTo(it->second);
+    } else {
+      return Action::doChildren();
+    }
+  }
+
+  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::UpdateList ul = e.updates;
+    const klee::Array *root = ul.root;
+
+    for (const auto& read : reads) {
+      if (read->getWidth() != e.getWidth()) {
+        continue;
+      }
+
+      if (read->index.compare(e.index) != 0) {
+        continue;
+      }
+
+      if (root->name != read->updates.root->name) {
+        continue;
+      }
+
+      if (root->getDomain() != read->updates.root->getDomain()) {
+        continue;
+      }
+
+      if (root->getRange() != read->updates.root->getRange()) {
+        continue;
+      }
+
+      if (root->getSize() != read->updates.root->getSize()) {
+        continue;
+      }
+
+      klee::ref<klee::Expr> replaced = klee::expr::ExprHandle(const_cast<klee::ReadExpr *>(&e));
+      std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>>::const_iterator it = replacements.find(replaced);
+
+      if (it != replacements.end()) {
+        replacements.insert({ replaced, read });
+      }
+
+      return Action::changeTo(read);
+    }
+
+    return Action::doChildren();
+  }
+};
+
+struct call_paths_manager_t {
+  std::vector<call_path_t*> call_paths;
+
+  static klee::Solver *solver;
+  static klee::ExprBuilder *exprBuilder;
+
+  call_paths_manager_t(std::vector<call_path_t*> _call_paths)
+    : call_paths(_call_paths) {}
+
+  static void init() {
+    call_paths_manager_t::solver = klee::createCoreSolver(klee::Z3_SOLVER);
+    assert(solver);
+
+    call_paths_manager_t::solver = createCexCachingSolver(solver);
+    call_paths_manager_t::solver = createCachingSolver(solver);
+    call_paths_manager_t::solver = createIndependentSolver(solver);
+
+    call_paths_manager_t::exprBuilder = klee::createDefaultExprBuilder();
+  }
+};
+
+klee::Solver* call_paths_manager_t::solver;
+klee::ExprBuilder* call_paths_manager_t::exprBuilder;
 
 struct call_paths_group_t {
   std::vector<call_path_t*> in;
@@ -664,8 +817,6 @@ struct call_paths_group_t {
       assert(call_path->calls.size() > call_idx);
     }
 
-    std::cerr << "call_idx " << call_idx << "\n";
-
     call_t call = manager.call_paths[0]->calls[call_idx];
 
     for (auto call_path : manager.call_paths) {
@@ -674,9 +825,6 @@ struct call_paths_group_t {
       }
 
       else {
-        // dump_call(call);
-        // dump_call(call_path->calls[call_idx]);
-
         out.push_back(call_path);
       }
     }
@@ -764,36 +912,26 @@ struct call_paths_group_t {
     for (klee::ref<klee::Expr> constraint : in[0]->constraints) {
       chosen_constraint = true;
 
+      RetrieveSymbols symbol_retriever;
+      symbol_retriever.visit(constraint);
+      std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
+
+      ReplaceSymbols symbol_replacer(symbols);
+
       for (call_path_t* call_path : in) {
-        klee::Query sat_query(call_path->constraints, constraint);
+
+        klee::ConstraintManager replaced_constraints;
+        for (auto constr : call_path->constraints) {
+          replaced_constraints.addConstraint(symbol_replacer.visit(constr));
+        }
+
+        klee::Query sat_query(replaced_constraints, constraint);
         klee::Query neg_sat_query = sat_query.negateExpr();
 
         bool result = false;
-        bool success = manager.solver->mustBeFalse(neg_sat_query, result);
+        bool success = call_paths_manager_t::solver->mustBeFalse(neg_sat_query, result);
 
         assert(success);
-
-        std::cerr << "\n";
-        std::cerr << "***** IN *****" << "\n";
-        std::cerr << "Evaluating constraint:" << "\n";
-        constraint->dump();
-        std::cerr << "\n";
-
-        std::cerr << "Query:" << "\n";
-        neg_sat_query.dump();
-        std::cerr << "\n";
-
-        {
-          bool r;
-          assert(manager.solver->mustBeTrue(neg_sat_query, r));
-          std::cerr << "must be true " << r << "\n";
-          assert(manager.solver->mayBeTrue(neg_sat_query, r));
-          std::cerr << "may be true " << r << "\n";
-          assert(manager.solver->mustBeFalse(neg_sat_query, r));
-          std::cerr << "must be false " << r << "\n";
-          assert(manager.solver->mayBeFalse(neg_sat_query, r));
-          std::cerr << "may be false " << r << "\n";
-        }
 
         if (!result) {
           chosen_constraint = false;
@@ -806,49 +944,25 @@ struct call_paths_group_t {
       }
 
       for (call_path_t* call_path : out) {
-        klee::Query sat_query(call_path->constraints, constraint);
+
+        klee::ConstraintManager replaced_constraints;
+        for (auto constr : call_path->constraints) {
+          replaced_constraints.addConstraint(symbol_replacer.visit(constr));
+        }
+
+        klee::Query sat_query(replaced_constraints, constraint);
         klee::Query neg_sat_query = sat_query.negateExpr();
 
         bool result = false;
-        bool success = manager.solver->mustBeTrue(neg_sat_query, result);
+        bool success = call_paths_manager_t::solver->mustBeTrue(neg_sat_query, result);
 
         assert(success);
-
-        std::cerr << "\n";
-        std::cerr << "***** OUT *****" << "\n";
-        std::cerr << "Evaluating constraint:" << "\n";
-        constraint->dump();
-        std::cerr << "\n";
-
-        std::cerr << "Query:" << "\n";
-        neg_sat_query.dump();
-        std::cerr << "\n";
-
-        {
-          bool r;
-          assert(manager.solver->mustBeTrue(sat_query, r));
-          std::cerr << "must be true " << r << "\n";
-          assert(manager.solver->mayBeTrue(sat_query, r));
-          std::cerr << "may be true " << r << "\n";
-          assert(manager.solver->mustBeFalse(sat_query, r));
-          std::cerr << "must be false " << r << "\n";
-          assert(manager.solver->mayBeFalse(sat_query, r));
-          std::cerr << "may be false " << r << "\n";
-
-          std::cerr << "comparing" << "\n";
-          auto n = manager.exprBuilder->Eq(constraint, manager.exprBuilder->False());
-          n->dump();
-          std::cerr << "\n";
-          std::cerr << "with" << "\n";
-          (*call_path->constraints.begin())->dump();
-          std::cerr << "\n";
-          std::cerr << "equal " << n.compare((*call_path->constraints.begin())) << "\n";
-        }
 
         if (!result) {
           chosen_constraint = false;
           break;
         }
+
       }
 
       if (!chosen_constraint) {
@@ -862,37 +976,74 @@ struct call_paths_group_t {
   }
 };
 
-Node_ptr ast_node_from_call_path(call_path_t* call_path) {
-  return nullptr;
+bool are_call_paths_finished(std::vector<call_path_t*> call_paths, unsigned int call_idx) {
+  assert(call_paths.size());
+
+  bool finished = call_idx >= call_paths[0]->calls.size();
+
+  for (call_path_t* call_path : call_paths) {
+    assert((call_idx >= call_path->calls.size()) == finished);
+  }
+
+  return finished;
 }
 
-void build_ast(AST& ast, call_paths_manager_t manager) {
-  unsigned int call_idx;
+Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx=0) {
+  std::vector<Node_ptr> nodes;
 
-  call_idx = 0;
-  for (;;) {
+  // commit nf_init
+  bool should_commit = call_idx == 0;
+
+  while (!are_call_paths_finished(manager.call_paths, call_idx)) {
+
+    if (manager.call_paths[0]->calls[call_idx].function_name == "start_time") {
+      // commit nf_process
+      should_commit = true;
+    }
+
     call_paths_group_t group(manager, call_idx);
 
-    std::cerr << "total " << manager.call_paths.size()
-              << " in " << group.in.size()
-              << " out " << group.out.size()
-              << "\n";
-
     if (group.in.size() == manager.call_paths.size()) {
+      auto node = ast.node_from_call(manager.call_paths[0]->calls[call_idx]);
+      nodes.push_back(node);
       call_idx++;
       continue;
     }
+
+    std::cerr << "total: " << manager.call_paths.size()
+              << " in: " << group.in.size()
+              << " out: " << group.out.size()
+              << "\n";
 
     auto discriminating_constraint = group.find_discriminating_constraint(manager);
 
     std::cerr << "discriminating constraint" << "\n";
     std::cerr << expr_to_string(discriminating_constraint) << "\n";
-    exit(0);
 
-    // build Branch: if condition, then in, else out
+    Node_ptr cond = ast.node_from_expr(discriminating_constraint);
+    Node_ptr _then = build_ast(ast, call_paths_manager_t(group.in), call_idx);
+    Node_ptr _else = build_ast(ast, call_paths_manager_t(group.out), call_idx);
+
+    Node_ptr branch = Branch::build(cond, _then, _else);
+
+    nodes.push_back(branch);
+
+    if (should_commit) {
+      ast.commit(nodes);
+    }
 
     break;
   }
+
+  if (nodes.size() == 0) {
+    return Return::build(Variable::build("device"));
+  }
+
+  if (nodes.size() > 1) {
+    return Block::build(nodes);
+  }
+
+  return nodes[0];
 }
 
 int main(int argc, char **argv) {
@@ -908,6 +1059,8 @@ int main(int argc, char **argv) {
     call_path_t *call_path = load_call_path(file, expressions_str, expressions);
     call_paths.push_back(call_path);
   }
+
+  call_paths_manager_t::init();
 
   AST ast;
   call_paths_manager_t manager(call_paths);
