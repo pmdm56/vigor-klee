@@ -79,7 +79,7 @@ protected:
   }
 
   void indent(unsigned int lvl=0) const {
-    std::cout << std::string(lvl, ' ');
+    std::cerr << std::string(lvl, ' ');
   }
 
 public:
@@ -117,7 +117,7 @@ public:
   }
 
   void debug(unsigned int lvl=0) const override {
-    std::cout << name;
+    std::cerr << name;
   }
 
   static std::shared_ptr<NamedType> build(const std::string& name) {
@@ -143,7 +143,7 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     type->debug(lvl);
-    std::cout << "*";
+    std::cerr << "*";
   }
 
   static std::shared_ptr<Pointer> build(const Type_ptr& _type) {
@@ -174,10 +174,10 @@ public:
   }
 
   void debug(unsigned int lvl=0) const override {
-    std::cout << "<include";
-    std::cout << " relative=" << relative;
-    std::cout << " path=" << path;
-    std::cout << " />" << "\n";
+    std::cerr << "<include";
+    std::cerr << " relative=" << relative;
+    std::cerr << " path=" << path;
+    std::cerr << " />" << "\n";
   }
 
   static std::shared_ptr<Import> build(const std::string& _path, bool _relative) {
@@ -209,15 +209,15 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
-    std::cout << "<block>" << "\n";
+    std::cerr << "<block>" << "\n";
 
     for (const auto& node : nodes) {
       node->debug(lvl+2);
-      std::cout << "\n";
+      std::cerr << "\n";
     }
 
     indent(lvl);
-    std::cout << "</block>";
+    std::cerr << "</block>";
   }
 
   static std::shared_ptr<Block> build(const std::vector<Node_ptr> _nodes) {
@@ -257,19 +257,19 @@ public:
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
 
-    std::cout << "<if";
-    std::cout << " condition=";
+    std::cerr << "<if";
+    std::cerr << " condition=";
     condition->debug(lvl);
-    std::cout << ">" << "\n";
+    std::cerr << ">" << "\n";
     on_true->debug(lvl+2);
     indent(lvl);
-    std::cout << "</if>" << "\n";
+    std::cerr << "</if>" << "\n";
 
     indent(lvl);
-    std::cout << "<else>" << "\n";
+    std::cerr << "<else>" << "\n";
     on_false->debug(lvl+2);
     indent(lvl);
-    std::cout << "</else>";
+    std::cerr << "</else>";
   }
 
   static std::shared_ptr<Branch> build(Node_ptr _condition, Node_ptr _on_true, Node_ptr _on_false) {
@@ -298,10 +298,10 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
-    std::cout << "<return>" << "\n";
+    std::cerr << "<return>" << "\n";
     value->debug(lvl+2);
     indent(lvl);
-    std::cout << "</return>";
+    std::cerr << "</return>";
   }
 
   static std::shared_ptr<Return> build(Expr_ptr _value) {
@@ -341,17 +341,17 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
-    std::cout << "<call";
-    std::cout << " name=" << name;
-    std::cout << ">" << "\n";
+    std::cerr << "<call";
+    std::cerr << " name=" << name;
+    std::cerr << ">" << "\n";
 
     for (const auto& arg : args) {
       arg->debug(lvl+2);
-      std::cout << "\n";
+      std::cerr << "\n";
     }
 
     indent(lvl);
-    std::cout << "</call>";
+    std::cerr << "</call>";
   }
 
   static std::shared_ptr<FunctionCall> build(const std::string& _name, const std::vector<Expr_ptr> _args) {
@@ -383,11 +383,11 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
-    std::cout << "<varDecl";
-    std::cout << " symbol=" << symbol;
-    std::cout << " type=";
+    std::cerr << "<varDecl";
+    std::cerr << " symbol=" << symbol;
+    std::cerr << " type=";
     type->debug(lvl);
-    std::cout << " />";
+    std::cerr << " />";
   }
 
   static std::shared_ptr<VariableDecl> build(const std::string& _symbol, const Type_ptr& _type) {
@@ -412,9 +412,9 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
-    std::cout << "<var";
-    std::cout << " symbol=" << symbol;
-    std::cout << " />";
+    std::cerr << "<var";
+    std::cerr << " symbol=" << symbol;
+    std::cerr << " />";
   }
 
   static std::shared_ptr<Variable> build(const std::string& _symbol) {
@@ -445,11 +445,11 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
-    std::cout << "<functionArgDecl";
-    std::cout << " symbol=" << symbol;
-    std::cout << " type=";
+    std::cerr << "<functionArgDecl";
+    std::cerr << " symbol=" << symbol;
+    std::cerr << " type=";
     type->debug(lvl);
-    std::cout << " />";
+    std::cerr << " />";
   }
 
   static std::shared_ptr<FunctionArgDecl> build(const std::string& _symbol, const Type_ptr& _type) {
@@ -501,24 +501,24 @@ public:
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
 
-    std::cout << "<function";
-    std::cout << " name=" << name;
+    std::cerr << "<function";
+    std::cerr << " name=" << name;
 
-    std::cout << " return=";
+    std::cerr << " return=";
     return_type->debug(lvl);
 
-    std::cout << ">" << "\n";
+    std::cerr << ">" << "\n";
 
     for (const auto& arg : args) {
       arg->debug(lvl+2);
-      std::cout << "\n";
+      std::cerr << "\n";
     }
 
     body->debug(lvl+2);
-    std::cout << "\n";
+    std::cerr << "\n";
 
     indent(lvl);
-    std::cout << "</function>";
+    std::cerr << "</function>";
   }
 
   static std::shared_ptr<Function> build(const std::string& _name, const std::vector<FunctionArgDecl_ptr>& _args,
@@ -551,17 +551,17 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
-    std::cout << "<assignment>" << "\n";
+    std::cerr << "<assignment>" << "\n";
 
     indent(lvl+2);
     variable->debug(lvl);
-    std::cout << "\n";
+    std::cerr << "\n";
 
     indent(lvl+2);
     value->debug(lvl);
-    std::cout << "\n";
+    std::cerr << "\n";
 
-    std::cout << "</assignment>";
+    std::cerr << "</assignment>";
   }
 
   static std::shared_ptr<Assignment> build(const Variable_ptr& _variable, Node_ptr _value) {
@@ -575,7 +575,7 @@ typedef std::shared_ptr<Assignment> Assignment_ptr;
 class AST {
 private:
   std::string output_path;
-  std::vector<Variable> global_variables;
+  std::vector<Variable_ptr> global_variables;
 
   std::vector<Node_ptr> nodes;
 
@@ -583,10 +583,11 @@ public:
   AST() {
     Type_ptr type1 = NamedType::build("my_type_1");
     Type_ptr type2 = NamedType::build("my_type_2");
+    Type_ptr type2_ptr = Pointer::build(type2);
     Type_ptr return_type = NamedType::build("my_type_3");
 
     FunctionArgDecl_ptr arg_decl1 = FunctionArgDecl::build("arg1", type1);
-    FunctionArgDecl_ptr arg_decl2 = FunctionArgDecl::build("arg2", type2);
+    FunctionArgDecl_ptr arg_decl2 = FunctionArgDecl::build("arg2", type2_ptr);
 
     std::vector<FunctionArgDecl_ptr> args{ arg_decl1, arg_decl2 };
 
@@ -595,11 +596,28 @@ public:
 
     Function_ptr function = Function::build("foo", args, block, return_type);
 
-    function->debug();
-    std::cout << "\n";
+    nodes.push_back(function);
+  }
 
-    function->synthesize(std::cout);
-    std::cout << "\n";
+  void dump() const {
+    std::cerr << "Global variables" << "\n";
+    for (const auto& gv : global_variables) {
+      gv->debug(2);
+      std::cerr << "\n";
+    }
+    std::cerr << "\n";
+
+    std::cerr << "Nodes" << "\n";
+    for (const auto& node : nodes) {
+      node->debug(2);
+      std::cerr << "\n";
+    }
+    std::cerr << "\n";
+
+    for (const auto& node : nodes) {
+      node->synthesize(std::cout);
+      std::cout << "\n";
+    }
   }
 
 };
@@ -617,8 +635,264 @@ public:
   }
 };
 
-void build_ast(std::vector<call_path_t*> call_paths, std::string output_path) {
-  AST ast;
+struct call_paths_manager_t {
+  std::vector<call_path_t*> call_paths;
+  klee::Solver *solver;
+  klee::ExprBuilder *exprBuilder;
+
+  call_paths_manager_t(std::vector<call_path_t*> _call_paths)
+    : call_paths(_call_paths) {
+
+    solver = klee::createCoreSolver(klee::Z3_SOLVER);
+    assert(solver);
+
+    solver = createCexCachingSolver(solver);
+    solver = createCachingSolver(solver);
+    solver = createIndependentSolver(solver);
+
+    exprBuilder = klee::createDefaultExprBuilder();
+  }
+};
+
+struct call_paths_group_t {
+  std::vector<call_path_t*> in;
+  std::vector<call_path_t*> out;
+
+  call_paths_group_t(call_paths_manager_t manager, unsigned int call_idx) {
+    assert(manager.call_paths.size());
+    for (const auto& call_path : manager.call_paths) {
+      assert(call_path->calls.size() > call_idx);
+    }
+
+    std::cerr << "call_idx " << call_idx << "\n";
+
+    call_t call = manager.call_paths[0]->calls[call_idx];
+
+    for (auto call_path : manager.call_paths) {
+      if (are_calls_equal(call_path->calls[call_idx], call)) {
+        in.push_back(call_path);
+      }
+
+      else {
+        // dump_call(call);
+        // dump_call(call_path->calls[call_idx]);
+
+        out.push_back(call_path);
+      }
+    }
+
+  }
+
+  void dump_call(call_t call) {
+    std::cout << "    Function: " << call.function_name << std::endl;
+    if (!call.args.empty()) {
+      std::cout << "      With Args:" << std::endl;
+      for (auto arg : call.args) {
+        std::cout << "        " << arg.first << ":" << std::endl;
+        if (!arg.second.first.isNull()) {
+          std::cout << "          Before:" << std::endl;
+          arg.second.first->dump();
+        }
+        if (!arg.second.second.isNull()) {
+          std::cout << "          After:" << std::endl;
+          arg.second.second->dump();
+        }
+      }
+    }
+    if (!call.extra_vars.empty()) {
+      std::cout << "      With Extra Vars:" << std::endl;
+      for (auto extra_var : call.extra_vars) {
+        std::cout << "        " << extra_var.first << ":" << std::endl;
+        if (!extra_var.second.first.isNull()) {
+          std::cout << "          Before:" << std::endl;
+          extra_var.second.first->dump();
+        }
+        if (!extra_var.second.second.isNull()) {
+          std::cout << "          After:" << std::endl;
+          extra_var.second.second->dump();
+        }
+      }
+    }
+
+    if (!call.ret.isNull()) {
+      std::cout << "      With Ret:" << std::endl;
+      call.ret->dump();
+    }
+  }
+
+  bool are_calls_equal(call_t c1, call_t c2) {
+    if (c1.function_name != c2.function_name) {
+      return false;
+    }
+
+    if (c1.ret.isNull() != c2.ret.isNull()) {
+      return false;
+    }
+
+    if (!c1.ret.isNull() && c1.ret.compare(c2.ret) != 0) {
+      return false;
+    }
+
+    for (auto arg_name_value_pair : c1.args) {
+      auto arg_name = arg_name_value_pair.first;
+
+      if (c2.args.find(arg_name) == c2.args.end()) {
+        return false;
+      }
+
+      auto c1_arg = arg_name_value_pair.second;
+      auto c2_arg = c2.args[arg_name];
+
+      if (c1_arg.first.isNull() != c2_arg.first.isNull()) {
+        return false;
+      }
+
+      if (!c1_arg.first.isNull() && c1_arg.first.compare(c2_arg.first) != 0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  klee::ref<klee::Expr> find_discriminating_constraint(call_paths_manager_t manager) {
+    assert(in.size());
+    assert(out.size());
+
+    bool chosen_constraint;
+
+    for (klee::ref<klee::Expr> constraint : in[0]->constraints) {
+      chosen_constraint = true;
+
+      for (call_path_t* call_path : in) {
+        klee::Query sat_query(call_path->constraints, constraint);
+        klee::Query neg_sat_query = sat_query.negateExpr();
+
+        bool result = false;
+        bool success = manager.solver->mustBeFalse(neg_sat_query, result);
+
+        assert(success);
+
+        std::cerr << "\n";
+        std::cerr << "***** IN *****" << "\n";
+        std::cerr << "Evaluating constraint:" << "\n";
+        constraint->dump();
+        std::cerr << "\n";
+
+        std::cerr << "Query:" << "\n";
+        neg_sat_query.dump();
+        std::cerr << "\n";
+
+        {
+          bool r;
+          assert(manager.solver->mustBeTrue(neg_sat_query, r));
+          std::cerr << "must be true " << r << "\n";
+          assert(manager.solver->mayBeTrue(neg_sat_query, r));
+          std::cerr << "may be true " << r << "\n";
+          assert(manager.solver->mustBeFalse(neg_sat_query, r));
+          std::cerr << "must be false " << r << "\n";
+          assert(manager.solver->mayBeFalse(neg_sat_query, r));
+          std::cerr << "may be false " << r << "\n";
+        }
+
+        if (!result) {
+          chosen_constraint = false;
+          break;
+        }
+      }
+
+      if (!chosen_constraint) {
+        continue;
+      }
+
+      for (call_path_t* call_path : out) {
+        klee::Query sat_query(call_path->constraints, constraint);
+        klee::Query neg_sat_query = sat_query.negateExpr();
+
+        bool result = false;
+        bool success = manager.solver->mustBeTrue(neg_sat_query, result);
+
+        assert(success);
+
+        std::cerr << "\n";
+        std::cerr << "***** OUT *****" << "\n";
+        std::cerr << "Evaluating constraint:" << "\n";
+        constraint->dump();
+        std::cerr << "\n";
+
+        std::cerr << "Query:" << "\n";
+        neg_sat_query.dump();
+        std::cerr << "\n";
+
+        {
+          bool r;
+          assert(manager.solver->mustBeTrue(sat_query, r));
+          std::cerr << "must be true " << r << "\n";
+          assert(manager.solver->mayBeTrue(sat_query, r));
+          std::cerr << "may be true " << r << "\n";
+          assert(manager.solver->mustBeFalse(sat_query, r));
+          std::cerr << "must be false " << r << "\n";
+          assert(manager.solver->mayBeFalse(sat_query, r));
+          std::cerr << "may be false " << r << "\n";
+
+          std::cerr << "comparing" << "\n";
+          auto n = manager.exprBuilder->Eq(constraint, manager.exprBuilder->False());
+          n->dump();
+          std::cerr << "\n";
+          std::cerr << "with" << "\n";
+          (*call_path->constraints.begin())->dump();
+          std::cerr << "\n";
+          std::cerr << "equal " << n.compare((*call_path->constraints.begin())) << "\n";
+        }
+
+        if (!result) {
+          chosen_constraint = false;
+          break;
+        }
+      }
+
+      if (!chosen_constraint) {
+        continue;
+      }
+
+      return constraint;
+    }
+
+    assert(false && "unable to find discriminating constraint");
+  }
+};
+
+Node_ptr ast_node_from_call_path(call_path_t* call_path) {
+  return nullptr;
+}
+
+void build_ast(AST& ast, call_paths_manager_t manager) {
+  unsigned int call_idx;
+
+  call_idx = 0;
+  for (;;) {
+    call_paths_group_t group(manager, call_idx);
+
+    std::cerr << "total " << manager.call_paths.size()
+              << " in " << group.in.size()
+              << " out " << group.out.size()
+              << "\n";
+
+    if (group.in.size() == manager.call_paths.size()) {
+      call_idx++;
+      continue;
+    }
+
+    auto discriminating_constraint = group.find_discriminating_constraint(manager);
+
+    std::cerr << "discriminating constraint" << "\n";
+    std::cerr << expr_to_string(discriminating_constraint) << "\n";
+    exit(0);
+
+    // build Branch: if condition, then in, else out
+
+    break;
+  }
 }
 
 int main(int argc, char **argv) {
@@ -635,7 +909,11 @@ int main(int argc, char **argv) {
     call_paths.push_back(call_path);
   }
 
-  build_ast(call_paths, OutputDir);
+  AST ast;
+  call_paths_manager_t manager(call_paths);
+
+  build_ast(ast, manager);
+  ast.dump();
 
   for (auto call_path : call_paths) {
     delete call_path;
