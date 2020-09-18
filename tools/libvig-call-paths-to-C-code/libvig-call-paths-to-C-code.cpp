@@ -66,7 +66,11 @@ public:
     VARIABLE_DECL,
     VARIABLE,
     FUNCTION,
-    ASSIGNMENT
+    ASSIGNMENT,
+    EQUALS,
+    READ,
+    SIGNED_LITERAL,
+    UNSIGNED_LITERAL
   };
 
 protected:
@@ -98,6 +102,8 @@ protected:
   Expression(Kind kind) : Node(kind), terminate_line(true) {}
 
 public:
+  virtual std::shared_ptr<Expression> clone() const = 0;
+
   void set_terminate_line(bool terminate) {
     terminate_line = terminate;
   }
@@ -111,6 +117,7 @@ protected:
 
 public:
   virtual const std::string& get_name() const = 0;
+  virtual std::shared_ptr<Type> clone() const = 0;
 };
 
 typedef std::shared_ptr<Type> Type_ptr;
@@ -134,9 +141,19 @@ public:
     return name;
   }
 
+  std::shared_ptr<Type> clone() const override {
+    Type* nt = new NamedType(name);
+    return std::shared_ptr<Type>(nt);
+  }
+
   static std::shared_ptr<NamedType> build(const std::string& name) {
     NamedType* nt = new NamedType(name);
     return std::shared_ptr<NamedType>(nt);
+  }
+
+  static std::shared_ptr<NamedType> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::TYPE);
+    return std::shared_ptr<NamedType>(static_cast<NamedType*>(n.get()));
   }
 };
 
@@ -154,7 +171,6 @@ private:
     : Type(POINTER), type(_type), id(_id) {}
 
 public:
-
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
     type->synthesize(ofs, lvl);
     ofs << "*";
@@ -177,9 +193,19 @@ public:
     return type->get_name();
   }
 
+  std::shared_ptr<Type> clone() const override {
+    Type* ptr = new Pointer(type->clone(), id);
+    return std::shared_ptr<Type>(ptr);
+  }
+
   static std::shared_ptr<Pointer> build(const Type_ptr& _type, unsigned int _id=0) {
     Pointer* ptr = new Pointer(_type, _id);
     return std::shared_ptr<Pointer>(ptr);
+  }
+
+  static std::shared_ptr<Pointer> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::POINTER);
+    return std::shared_ptr<Pointer>(static_cast<Pointer*>(n.get()));
   }
 };
 
@@ -214,6 +240,11 @@ public:
   static std::shared_ptr<Import> build(const std::string& _path, bool _relative) {
     Import* import = new Import(_path, _relative);
     return std::shared_ptr<Import>(import);
+  }
+
+  static std::shared_ptr<Import> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::IMPORT);
+    return std::shared_ptr<Import>(static_cast<Import*>(n.get()));
   }
 };
 
@@ -254,6 +285,11 @@ public:
   static std::shared_ptr<Block> build(const std::vector<Node_ptr> _nodes) {
     Block* block = new Block(_nodes);
     return std::shared_ptr<Block>(block);
+  }
+
+  static std::shared_ptr<Block> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::IMPORT);
+    return std::shared_ptr<Block>(static_cast<Block*>(n.get()));
   }
 };
 
@@ -307,6 +343,11 @@ public:
     Branch* branch = new Branch(_condition, _on_true, _on_false);
     return std::shared_ptr<Branch>(branch);
   }
+
+  static std::shared_ptr<Branch> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::BRANCH);
+    return std::shared_ptr<Branch>(static_cast<Branch*>(n.get()));
+  }
 };
 
 typedef std::shared_ptr<Branch> Branch_ptr;
@@ -337,6 +378,11 @@ public:
   static std::shared_ptr<Return> build(Expr_ptr _value) {
     Return* _return = new Return(_value);
     return std::shared_ptr<Return>(_return);
+  }
+
+  static std::shared_ptr<Return> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::RETURN);
+    return std::shared_ptr<Return>(static_cast<Return*>(n.get()));
   }
 };
 
@@ -390,13 +436,224 @@ public:
     std::cerr << "</call>";
   }
 
+  std::shared_ptr<Expression> clone() const override {
+    std::vector<Expr_ptr> _args;
+    for (const auto& arg : args) _args.push_back(arg->clone());
+    Expression* e = new FunctionCall(name, _args);
+    return std::shared_ptr<Expression>(e);
+  }
+
   static std::shared_ptr<FunctionCall> build(const std::string& _name, const std::vector<Expr_ptr> _args) {
     FunctionCall* function_call = new FunctionCall(_name, _args);
     return std::shared_ptr<FunctionCall>(function_call);
   }
+
+  static std::shared_ptr<FunctionCall> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::FUNCTION_CALL);
+    return std::shared_ptr<FunctionCall>(static_cast<FunctionCall*>(n.get()));
+  }
 };
 
 typedef std::shared_ptr<FunctionCall> FunctionCall_ptr;
+
+class UnsignedLiteral : public Expression {
+private:
+  uint64_t value;
+
+  UnsignedLiteral(uint64_t _value) : Expression(SIGNED_LITERAL), value(_value) {}
+
+public:
+  uint64_t get_value() const { return value; }
+
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(lvl);
+    ofs << std::to_string(value);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<literal ";
+    std::cerr << " signed=false";
+    std::cerr << " value=" << std::to_string(value);
+    std::cerr << " />";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new UnsignedLiteral(value);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<UnsignedLiteral> build(uint64_t _value) {
+    UnsignedLiteral* literal = new UnsignedLiteral(_value);
+    return std::shared_ptr<UnsignedLiteral>(literal);
+  }
+
+  static std::shared_ptr<UnsignedLiteral> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::UNSIGNED_LITERAL);
+    return std::shared_ptr<UnsignedLiteral>(static_cast<UnsignedLiteral*>(n.get()));
+  }
+};
+
+typedef std::shared_ptr<UnsignedLiteral> UnsignedLiteral_ptr;
+
+class SignedLiteral : public Expression {
+private:
+  int64_t value;
+
+  SignedLiteral(int64_t _value) : Expression(SIGNED_LITERAL), value(_value) {}
+
+public:
+  int64_t get_value() const { return value; }
+
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(lvl);
+    ofs << std::to_string(value);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<literal ";
+    std::cerr << " signed=true";
+    std::cerr << " value=" << std::to_string(value);
+    std::cerr << " />";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new SignedLiteral(value);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<SignedLiteral> build(int64_t _value) {
+    SignedLiteral* literal = new SignedLiteral(_value);
+    return std::shared_ptr<SignedLiteral>(literal);
+  }
+
+  static std::shared_ptr<SignedLiteral> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::SIGNED_LITERAL);
+    return std::shared_ptr<SignedLiteral>(static_cast<SignedLiteral*>(n.get()));
+  }
+};
+
+typedef std::shared_ptr<SignedLiteral> SignedLiteral_ptr;
+
+class Equals : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Equals(const Expr_ptr& _lhs, const Expr_ptr& _rhs)
+    : Expression(EQUALS), lhs(_lhs), rhs(_rhs) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  const Expr_ptr& get_lhs() const { return lhs; }
+  const Expr_ptr& get_rhs() const { return rhs; }
+
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(lvl);
+
+    lhs->synthesize(ofs, lvl);
+    ofs << " == ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<equals>" << "\n";
+
+    lhs->debug(lvl+2);
+    std::cerr << "\n";
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</equals>";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Equals(lhs->clone(), rhs->clone());
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Equals> build(const Expr_ptr& _lhs, const Expr_ptr& _rhs) {
+    Equals* equals = new Equals(_lhs, _rhs);
+    return std::shared_ptr<Equals>(equals);
+  }
+
+  static std::shared_ptr<Equals> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::EQUALS);
+    return std::shared_ptr<Equals>(static_cast<Equals*>(n.get()));
+  }
+};
+
+typedef std::shared_ptr<SignedLiteral> SignedLiteral_ptr;
+
+class Read : public Expression {
+private:
+  Expr_ptr expr;
+  unsigned int size;
+  unsigned int offset;
+
+  Read(const Expr_ptr& _expr, unsigned int _size, unsigned int _offset)
+    : Expression(READ), expr(_expr), size(_size), offset(_offset) {
+    expr->set_terminate_line(false);
+  }
+
+public:
+  const Expr_ptr& get_expr() const { return expr; }
+  unsigned int get_size() const { return size; }
+  unsigned int get_offset() const { return offset; }
+
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(lvl);
+
+    ofs << "(";
+    expr->synthesize(ofs);
+    ofs << " >> ";
+    ofs << std::to_string(offset * size);
+    ofs << ") & ";
+
+    std::stringstream stream;
+    stream << std::hex << ((1 << size) - 1);
+    std::string mask_hex( stream.str() );
+    ofs << mask_hex;
+
+    if (terminate_line) {
+      ofs << ";";
+    }
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<read";
+    std::cerr << " size=" << std::to_string(size);
+    std::cerr << " offset=" << std::to_string(offset);
+    std::cerr << " >" << "\n";
+
+    expr->debug(lvl+2);
+    std::cerr << "\n";
+
+    indent(lvl);
+    std::cerr << "</read>";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Read(expr->clone(), size, offset);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Read> build(const Expr_ptr& _expr, unsigned int _size, unsigned int _offset) {
+    Read* equals = new Read(_expr, _size, _offset);
+    return std::shared_ptr<Read>(equals);
+  }
+
+  static std::shared_ptr<Read> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::READ);
+    return std::shared_ptr<Read>(static_cast<Read*>(n.get()));
+  }
+};
+
+typedef std::shared_ptr<Read> Read_ptr;
 
 class VariableDecl;
 
@@ -427,10 +684,20 @@ public:
   const std::string& get_symbol() const { return symbol; }
   const Type_ptr& get_type() const { return type; }
 
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Variable(symbol, type->clone());
+    return std::shared_ptr<Expression>(e);
+  }
+
   static std::shared_ptr<Variable> build(const std::string& _symbol,
                                          const Type_ptr& _type) {
     Variable* variable = new Variable(_symbol, _type);
     return std::shared_ptr<Variable>(variable);
+  }
+
+  static std::shared_ptr<Variable> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::VARIABLE);
+    return std::shared_ptr<Variable>(static_cast<Variable*>(n.get()));
   }
 };
 
@@ -471,6 +738,11 @@ public:
     VariableDecl* variable_decl = new VariableDecl(_symbol, _type);
     return std::shared_ptr<VariableDecl>(variable_decl);
   }
+
+  static std::shared_ptr<VariableDecl> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::VARIABLE_DECL);
+    return std::shared_ptr<VariableDecl>(static_cast<VariableDecl*>(n.get()));
+  }
 };
 
 typedef std::shared_ptr<VariableDecl> VariableDecl_ptr;
@@ -505,6 +777,11 @@ public:
   static std::shared_ptr<FunctionArgDecl> build(const std::string& _symbol, const Type_ptr& _type) {
     FunctionArgDecl* function_arg_decl = new FunctionArgDecl(_symbol, _type);
     return std::shared_ptr<FunctionArgDecl>(function_arg_decl);
+  }
+
+  static std::shared_ptr<FunctionArgDecl> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::FUNCTION_ARG_DECL);
+    return std::shared_ptr<FunctionArgDecl>(static_cast<FunctionArgDecl*>(n.get()));
   }
 };
 
@@ -576,6 +853,11 @@ public:
     Function* function = new Function(_name, _args, _body, _return_type);
     return std::shared_ptr<Function>(function);
   }
+
+  static std::shared_ptr<Function> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::FUNCTION);
+    return std::shared_ptr<Function>(static_cast<Function*>(n.get()));
+  }
 };
 
 typedef std::shared_ptr<Function> Function_ptr;
@@ -613,9 +895,19 @@ public:
     std::cerr << "</assignment>";
   }
 
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Assignment(Variable::cast(variable->clone()), value->clone());
+    return std::shared_ptr<Expression>(e);
+  }
+
   static std::shared_ptr<Assignment> build(const Variable_ptr& _variable, Expr_ptr _value) {
     Assignment* assignment = new Assignment(_variable, _value);
     return std::shared_ptr<Assignment>(assignment);
+  }
+
+  static std::shared_ptr<Assignment> cast(Node_ptr n) {
+    assert(n->get_kind() == Node::Kind::ASSIGNMENT);
+    return std::shared_ptr<Assignment>(static_cast<Assignment*>(n.get()));
   }
 };
 
@@ -711,7 +1003,7 @@ private:
   }
 
   void declare_variables_if_needed(call_t call) {
-    assert(false);
+    assert(false && "Not implemented");
   }
 
   Node_ptr init_state_node_from_call(call_t call) {
@@ -740,7 +1032,7 @@ private:
 
       FunctionCall_ptr fcall = FunctionCall::build(fname, args);
 
-      VariableDecl_ptr ret = var_decl_generator.generate("int", "success", false);
+      VariableDecl_ptr ret = VariableDecl::build("map_allocation_succeeded", NamedType::build("int"));
       Assignment_ptr assignment = Assignment::build(ret, fcall);
 
       push_to_state(capacity);
@@ -758,10 +1050,10 @@ private:
 
       dump();
 
-      // return assignment;
+      return assignment;
     }
 
-    exit(0);
+    assert(false && "Not implemented");
   }
 
   Node_ptr process_state_node_from_call(call_t call) {
@@ -782,8 +1074,7 @@ private:
     std::cerr << expr_to_string(call.ret) << "\n";
 
 
-
-    exit(0);
+    assert(false && "Not implemented");
   }
 
 public:
@@ -796,16 +1087,6 @@ public:
   void pop() {
     assert(local_variables.size() > 0);
     local_variables.pop_back();
-  }
-
-  Node_ptr node_from_expr(klee::ref<klee::Expr> expr) {
-    std::cerr << "* node from expr" << "\n";
-    std::cerr << expr_to_string(expr) << "\n";
-
-
-
-    exit(0);
-    return nullptr;
   }
 
   Node_ptr node_from_call(call_t call) {
@@ -936,6 +1217,357 @@ public:
 
 };
 
+class KleeExprToASTNodeConverter: public klee::ExprVisitor::ExprVisitor {
+private:
+  AST* ast;
+  Expr_ptr result;
+  std::pair<bool, unsigned int> symbol_width;
+
+public:
+  KleeExprToASTNodeConverter(AST* _ast)
+    : ExprVisitor(false), ast(_ast) {}
+
+  Expr_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
+    if (e->getKind() != klee::Expr::Kind::Constant) {
+      return nullptr;
+    }
+
+    klee::ConstantExpr* constant = static_cast<klee::ConstantExpr *>(e.get());
+    uint64_t value = constant->getZExtValue();
+
+    return UnsignedLiteral::build(value);
+  }
+
+  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::UpdateList ul = e.updates;
+    const klee::Array *root = ul.root;
+    std::string symbol = root->name;
+
+    symbol_width = std::make_pair(true, root->getSize() * 8);
+
+    Variable_ptr var = ast->get_from_local(symbol);
+    assert(var != nullptr);
+
+    unsigned int size = 0;
+
+    switch (e.getWidth()) {
+    case klee::Expr::InvalidWidth:
+    case klee::Expr::Fl80: assert(false);
+    case klee::Expr::Bool: size = 1; break;
+    case klee::Expr::Int8: size = 8; break;
+    case klee::Expr::Int16: size = 16; break;
+    case klee::Expr::Int32: size = 32; break;
+    case klee::Expr::Int64: size = 64; break;
+    }
+
+    auto index = e.index;
+    assert(index->getKind() == klee::Expr::Kind::Constant);
+
+    auto constant_index = static_cast<klee::ConstantExpr *>(index.get());
+    auto index_value = constant_index->getZExtValue();
+
+    result = Read::build(var, size, index_value);
+
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitSelect(const klee::SelectExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitConcat(const klee::ConcatExpr& e) {
+    auto left = e.getLeft();
+    auto right = e.getRight();
+
+    Expr_ptr left_expr;
+    Expr_ptr right_expr;
+
+    std::pair<bool, unsigned int> saved_symbol_width;
+
+    {
+      std::cerr << "left klee" << "\n";
+      std::cerr << expr_to_string(left) << "\n";
+      std::cerr << "\n";
+
+      KleeExprToASTNodeConverter converter(ast);
+      converter.visit(left);
+
+      left_expr = converter.get_result();
+      saved_symbol_width = converter.get_symbol_width();
+
+      assert(saved_symbol_width.first);
+    }
+
+    {
+      std::cerr << "right klee" << "\n";
+      std::cerr << expr_to_string(right) << "\n";
+      std::cerr << "\n";
+
+      KleeExprToASTNodeConverter converter(ast);
+      converter.visit(right);
+
+      right_expr = converter.get_result();
+
+      assert(converter.get_symbol_width().first == saved_symbol_width.first);
+      assert(converter.get_symbol_width().second == saved_symbol_width.second);
+    }
+
+    assert(left_expr->get_kind() == Node::Kind::READ);
+    assert(right_expr->get_kind() == Node::Kind::READ);
+
+    Read_ptr left_read = Read::cast(left_expr);
+    Read_ptr right_read = Read::cast(right_expr);
+
+    assert(left_read->get_expr()->get_kind() == Node::Kind::VARIABLE);
+    assert(right_read->get_expr()->get_kind() == Node::Kind::VARIABLE);
+
+    std::cerr << "\n";
+    std::cerr << "left " << "\n";
+    left_expr->debug();
+    std::cerr << "\n";
+    std::cerr << "\n";
+
+    std::cerr << "\n";
+    std::cerr << "right " << "\n";
+    right_expr->debug();
+    std::cerr << "\n";
+    std::cerr << "\n";
+
+    assert((left_read->get_offset() * left_read->get_size()) ==
+           right_read->get_offset() * right_read->get_size() + right_read->get_size());
+
+    Variable_ptr left_read_var = Variable::cast(left_read->get_expr());
+    Variable_ptr right_read_var = Variable::cast(right_read->get_expr());
+
+    assert(left_read_var->get_symbol() == right_read_var->get_symbol());
+
+    Read_ptr simplified = Read::build(left_read_var,
+                                      left_read->get_size() + right_read->get_size(),
+                                      right_read->get_offset());
+
+    if (simplified->get_size() == saved_symbol_width.second && simplified->get_offset() == 0) {
+      result = simplified->get_expr();
+      symbol_width = saved_symbol_width;
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+
+    std::cerr << "\n";
+    std::cerr << "simplified " << "\n";
+    simplified->debug();
+    std::cerr << "\n";
+
+    result = simplified;
+    symbol_width = saved_symbol_width;
+
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitExtract(const klee::ExtractExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitZExt(const klee::ZExtExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitSExt(const klee::SExtExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitAdd(const klee::AddExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitSub(const klee::SubExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitMul(const klee::MulExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitUDiv(const klee::UDivExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitSDiv(const klee::SDivExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitURem(const klee::URemExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitSRem(const klee::SRemExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitNot(const klee::NotExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitAnd(const klee::AndExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitOr(const klee::OrExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitXor(const klee::XorExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitShl(const klee::ShlExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitLShr(const klee::LShrExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitAShr(const klee::AShrExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitConstant(const klee::ConstantExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitEq(const klee::EqExpr& e) {
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    {
+      KleeExprToASTNodeConverter converter(ast);
+      converter.visit(e.getKid(0));
+
+      left = converter.get_result();
+
+      if (left == nullptr) {
+        left = const_to_ast_expr(e.getKid(0));
+        assert(left != nullptr);
+      }
+    }
+
+    {
+      KleeExprToASTNodeConverter converter(ast);
+      converter.visit(e.getKid(1));
+
+      right = converter.get_result();
+
+      if (right == nullptr) {
+        right = const_to_ast_expr(e.getKid(1));
+        assert(right != nullptr);
+      }
+    }
+
+    result = Equals::build(left, right);
+
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitNe(const klee::NeExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitUlt(const klee::UltExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitUle(const klee::UleExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitUgt(const klee::UgtExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitUge(const klee::UgeExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitSlt(const klee::SltExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitSle(const klee::SleExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitSgt(const klee::SgtExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitSge(const klee::SgeExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  klee::ExprVisitor::Action visitExpr(const klee::ConstantExpr& e) {
+    assert(false && "Not implemented");
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  std::pair<bool, unsigned int> get_symbol_width() const {
+    return symbol_width;
+  }
+
+  Expr_ptr get_result() {
+    return result == nullptr ? result : result->clone();
+  }
+};
+
+Node_ptr node_from_expr(AST *ast, klee::ref<klee::Expr> expr) {
+  std::cerr << "* node from expr" << "\n";
+  std::cerr << expr_to_string(expr) << "\n";
+
+  KleeExprToASTNodeConverter exprToNodeConverter(ast);
+  exprToNodeConverter.visit(expr);
+
+  Expr_ptr generated_expr = exprToNodeConverter.get_result();
+
+  std::cerr << "\n";
+  generated_expr->debug();
+  std::cerr << "\n";
+
+  std::cout << "\n";
+  generated_expr->synthesize(std::cout);
+  std::cout << "\n";
+
+  exit(0);
+
+  return generated_expr;
+}
+
 class RetrieveSymbols : public klee::ExprVisitor::ExprVisitor {
 private:
   std::vector<klee::ref<klee::ReadExpr>> retrieved;
@@ -1048,8 +1680,24 @@ struct call_paths_group_t {
 
   call_paths_group_t(call_paths_manager_t manager, unsigned int call_idx) {
     assert(manager.call_paths.size());
-    for (const auto& call_path : manager.call_paths) {
-      assert(call_path->calls.size() > call_idx);
+
+    for (auto call_path : manager.call_paths) {
+      if (call_idx < call_path->calls.size()) {
+        out.push_back(call_path);
+      }
+
+      else {
+        in.push_back(call_path);
+      }
+    }
+
+    if (in.size() == 0) {
+      in.clear();
+      out.clear();
+    }
+
+    else {
+      return;
     }
 
     call_t call = manager.call_paths[0]->calls[call_idx];
@@ -1216,18 +1864,20 @@ bool are_call_paths_finished(std::vector<call_path_t*> call_paths, unsigned int 
 }
 
 Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx=0) {
+  assert(manager.call_paths.size() > 0);
+
   std::vector<Node_ptr> nodes;
 
-  // commit nf_init
-  bool should_commit = call_idx == 0;
+  // commit nf_init and nf_process
+  bool should_commit = (call_idx == 0 ||
+                        (call_idx < manager.call_paths[0]->calls.size() &&
+                        manager.call_paths[0]->calls[call_idx].function_name == "start_time"));
 
-  while (!are_call_paths_finished(manager.call_paths, call_idx)) {
+  if (manager.call_paths.size() == 1) {
+    return ast.node_from_call(manager.call_paths[0]->calls[call_idx]);
+  }
 
-    if (manager.call_paths[0]->calls[call_idx].function_name == "start_time") {
-      // commit nf_process
-      should_commit = true;
-    }
-
+  for (;;) {
     call_paths_group_t group(manager, call_idx);
 
     if (group.in.size() == manager.call_paths.size()) {
@@ -1244,10 +1894,7 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
 
     auto discriminating_constraint = group.find_discriminating_constraint(manager);
 
-    std::cerr << "discriminating constraint" << "\n";
-    std::cerr << expr_to_string(discriminating_constraint) << "\n";
-
-    Node_ptr cond = ast.node_from_expr(discriminating_constraint);
+    Node_ptr cond = node_from_expr(&ast, discriminating_constraint);
     Node_ptr _then = build_ast(ast, call_paths_manager_t(group.in), call_idx);
     Node_ptr _else = build_ast(ast, call_paths_manager_t(group.out), call_idx);
 
