@@ -93,7 +93,14 @@ typedef std::shared_ptr<Node> Node_ptr;
 
 class Expression : public Node {
 protected:
-  Expression(Kind kind) : Node(kind) {}
+  bool terminate_line;
+
+  Expression(Kind kind) : Node(kind), terminate_line(true) {}
+
+public:
+  void set_terminate_line(bool terminate) {
+    terminate_line = terminate;
+  }
 };
 
 typedef std::shared_ptr<Expression> Expr_ptr;
@@ -101,6 +108,9 @@ typedef std::shared_ptr<Expression> Expr_ptr;
 class Type : public Node {
 protected:
   Type(Kind kind) : Node(kind) {}
+
+public:
+  virtual const std::string& get_name() const = 0;
 };
 
 typedef std::shared_ptr<Type> Type_ptr;
@@ -120,6 +130,10 @@ public:
     std::cerr << name;
   }
 
+  const std::string& get_name() const override {
+    return name;
+  }
+
   static std::shared_ptr<NamedType> build(const std::string& name) {
     NamedType* nt = new NamedType(name);
     return std::shared_ptr<NamedType>(nt);
@@ -131,8 +145,13 @@ typedef std::shared_ptr<NamedType> NamedType_ptr;
 class Pointer : public Type {
 private:
   Type_ptr type;
+  unsigned int id;
 
-  Pointer(const Type_ptr& _type) : Type(POINTER), type(_type) {}
+  Pointer(const Type_ptr& _type)
+    : Type(POINTER), type(_type), id(0) {}
+
+  Pointer(const Type_ptr& _type, unsigned int _id)
+    : Type(POINTER), type(_type), id(_id) {}
 
 public:
 
@@ -146,8 +165,20 @@ public:
     std::cerr << "*";
   }
 
-  static std::shared_ptr<Pointer> build(const Type_ptr& _type) {
-    Pointer* ptr = new Pointer(_type);
+  const Type_ptr& get_type() const { return type; }
+  unsigned int get_id() const { return id; }
+
+  void allocate(unsigned int _id) {
+    assert(id == 0 && "Trying to allocate using an already allocate pointer");
+    id = _id;
+  }
+
+  const std::string& get_name() const override {
+    return type->get_name();
+  }
+
+  static std::shared_ptr<Pointer> build(const Type_ptr& _type, unsigned int _id=0) {
+    Pointer* ptr = new Pointer(_type, _id);
     return std::shared_ptr<Pointer>(ptr);
   }
 };
@@ -292,7 +323,6 @@ public:
 
     ofs << "return ";
     value->synthesize(ofs, lvl);
-    ofs << ";";
     ofs << "\n";
   }
 
@@ -318,7 +348,11 @@ private:
   std::vector<Expr_ptr> args;
 
   FunctionCall(const std::string& _name, const std::vector<Expr_ptr> _args)
-    : Expression(FUNCTION_CALL), name(_name), args(_args) {}
+    : Expression(FUNCTION_CALL), name(_name), args(_args) {
+    for (auto arg : args) {
+      arg->set_terminate_line(false);
+    }
+  }
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -336,7 +370,9 @@ public:
       }
     }
 
-    ofs << ");";
+    if (terminate_line) {
+      ofs << ");";
+    }
   }
 
   void debug(unsigned int lvl=0) const override {
@@ -362,13 +398,50 @@ public:
 
 typedef std::shared_ptr<FunctionCall> FunctionCall_ptr;
 
-class VariableDecl : public Node {
-private:
+class VariableDecl;
+
+class Variable : public Expression {
+protected:
   std::string symbol;
   Type_ptr type;
 
+  Variable(const std::string& _symbol , const Type_ptr& _type)
+    : Expression(VARIABLE), symbol(_symbol), type(_type) {}
+
+public:
+
+  void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
+    ofs << symbol;
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+
+    std::cerr << "<var";
+    std::cerr << " symbol=" << symbol;
+    std::cerr << " type=";
+    type->debug(0);
+    std::cerr << " />";
+  }
+
+  const std::string& get_symbol() const { return symbol; }
+  const Type_ptr& get_type() const { return type; }
+
+  static std::shared_ptr<Variable> build(const std::string& _symbol,
+                                         const Type_ptr& _type) {
+    Variable* variable = new Variable(_symbol, _type);
+    return std::shared_ptr<Variable>(variable);
+  }
+};
+
+typedef std::shared_ptr<Variable> Variable_ptr;
+
+class VariableDecl : public Variable {
+private:
   VariableDecl(const std::string& _symbol, const Type_ptr& _type)
-    : Node(VARIABLE_DECL), symbol(_symbol), type(_type) {}
+    : Variable(_symbol, _type) {
+    kind = VARIABLE_DECL;
+  }
 
 public:
 
@@ -378,15 +451,19 @@ public:
     type->synthesize(ofs, lvl);
     ofs << " ";
     ofs << symbol;
-    ofs << ";";
+
+    if (terminate_line) {
+      ofs << ";";
+    }
   }
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
+
     std::cerr << "<varDecl";
     std::cerr << " symbol=" << symbol;
     std::cerr << " type=";
-    type->debug(lvl);
+    type->debug(0);
     std::cerr << " />";
   }
 
@@ -397,33 +474,6 @@ public:
 };
 
 typedef std::shared_ptr<VariableDecl> VariableDecl_ptr;
-
-class Variable : public Expression {
-private:
-  std::string symbol;
-
-  Variable(const std::string& _symbol) : Expression(VARIABLE), symbol(_symbol) {}
-
-public:
-
-  void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
-    ofs << symbol;
-  }
-
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<var";
-    std::cerr << " symbol=" << symbol;
-    std::cerr << " />";
-  }
-
-  static std::shared_ptr<Variable> build(const std::string& _symbol) {
-    Variable* variable = new Variable(_symbol);
-    return std::shared_ptr<Variable>(variable);
-  }
-};
-
-typedef std::shared_ptr<Variable> Variable_ptr;
 
 class FunctionArgDecl : public Node {
 private:
@@ -533,10 +583,12 @@ typedef std::shared_ptr<Function> Function_ptr;
 class Assignment : public Expression {
 private:
   Variable_ptr variable;
-  Node_ptr value;
+  Expr_ptr value;
 
-  Assignment(const Variable_ptr& _variable, Node_ptr _value)
-    : Expression(ASSIGNMENT), variable(_variable), value(_value) {}
+  Assignment(const Variable_ptr& _variable, Expr_ptr _value)
+    : Expression(ASSIGNMENT), variable(_variable), value(_value) {
+    variable->set_terminate_line(false);
+  }
 
 public:
 
@@ -546,25 +598,22 @@ public:
     variable->synthesize(ofs, lvl);
     ofs << " = ";
     value->synthesize(ofs, lvl);
-    ofs << ";";
   }
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
     std::cerr << "<assignment>" << "\n";
 
-    indent(lvl+2);
-    variable->debug(lvl);
+    variable->debug(lvl+2);
     std::cerr << "\n";
 
-    indent(lvl+2);
-    value->debug(lvl);
+    value->debug(lvl+2);
     std::cerr << "\n";
 
     std::cerr << "</assignment>";
   }
 
-  static std::shared_ptr<Assignment> build(const Variable_ptr& _variable, Node_ptr _value) {
+  static std::shared_ptr<Assignment> build(const Variable_ptr& _variable, Expr_ptr _value) {
     Assignment* assignment = new Assignment(_variable, _value);
     return std::shared_ptr<Assignment>(assignment);
   }
@@ -572,14 +621,46 @@ public:
 
 typedef std::shared_ptr<Assignment> Assignment_ptr;
 
+class VariableDeclGenerator {
+private:
+  std::map<std::string, unsigned int> symbol_counter;
+
+public:
+  VariableDeclGenerator() {}
+
+  VariableDecl_ptr generate(const std::string& type_name, const std::string& symbol, bool is_pointer) {
+    std::string indexer = type_name + "::" + symbol + (is_pointer ? "::ptr" : "");
+    auto counter = ++symbol_counter[indexer];
+
+    Type_ptr type;
+
+    if (is_pointer) {
+      type = Pointer::build(NamedType::build(type_name));
+    } else {
+      type = NamedType::build(type_name);
+    }
+
+    VariableDecl_ptr var = VariableDecl::build(symbol + std::to_string(counter), type);
+
+    return var;
+  }
+
+  VariableDecl_ptr generate(const std::string& type_name, bool is_pointer) {
+    std::cerr << "is_pointer " << is_pointer << "\n";
+    return generate(type_name, "var", is_pointer);
+  }
+};
+
 class AST {
 private:
   enum Context { INIT, PROCESS, DONE };
 
 private:
   std::string output_path;
-  std::vector<VariableDecl_ptr> global_variables;
-  std::vector<std::vector<VariableDecl_ptr>> local_variables;
+  std::vector<Variable_ptr> state;
+  std::vector<std::vector<Variable_ptr>> local_variables;
+
+  VariableDeclGenerator var_decl_generator;
 
   Node_ptr nf_init;
   Node_ptr nf_process;
@@ -587,24 +668,169 @@ private:
   Context context;
 
 public:
-  AST() : context(INIT) {}
+  Variable_ptr get_from_state(const std::string& symbol) {
+    auto finder = [&](const Variable_ptr& v) -> bool {
+      return symbol == v->get_symbol();
+    };
+
+    auto it = std::find_if(state.begin(), state.end(), finder);
+
+    if (it == state.end()) {
+      return nullptr;
+    }
+
+    return *it;
+  }
+
+  Variable_ptr get_from_local(const std::string& symbol) {
+    auto finder = [&](const Variable_ptr& v) -> bool {
+      return symbol == v->get_symbol();
+    };
+
+    for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
+      auto stack = *i;
+      auto it = std::find_if(stack.begin(), stack.end(), finder);
+      if (it != stack.end()) {
+        return *it;
+      }
+    }
+
+    return nullptr;
+  }
+
+private:
+  void push_to_state(Variable_ptr var) {
+    assert(get_from_state(var->get_symbol()) == nullptr);
+    state.push_back(var);
+  }
+
+  void push_to_local(Variable_ptr var) {
+    assert(get_from_local(var->get_symbol()) == nullptr);
+    assert(local_variables.size() > 0);
+    local_variables.back().push_back(var);
+  }
+
+  void declare_variables_if_needed(call_t call) {
+    assert(false);
+  }
+
+  Node_ptr init_state_node_from_call(call_t call) {
+    std::cerr << call.function_name << "\n";
+
+    for (const auto& arg : call.args) {
+      std::cerr << arg.first << " : "
+                << expr_to_string(arg.second.first) << " | "
+                << expr_to_string(arg.second.second) << "\n";
+    }
+
+    for (const auto& ev : call.extra_vars) {
+      std::cerr << ev.first << " : "
+                << expr_to_string(ev.second.first) << " | "
+                << expr_to_string(ev.second.second) << "\n";
+    }
+
+    std::cerr << expr_to_string(call.ret) << "\n";
+
+    auto fname = call.function_name;
+
+    if (fname == "map_allocate") {
+      Variable_ptr capacity = Variable::build("capacity", NamedType::build("uint32_t"));
+      Variable_ptr new_map = Variable::build("map", Pointer::build(NamedType::build("struct Map")));
+      std::vector<Expr_ptr> args { capacity, new_map };
+
+      FunctionCall_ptr fcall = FunctionCall::build(fname, args);
+
+      VariableDecl_ptr ret = var_decl_generator.generate("int", "success", false);
+      Assignment_ptr assignment = Assignment::build(ret, fcall);
+
+      push_to_state(capacity);
+      push_to_state(new_map);
+
+      push_to_local(Variable::build(ret->get_symbol(), ret->get_type()));
+
+      std::cerr << "\n";
+      assignment->debug();
+      std::cerr << "\n";
+
+      std::cout<< "\n";
+      assignment->synthesize(std::cout);
+      std::cout<< "\n";
+
+      dump();
+
+      // return assignment;
+    }
+
+    exit(0);
+  }
+
+  Node_ptr process_state_node_from_call(call_t call) {
+    std::cerr << call.function_name << "\n";
+
+    for (const auto& arg : call.args) {
+      std::cerr << arg.first << " : "
+                << expr_to_string(arg.second.first) << " | "
+                << expr_to_string(arg.second.second) << "\n";
+    }
+
+    for (const auto& ev : call.extra_vars) {
+      std::cerr << ev.first << " : "
+                << expr_to_string(ev.second.first) << " | "
+                << expr_to_string(ev.second.second) << "\n";
+    }
+
+    std::cerr << expr_to_string(call.ret) << "\n";
+
+
+
+    exit(0);
+  }
+
+public:
+  AST() { context_switch(INIT); }
+
+  void push() {
+    local_variables.emplace_back();
+  }
+
+  void pop() {
+    assert(local_variables.size() > 0);
+    local_variables.pop_back();
+  }
 
   Node_ptr node_from_expr(klee::ref<klee::Expr> expr) {
+    std::cerr << "* node from expr" << "\n";
+    std::cerr << expr_to_string(expr) << "\n";
+
+
+
+    exit(0);
     return nullptr;
   }
 
   Node_ptr node_from_call(call_t call) {
-    return nullptr;
+    std::cerr << "* node from call" << "\n";
+
+    switch (context) {
+      case INIT: return init_state_node_from_call(call);
+      case PROCESS: return process_state_node_from_call(call);
+      case DONE: assert(false);
+    }
   }
 
-  void context_switch() {
+  void context_switch(Context ctx) {
+    context = ctx;
+
     switch (context) {
       case INIT: {
-        context = PROCESS;
+        push();
         break;
       }
 
       case PROCESS: {
+        pop();
+        push();
+
         std::vector<VariableDecl_ptr> vars {
           VariableDecl::build("device", NamedType::build("uint16_t")),
           VariableDecl::build("buffer", Pointer::build(NamedType::build("uint8_t"))),
@@ -612,13 +838,15 @@ public:
           VariableDecl::build("now", NamedType::build("vigor_time_t"))
         };
 
-        local_variables.push_back(vars);
+        for (const auto& var : vars) {
+          push_to_local(Variable::build(var->get_symbol(), var->get_type()));
+        }
 
-        context = DONE;
         break;
       }
 
       case DONE: {
+        pop();
         break;
       }
     }
@@ -638,7 +866,7 @@ public:
 
         exit(0);
 
-        context_switch();
+        context_switch(PROCESS);
         break;
       }
 
@@ -655,7 +883,7 @@ public:
 
         nf_process = Function::build("nf_process", _args, _body, _return);
 
-        context_switch();
+        context_switch(DONE);
         break;
       }
 
@@ -666,39 +894,46 @@ public:
   }
 
   void dump() const {
+    std::cerr << "\n";
+
     std::cerr << "Global variables" << "\n";
-    for (const auto& gv : global_variables) {
+    for (const auto& gv : state) {
       gv->debug(2);
       std::cerr << "\n";
     }
     std::cerr << "\n";
 
-    nf_init->debug();
+    std::cerr << "Stack variables" << "\n";
+    for (const auto& stack : local_variables) {
+      std::cerr << "  ===================================" << "\n";
+      for (const auto var : stack) {
+        var->debug(2);
+        std::cerr << "\n";
+      }
+    }
     std::cerr << "\n";
 
-    nf_process->debug();
-    std::cerr << "\n";
+    if (nf_init) {
+      nf_init->debug();
+      std::cerr << "\n";
+    }
 
-    nf_init->synthesize(std::cout);
-    std::cout<< "\n";
+    if (nf_process) {
+      nf_process->debug();
+      std::cerr << "\n";
+    }
 
-    nf_process->synthesize(std::cout);
-    std::cout<< "\n";
+    if (nf_init) {
+      nf_init->synthesize(std::cout);
+      std::cout<< "\n";
+    }
+
+    if (nf_process) {
+      nf_process->synthesize(std::cout);
+      std::cout<< "\n";
+    }
   }
 
-};
-
-class SymbolGenerator {
-private:
-  unsigned int counter;
-  std::string name;
-
-public:
-  SymbolGenerator() : counter(1), name("var") {}
-
-  std::string generate() {
-    return name + std::to_string(counter++);
-  }
 };
 
 class RetrieveSymbols : public klee::ExprVisitor::ExprVisitor {
@@ -873,14 +1108,6 @@ struct call_paths_group_t {
       return false;
     }
 
-    if (c1.ret.isNull() != c2.ret.isNull()) {
-      return false;
-    }
-
-    if (!c1.ret.isNull() && c1.ret.compare(c2.ret) != 0) {
-      return false;
-    }
-
     for (auto arg_name_value_pair : c1.args) {
       auto arg_name = arg_name_value_pair.first;
 
@@ -1036,7 +1263,9 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
   }
 
   if (nodes.size() == 0) {
-    return Return::build(Variable::build("device"));
+    Variable_ptr device = ast.get_from_local("device");
+    assert(device != nullptr);
+    return Return::build(device);
   }
 
   if (nodes.size() > 1) {
