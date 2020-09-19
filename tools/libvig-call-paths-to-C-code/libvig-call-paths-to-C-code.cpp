@@ -854,33 +854,45 @@ public:
 
 typedef std::shared_ptr<Assignment> Assignment_ptr;
 
-class VariableDeclGenerator {
+class VariableGenerator {
 private:
   std::map<std::string, unsigned int> symbol_counter;
 
 public:
-  VariableDeclGenerator() {}
+  VariableGenerator() {}
 
-  VariableDecl_ptr generate(const std::string& type_name, const std::string& symbol, bool is_pointer) {
-    std::string indexer = type_name + "::" + symbol + (is_pointer ? "::ptr" : "");
-    auto counter = ++symbol_counter[indexer];
+  Variable_ptr generate(const std::string& symbol, const std::string& type_name, unsigned int ptr_lvl) {
+    std::string indexer = type_name + "::" + symbol + (ptr_lvl > 0 ? "::ptr" : "");
+    auto counter = symbol_counter[indexer];
 
-    Type_ptr type;
+    Type_ptr type = NamedType::build(type_name);
 
-    if (is_pointer) {
-      type = Pointer::build(NamedType::build(type_name));
-    } else {
-      type = NamedType::build(type_name);
+    while (ptr_lvl != 0) {
+      type = Pointer::build(type);
+      ptr_lvl--;
     }
 
-    VariableDecl_ptr var = VariableDecl::build(symbol + std::to_string(counter), type);
+    std::string new_symbol = symbol;
 
-    return var;
+    if (counter > 0) {
+      new_symbol += "_" + std::to_string(counter);
+    }
+
+    symbol_counter[indexer]++;
+
+    return Variable::build(new_symbol, type);
   }
 
-  VariableDecl_ptr generate(const std::string& type_name, bool is_pointer) {
-    std::cerr << "is_pointer " << is_pointer << "\n";
-    return generate(type_name, "var", is_pointer);
+  Variable_ptr generate(const std::string& symbol, const std::string& type_name) {
+    return generate(symbol, type_name, 0);
+  }
+
+  Variable_ptr generate(const std::string& type_name, unsigned int ptr_lvl) {
+    return generate("var", type_name, ptr_lvl);
+  }
+
+  Variable_ptr generate(const std::string& type_name) {
+    return generate("var", type_name, 0);
   }
 };
 
@@ -893,7 +905,7 @@ private:
   std::vector<Variable_ptr> state;
   std::vector<std::vector<Variable_ptr>> local_variables;
 
-  VariableDeclGenerator var_decl_generator;
+  VariableGenerator variable_generator;
 
   Node_ptr nf_init;
   Node_ptr nf_process;
@@ -948,53 +960,94 @@ private:
   }
 
   Node_ptr init_state_node_from_call(call_t call) {
-    std::cerr << call.function_name << "\n";
-
-    for (const auto& arg : call.args) {
-      std::cerr << arg.first << " : "
-                << expr_to_string(arg.second.first) << " | "
-                << expr_to_string(arg.second.second) << "\n";
-    }
-
-    for (const auto& ev : call.extra_vars) {
-      std::cerr << ev.first << " : "
-                << expr_to_string(ev.second.first) << " | "
-                << expr_to_string(ev.second.second) << "\n";
-    }
-
-    std::cerr << expr_to_string(call.ret) << "\n";
-
     auto fname = call.function_name;
 
-    if (fname == "map_allocate") {
-      Variable_ptr capacity = Variable::build("capacity", NamedType::build("uint32_t"));
-      Variable_ptr new_map = Variable::build("map", Pointer::build(NamedType::build("struct Map")));
-      std::vector<Expr_ptr> args { capacity, new_map };
+    std::vector<Expr_ptr> args;
+    VariableDecl_ptr ret;
 
-      FunctionCall_ptr fcall = FunctionCall::build(fname, args);
-
-      VariableDecl_ptr ret = VariableDecl::build("map_allocation_succeeded", NamedType::build("int"));
-      Assignment_ptr assignment = Assignment::build(ret, fcall);
+    if (fname == "map_allocate") {      
+      Variable_ptr capacity = variable_generator.generate("capacity", "uint32_t");
+      Variable_ptr new_map = variable_generator.generate("map", "struct Map", 2);
 
       push_to_state(capacity);
       push_to_state(new_map);
 
-      push_to_local(Variable::build(ret->get_symbol(), ret->get_type()));
+      args = std::vector<Expr_ptr>{ capacity, new_map };
 
-      std::cerr << "\n";
-      assignment->debug();
-      std::cerr << "\n";
-
-      std::cout<< "\n";
-      assignment->synthesize(std::cout);
-      std::cout<< "\n";
-
-      dump();
-
-      return assignment;
+      Variable_ptr ret_var = variable_generator.generate("map_allocation_succeeded", "int");
+      ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
     }
 
-    assert(false && "Not implemented");
+    else if (fname == "vector_allocate") {
+      Variable_ptr capacity = variable_generator.generate("capacity", "uint32_t");
+      Variable_ptr elem_size = variable_generator.generate("elem_size", "uint32_t");
+      Variable_ptr new_vector = variable_generator.generate("vector", "struct Vector", 2);
+
+      push_to_state(capacity);
+      push_to_state(elem_size);
+      push_to_state(new_vector);
+
+      args = std::vector<Expr_ptr>{ capacity, elem_size, new_vector };
+
+      Variable_ptr ret_var = variable_generator.generate("vector_alloc_success", "int");
+      ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    }
+
+    else if (fname == "dchain_allocate") {
+        Variable_ptr capacity = variable_generator.generate("index_range", "int");
+        Variable_ptr new_dchain  = variable_generator.generate("dchain", "struct DoubleChain", 2);
+
+        push_to_state(capacity);
+        push_to_state(new_dchain);
+
+        args = std::vector<Expr_ptr>{ capacity, new_dchain };
+
+        Variable_ptr ret_var = variable_generator.generate("is_dchain_allocated", "int");
+        ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    }
+
+    else {
+      std::cerr << call.function_name << "\n";
+
+      for (const auto& arg : call.args) {
+        std::cerr << arg.first << " : "
+                  << expr_to_string(arg.second.first) << " | "
+                  << expr_to_string(arg.second.second) << "\n";
+      }
+
+      for (const auto& ev : call.extra_vars) {
+        std::cerr << ev.first << " : "
+                  << expr_to_string(ev.second.first) << " | "
+                  << expr_to_string(ev.second.second) << "\n";
+      }
+
+      std::cerr << expr_to_string(call.ret) << "\n";
+
+      assert(false && "Not implemented");
+    }
+
+    assert(args.size() == call.args.size());
+
+    FunctionCall_ptr fcall = FunctionCall::build(fname, args);
+    Assignment_ptr assignment = Assignment::build(ret, fcall);
+
+    push_to_local(Variable::build(ret->get_symbol(), ret->get_type()));
+
+    std::cerr << "\n";
+    std::cerr << "~~~~~~~ NODE FROM CALL START ~~~~~~~" << "\n";
+
+    std::cerr << "\n";
+    assignment->debug();
+    std::cerr << "\n";
+
+    std::cout << "\n";
+    assignment->synthesize(std::cout);
+    std::cout << "\n";
+
+    std::cout << "\n";
+    std::cerr << "~~~~~~~ NODE FROM CALL END ~~~~~~~" << "\n\n";
+
+    return assignment;
   }
 
   Node_ptr process_state_node_from_call(call_t call) {
