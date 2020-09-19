@@ -129,7 +129,8 @@ class NamedType : public Type {
 protected:
   std::string name;
 
-  NamedType(const std::string& _name) : Type(TYPE), name(_name) {}
+  NamedType(const std::string& _name)
+    : Type(TYPE), name(_name) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -153,11 +154,6 @@ public:
     NamedType* nt = new NamedType(name);
     return std::shared_ptr<NamedType>(nt);
   }
-
-  static std::shared_ptr<NamedType> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::TYPE);
-    return std::shared_ptr<NamedType>(static_cast<NamedType*>(n.get()));
-  }
 };
 
 typedef std::shared_ptr<NamedType> NamedType_ptr;
@@ -167,10 +163,10 @@ private:
   Type_ptr type;
   unsigned int id;
 
-  Pointer(const Type_ptr& _type)
-    : Type(POINTER), type(_type), id(0) {}
+  Pointer(Type_ptr _type)
+    : Type(POINTER), type(_type->clone()), id(0) {}
 
-  Pointer(const Type_ptr& _type, unsigned int _id)
+  Pointer(Type_ptr _type, unsigned int _id)
     : Type(POINTER), type(_type->clone()), id(_id) {}
 
 public:
@@ -184,7 +180,7 @@ public:
     std::cerr << "*";
   }
 
-  const Type_ptr& get_type() const { return type; }
+  Type_ptr get_type() const { return type; }
   unsigned int get_id() const { return id; }
 
   void allocate(unsigned int _id) {
@@ -201,14 +197,9 @@ public:
     return std::shared_ptr<Type>(ptr);
   }
 
-  static std::shared_ptr<Pointer> build(const Type_ptr& _type, unsigned int _id=0) {
+  static std::shared_ptr<Pointer> build(Type_ptr _type, unsigned int _id=0) {
     Pointer* ptr = new Pointer(_type, _id);
     return std::shared_ptr<Pointer>(ptr);
-  }
-
-  static std::shared_ptr<Pointer> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::POINTER);
-    return std::shared_ptr<Pointer>(static_cast<Pointer*>(n.get()));
   }
 };
 
@@ -243,11 +234,6 @@ public:
   static std::shared_ptr<Import> build(const std::string& _path, bool _relative) {
     Import* import = new Import(_path, _relative);
     return std::shared_ptr<Import>(import);
-  }
-
-  static std::shared_ptr<Import> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::IMPORT);
-    return std::shared_ptr<Import>(static_cast<Import*>(n.get()));
   }
 };
 
@@ -288,11 +274,6 @@ public:
   static std::shared_ptr<Block> build(const std::vector<Node_ptr> _nodes) {
     Block* block = new Block(_nodes);
     return std::shared_ptr<Block>(block);
-  }
-
-  static std::shared_ptr<Block> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::IMPORT);
-    return std::shared_ptr<Block>(static_cast<Block*>(n.get()));
   }
 };
 
@@ -346,11 +327,6 @@ public:
     Branch* branch = new Branch(_condition, _on_true, _on_false);
     return std::shared_ptr<Branch>(branch);
   }
-
-  static std::shared_ptr<Branch> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::BRANCH);
-    return std::shared_ptr<Branch>(static_cast<Branch*>(n.get()));
-  }
 };
 
 typedef std::shared_ptr<Branch> Branch_ptr;
@@ -382,11 +358,6 @@ public:
     Return* _return = new Return(_value);
     return std::shared_ptr<Return>(_return);
   }
-
-  static std::shared_ptr<Return> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::RETURN);
-    return std::shared_ptr<Return>(static_cast<Return*>(n.get()));
-  }
 };
 
 typedef std::shared_ptr<Return> Return_ptr;
@@ -398,10 +369,10 @@ private:
 
   FunctionCall(const std::string& _name, const std::vector<Expr_ptr> _args)
     : Expression(FUNCTION_CALL), name(_name) {
-    for (auto arg : _args) {
+    for (const auto& arg : _args) {
       Expr_ptr cloned = arg->clone();
       cloned->set_terminate_line(false);
-      args.push_back(cloned);
+      args.push_back(std::move(cloned));
     }
   }
 
@@ -450,11 +421,6 @@ public:
     FunctionCall* function_call = new FunctionCall(_name, _args);
     return std::shared_ptr<FunctionCall>(function_call);
   }
-
-  static std::shared_ptr<FunctionCall> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::FUNCTION_CALL);
-    return std::shared_ptr<FunctionCall>(static_cast<FunctionCall*>(n.get()));
-  }
 };
 
 typedef std::shared_ptr<FunctionCall> FunctionCall_ptr;
@@ -475,7 +441,7 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
-    std::cerr << "<literal ";
+    std::cerr << "<literal";
     std::cerr << " signed=false";
     std::cerr << " value=" << std::to_string(value);
     std::cerr << " />";
@@ -489,11 +455,6 @@ public:
   static std::shared_ptr<UnsignedLiteral> build(uint64_t _value) {
     UnsignedLiteral* literal = new UnsignedLiteral(_value);
     return std::shared_ptr<UnsignedLiteral>(literal);
-  }
-
-  static std::shared_ptr<UnsignedLiteral> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::UNSIGNED_LITERAL);
-    return std::shared_ptr<UnsignedLiteral>(static_cast<UnsignedLiteral*>(n.get()));
   }
 };
 
@@ -515,7 +476,7 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
-    std::cerr << "<literal ";
+    std::cerr << "<literal";
     std::cerr << " signed=true";
     std::cerr << " value=" << std::to_string(value);
     std::cerr << " />";
@@ -530,11 +491,6 @@ public:
     SignedLiteral* literal = new SignedLiteral(_value);
     return std::shared_ptr<SignedLiteral>(literal);
   }
-
-  static std::shared_ptr<SignedLiteral> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::SIGNED_LITERAL);
-    return std::shared_ptr<SignedLiteral>(static_cast<SignedLiteral*>(n.get()));
-  }
 };
 
 typedef std::shared_ptr<SignedLiteral> SignedLiteral_ptr;
@@ -544,14 +500,14 @@ private:
   Expr_ptr lhs;
   Expr_ptr rhs;
 
-  Equals(const Expr_ptr& _lhs, const Expr_ptr& _rhs)
+  Equals(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {
     lhs->set_terminate_line(false);
   }
 
 public:
-  const Expr_ptr& get_lhs() const { return lhs; }
-  const Expr_ptr& get_rhs() const { return rhs; }
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
 
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
     indent(lvl);
@@ -568,6 +524,7 @@ public:
     lhs->debug(lvl+2);
     std::cerr << "\n";
     rhs->debug(lvl+2);
+    std::cerr << "\n";
 
     indent(lvl);
     std::cerr << "</equals>";
@@ -578,18 +535,13 @@ public:
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<Equals> build(const Expr_ptr& _lhs, const Expr_ptr& _rhs) {
+  static std::shared_ptr<Equals> build(Expr_ptr _lhs, Expr_ptr _rhs) {
     Equals* equals = new Equals(_lhs, _rhs);
     return std::shared_ptr<Equals>(equals);
   }
-
-  static std::shared_ptr<Equals> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::EQUALS);
-    return std::shared_ptr<Equals>(static_cast<Equals*>(n.get()));
-  }
 };
 
-typedef std::shared_ptr<SignedLiteral> SignedLiteral_ptr;
+typedef std::shared_ptr<Equals> Equals_ptr;
 
 class Read : public Expression {
 private:
@@ -597,22 +549,13 @@ private:
   unsigned int size;
   unsigned int offset;
 
-  Read(const Expr_ptr& _expr, unsigned int _size, unsigned int _offset)
-    : Expression(READ) { //, expr(_expr->clone()), size(_size), offset(_offset) {
-
-    std::cerr << "expr cloned" << "\n";
-    _expr->clone()->debug();
-    std::cerr << "\n";
-    std::cerr << "done" << "\n";
-
-    expr = _expr->clone();
+  Read(Expr_ptr _expr, unsigned int _size, unsigned int _offset)
+    : Expression(READ), expr(_expr->clone()), size(_size), offset(_offset) {
     expr->set_terminate_line(false);
-    size = _size;
-    offset = _offset;
   }
 
 public:
-  const Expr_ptr& get_expr() const { return expr; }
+  Expr_ptr get_expr() const { return expr; }
   unsigned int get_size() const { return size; }
   unsigned int get_offset() const { return offset; }
 
@@ -653,23 +596,13 @@ public:
   }
 
   std::shared_ptr<Expression> clone() const override {
-    std::cerr << "\n";
-    std::cerr << "cloning read" << "\n";
-    debug();
-    std::cerr << "\n";
-
     Expression* e = new Read(expr, size, offset);
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<Read> build(const Expr_ptr& _expr, unsigned int _size, unsigned int _offset) {
+  static std::shared_ptr<Read> build(Expr_ptr _expr, unsigned int _size, unsigned int _offset) {
     Read* equals = new Read(_expr, _size, _offset);
     return std::shared_ptr<Read>(equals);
-  }
-
-  static std::shared_ptr<Read> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::READ);
-    return std::shared_ptr<Read>(static_cast<Read*>(n.get()));
   }
 };
 
@@ -682,7 +615,7 @@ private:
   std::string symbol;
   Type_ptr type;
 
-  Variable(const std::string& _symbol , const Type_ptr& _type)
+  Variable(std::string _symbol , Type_ptr _type)
     : Expression(VARIABLE), symbol(_symbol), type(_type->clone()) {}
 
 public:
@@ -702,7 +635,7 @@ public:
   }
 
   const std::string& get_symbol() const { return symbol; }
-  const Type_ptr& get_type() const { return type; }
+  Type_ptr get_type() const { return type; }
 
   std::shared_ptr<Expression> clone() const override {
     Expression* e = new Variable(symbol, type);
@@ -710,15 +643,9 @@ public:
   }
 
   static std::shared_ptr<Variable> build(const std::string& _symbol,
-                                         const Type_ptr& _type) {
+                                         Type_ptr _type) {
     Variable* variable = new Variable(_symbol, _type);
     return std::shared_ptr<Variable>(variable);
-  }
-
-  static std::shared_ptr<Variable> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::VARIABLE ||
-           n->get_kind() == Node::Kind::VARIABLE_DECL);
-    return std::shared_ptr<Variable>(static_cast<Variable*>(n.get()));
   }
 };
 
@@ -729,12 +656,12 @@ private:
   std::string symbol;
   Type_ptr type;
 
-  VariableDecl(const std::string& _symbol, const Type_ptr& _type)
+  VariableDecl(const std::string& _symbol, Type_ptr _type)
     : Expression(VARIABLE_DECL), symbol(_symbol), type(_type->clone()) {}
 
 public:
   const std::string& get_symbol() const { return symbol; }
-  const Type_ptr& get_type() const { return type; }
+  Type_ptr get_type() const { return type; }
 
   void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
     indent(ofs, lvl);
@@ -763,14 +690,9 @@ public:
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<VariableDecl> build(const std::string& _symbol, const Type_ptr& _type) {
+  static std::shared_ptr<VariableDecl> build(const std::string& _symbol, Type_ptr _type) {
     VariableDecl* variable_decl = new VariableDecl(_symbol, _type);
     return std::shared_ptr<VariableDecl>(variable_decl);
-  }
-
-  static std::shared_ptr<VariableDecl> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::VARIABLE_DECL);
-    return std::shared_ptr<VariableDecl>(static_cast<VariableDecl*>(n.get()));
   }
 };
 
@@ -781,7 +703,7 @@ private:
   std::string symbol;
   Type_ptr type;
 
-  FunctionArgDecl(const std::string& _symbol, const Type_ptr& _type)
+  FunctionArgDecl(const std::string& _symbol, Type_ptr _type)
     : Node(FUNCTION_ARG_DECL), symbol(_symbol), type(_type) {}
 
 public:
@@ -803,14 +725,9 @@ public:
     std::cerr << " />";
   }
 
-  static std::shared_ptr<FunctionArgDecl> build(const std::string& _symbol, const Type_ptr& _type) {
+  static std::shared_ptr<FunctionArgDecl> build(const std::string& _symbol, Type_ptr _type) {
     FunctionArgDecl* function_arg_decl = new FunctionArgDecl(_symbol, _type);
     return std::shared_ptr<FunctionArgDecl>(function_arg_decl);
-  }
-
-  static std::shared_ptr<FunctionArgDecl> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::FUNCTION_ARG_DECL);
-    return std::shared_ptr<FunctionArgDecl>(static_cast<FunctionArgDecl*>(n.get()));
   }
 };
 
@@ -882,11 +799,6 @@ public:
     Function* function = new Function(_name, _args, _body, _return_type);
     return std::shared_ptr<Function>(function);
   }
-
-  static std::shared_ptr<Function> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::FUNCTION);
-    return std::shared_ptr<Function>(static_cast<Function*>(n.get()));
-  }
 };
 
 typedef std::shared_ptr<Function> Function_ptr;
@@ -896,7 +808,7 @@ private:
   Expr_ptr variable;
   Expr_ptr value;
 
-  Assignment(const Expr_ptr& _variable, Expr_ptr _value)
+  Assignment(Expr_ptr _variable, Expr_ptr _value)
     : Expression(ASSIGNMENT),
       variable(_variable->clone()), value(_value->clone()) {
     variable->set_terminate_line(false);
@@ -929,19 +841,14 @@ public:
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<Assignment> build(const Variable_ptr& _variable, Expr_ptr _value) {
+  static std::shared_ptr<Assignment> build(Variable_ptr _variable, Expr_ptr _value) {
     Assignment* assignment = new Assignment(_variable, _value);
     return std::shared_ptr<Assignment>(assignment);
   }
 
-  static std::shared_ptr<Assignment> build(const VariableDecl_ptr& _variable_decl, Expr_ptr _value) {
+  static std::shared_ptr<Assignment> build(VariableDecl_ptr _variable_decl, Expr_ptr _value) {
     Assignment* assignment = new Assignment(_variable_decl, _value);
     return std::shared_ptr<Assignment>(assignment);
-  }
-
-  static std::shared_ptr<Assignment> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::ASSIGNMENT);
-    return std::shared_ptr<Assignment>(static_cast<Assignment*>(n.get()));
   }
 };
 
@@ -995,7 +902,7 @@ private:
 
 public:
   Variable_ptr get_from_state(const std::string& symbol) {
-    auto finder = [&](const Variable_ptr& v) -> bool {
+    auto finder = [&](Variable_ptr v) -> bool {
       return symbol == v->get_symbol();
     };
 
@@ -1009,7 +916,7 @@ public:
   }
 
   Variable_ptr get_from_local(const std::string& symbol) {
-    auto finder = [&](const Variable_ptr& v) -> bool {
+    auto finder = [&](Variable_ptr v) -> bool {
       return symbol == v->get_symbol();
     };
 
@@ -1027,13 +934,13 @@ public:
 private:
   void push_to_state(Variable_ptr var) {
     assert(get_from_state(var->get_symbol()) == nullptr);
-    state.push_back(var);
+    state.push_back(std::move(var));
   }
 
   void push_to_local(Variable_ptr var) {
     assert(get_from_local(var->get_symbol()) == nullptr);
     assert(local_variables.size() > 0);
-    local_variables.back().push_back(var);
+    local_variables.back().push_back(std::move(var));
   }
 
   void declare_variables_if_needed(call_t call) {
@@ -1251,7 +1158,7 @@ public:
 
 };
 
-class KleeExprToASTNodeConverter: public klee::ExprVisitor::ExprVisitor {
+class KleeExprToASTNodeConverter : public klee::ExprVisitor::ExprVisitor {
 private:
   AST* ast;
   Expr_ptr result;
@@ -1323,98 +1230,59 @@ public:
 
     std::pair<bool, unsigned int> saved_symbol_width;
 
-    {
-      std::cerr << "left klee" << "\n";
-      std::cerr << expr_to_string(left) << "\n";
-      std::cerr << "\n";
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
 
-      KleeExprToASTNodeConverter converter(ast);
-      converter.visit(left);
-      std::cerr << "returned" << "\n";
+    left_converter.visit(left);
 
-      left_expr = converter.get_result();
-      saved_symbol_width = converter.get_symbol_width();
+    left_expr = left_converter.get_result();
+    saved_symbol_width = left_converter.get_symbol_width();
 
-      assert(left_expr);
-      assert(saved_symbol_width.first);
-    }
+    assert(left_expr);
+    assert(saved_symbol_width.first);
 
-    {
-      std::cerr << "right klee" << "\n";
-      std::cerr << expr_to_string(right) << "\n";
-      std::cerr << "\n";
+    right_converter.visit(right);
+    right_expr = right_converter.get_result();
 
-      KleeExprToASTNodeConverter converter(ast);
-      converter.visit(right);
-      std::cerr << "returned" << "\n";
+    assert(right_expr);
 
-      right_expr = converter.get_result();
-
-      assert(right_expr);
-
-      assert(converter.get_symbol_width().first == saved_symbol_width.first);
-      assert(converter.get_symbol_width().second == saved_symbol_width.second);
-    }
+    assert(right_converter.get_symbol_width().first == saved_symbol_width.first);
+    assert(right_converter.get_symbol_width().second == saved_symbol_width.second);
 
     assert(left_expr->get_kind() == Node::Kind::READ);
     assert(right_expr->get_kind() == Node::Kind::READ);
 
-    Read_ptr left_read = Read::cast(left_expr);
-    Read_ptr right_read = Read::cast(right_expr);
+    Read* left_read = static_cast<Read*>(left_expr.get());
+    Read* right_read = static_cast<Read*>(right_expr.get());
 
     assert(left_read->get_expr()->get_kind() == Node::Kind::VARIABLE);
     assert(right_read->get_expr()->get_kind() == Node::Kind::VARIABLE);
 
-    std::cerr << "\n";
-    std::cerr << "left " << "\n";
-    left_expr->debug();
-    std::cerr << "\n";
-    std::cerr << "\n";
-
-    std::cerr << "\n";
-    std::cerr << "right " << "\n";
-    right_expr->debug();
-    std::cerr << "\n";
-    std::cerr << "\n";
-
     assert((left_read->get_offset() * left_read->get_size()) ==
            right_read->get_offset() * right_read->get_size() + right_read->get_size());
 
-    Variable_ptr left_read_var = Variable::cast(left_read->get_expr());
-    Variable_ptr right_read_var = Variable::cast(right_read->get_expr());
+    Expr_ptr left_read_expr = left_read->get_expr();
+    Expr_ptr right_read_expr = right_read->get_expr();
+
+    Variable* left_read_var = static_cast<Variable*>(left_read_expr.get());
+    Variable* right_read_var = static_cast<Variable*>(right_read_expr.get());
 
     assert(left_read_var->get_symbol() == right_read_var->get_symbol());
 
-    Read_ptr simplified = Read::build(left_read_var,
+    Read_ptr simplified = Read::build(left_read_expr,
                                       left_read->get_size() + right_read->get_size(),
                                       right_read->get_offset());
 
-    std::cerr << "left read var" << "\n";
-    left_read_var->debug();
-    std::cerr << "\n";
-
-    std::cerr << "created simplified" << "\n";
-    simplified->debug();
-    std::cerr << "\n";
-
-    if (simplified->get_size() == saved_symbol_width.second && simplified->get_offset() == 0) {
-      std::cerr << "FINISHED" << "\n";
-      assert(false);
-
+    if (simplified->get_size() == saved_symbol_width.second && simplified->get_offset() == 0) {      
       save_result(simplified->get_expr());
       symbol_width = saved_symbol_width;
+
       return klee::ExprVisitor::Action::skipChildren();
     }
 
-    std::cerr << "\n";
-    std::cerr << "simplified " << "\n";
-    simplified->debug();
-    std::cerr << "\n";
 
     save_result(simplified);
     symbol_width = saved_symbol_width;
-
-    std::cerr << "returning..." << "\n";
 
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -1514,31 +1382,27 @@ public:
 
     Expr_ptr left, right;
 
-    {
-      KleeExprToASTNodeConverter converter(ast);
-      converter.visit(e.getKid(0));
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
 
-      left = converter.get_result();
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
 
-      if (left == nullptr) {
-        left = const_to_ast_expr(e.getKid(0));
-        assert(left != nullptr);
-      }
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
     }
 
-    {
-      KleeExprToASTNodeConverter converter(ast);
-      converter.visit(e.getKid(1));
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
 
-      right = converter.get_result();
-
-      if (right == nullptr) {
-        right = const_to_ast_expr(e.getKid(1));
-        assert(right != nullptr);
-      }
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
     }
 
-    save_result(Equals::build(left, right));
+    Equals_ptr equals = Equals::build(left, right);
+    save_result(equals);
 
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -1603,23 +1467,10 @@ public:
 };
 
 Node_ptr node_from_expr(AST *ast, klee::ref<klee::Expr> expr) {
-  std::cerr << "* node from expr" << "\n";
-  std::cerr << expr_to_string(expr) << "\n";
-
   KleeExprToASTNodeConverter exprToNodeConverter(ast);
   exprToNodeConverter.visit(expr);
 
   Expr_ptr generated_expr = exprToNodeConverter.get_result();
-
-  std::cerr << "\n";
-  generated_expr->debug();
-  std::cerr << "\n";
-
-  std::cout << "\n";
-  generated_expr->synthesize(std::cout);
-  std::cout << "\n";
-
-  exit(0);
 
   return generated_expr;
 }
@@ -1955,6 +1806,39 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
     Node_ptr _else = build_ast(ast, call_paths_manager_t(group.out), call_idx);
 
     Node_ptr branch = Branch::build(cond, _then, _else);
+
+    std::cerr << "discriminating constraint" << "\n";
+    std::cerr << expr_to_string(discriminating_constraint) << "\n";
+
+    std::cerr << "\n";
+    std::cerr << "condition node" << "\n";
+    cond->debug();
+    std::cerr << "\n";
+    std::cerr << "\n";
+
+    std::cerr << "\n";
+    std::cerr << "then node" << "\n";
+    _then->debug();
+    std::cerr << "\n";
+    std::cerr << "\n";
+
+    std::cerr << "\n";
+    std::cerr << "else node" << "\n";
+    _else->debug();
+    std::cerr << "\n";
+    std::cerr << "\n";
+
+    std::cerr << "\n";
+    std::cerr << "Final branch code" << "\n";
+    branch->debug();
+    std::cerr << "\n";
+    std::cerr << "\n";
+
+    branch->synthesize(std::cout);
+    std::cout << "\n";
+    std::cout << "\n";
+
+    assert(false);
 
     nodes.push_back(branch);
 
