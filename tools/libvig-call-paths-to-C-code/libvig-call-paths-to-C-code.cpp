@@ -83,7 +83,10 @@ protected:
   }
 
   void indent(unsigned int lvl=0) const {
-    std::cerr << std::string(lvl, ' ');
+    while (lvl != 0) {
+      std::cerr << " ";
+      lvl--;
+    }
   }
 
 public:
@@ -168,7 +171,7 @@ private:
     : Type(POINTER), type(_type), id(0) {}
 
   Pointer(const Type_ptr& _type, unsigned int _id)
-    : Type(POINTER), type(_type), id(_id) {}
+    : Type(POINTER), type(_type->clone()), id(_id) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -194,7 +197,7 @@ public:
   }
 
   std::shared_ptr<Type> clone() const override {
-    Type* ptr = new Pointer(type->clone(), id);
+    Type* ptr = new Pointer(type, id);
     return std::shared_ptr<Type>(ptr);
   }
 
@@ -394,9 +397,11 @@ private:
   std::vector<Expr_ptr> args;
 
   FunctionCall(const std::string& _name, const std::vector<Expr_ptr> _args)
-    : Expression(FUNCTION_CALL), name(_name), args(_args) {
-    for (auto arg : args) {
-      arg->set_terminate_line(false);
+    : Expression(FUNCTION_CALL), name(_name) {
+    for (auto arg : _args) {
+      Expr_ptr cloned = arg->clone();
+      cloned->set_terminate_line(false);
+      args.push_back(cloned);
     }
   }
 
@@ -437,9 +442,7 @@ public:
   }
 
   std::shared_ptr<Expression> clone() const override {
-    std::vector<Expr_ptr> _args;
-    for (const auto& arg : args) _args.push_back(arg->clone());
-    Expression* e = new FunctionCall(name, _args);
+    Expression* e = new FunctionCall(name, args);
     return std::shared_ptr<Expression>(e);
   }
 
@@ -542,7 +545,7 @@ private:
   Expr_ptr rhs;
 
   Equals(const Expr_ptr& _lhs, const Expr_ptr& _rhs)
-    : Expression(EQUALS), lhs(_lhs), rhs(_rhs) {
+    : Expression(EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {
     lhs->set_terminate_line(false);
   }
 
@@ -571,7 +574,7 @@ public:
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new Equals(lhs->clone(), rhs->clone());
+    Expression* e = new Equals(lhs, rhs);
     return std::shared_ptr<Expression>(e);
   }
 
@@ -595,8 +598,17 @@ private:
   unsigned int offset;
 
   Read(const Expr_ptr& _expr, unsigned int _size, unsigned int _offset)
-    : Expression(READ), expr(_expr), size(_size), offset(_offset) {
+    : Expression(READ) { //, expr(_expr->clone()), size(_size), offset(_offset) {
+
+    std::cerr << "expr cloned" << "\n";
+    _expr->clone()->debug();
+    std::cerr << "\n";
+    std::cerr << "done" << "\n";
+
+    expr = _expr->clone();
     expr->set_terminate_line(false);
+    size = _size;
+    offset = _offset;
   }
 
 public:
@@ -605,12 +617,14 @@ public:
   unsigned int get_offset() const { return offset; }
 
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    assert(expr);
+
     indent(lvl);
 
     ofs << "(";
     expr->synthesize(ofs);
     ofs << " >> ";
-    ofs << std::to_string(offset * size);
+    ofs << offset * size;
     ofs << ") & ";
 
     std::stringstream stream;
@@ -625,9 +639,10 @@ public:
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
+
     std::cerr << "<read";
-    std::cerr << " size=" << std::to_string(size);
-    std::cerr << " offset=" << std::to_string(offset);
+    std::cerr << " size=" << size;
+    std::cerr << " offset=" << offset;
     std::cerr << " >" << "\n";
 
     expr->debug(lvl+2);
@@ -638,7 +653,12 @@ public:
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new Read(expr->clone(), size, offset);
+    std::cerr << "\n";
+    std::cerr << "cloning read" << "\n";
+    debug();
+    std::cerr << "\n";
+
+    Expression* e = new Read(expr, size, offset);
     return std::shared_ptr<Expression>(e);
   }
 
@@ -658,15 +678,14 @@ typedef std::shared_ptr<Read> Read_ptr;
 class VariableDecl;
 
 class Variable : public Expression {
-protected:
+private:
   std::string symbol;
   Type_ptr type;
 
   Variable(const std::string& _symbol , const Type_ptr& _type)
-    : Expression(VARIABLE), symbol(_symbol), type(_type) {}
+    : Expression(VARIABLE), symbol(_symbol), type(_type->clone()) {}
 
 public:
-
   void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
     ofs << symbol;
   }
@@ -675,9 +694,10 @@ public:
     indent(lvl);
 
     std::cerr << "<var";
-    std::cerr << " symbol=" << symbol;
+    std::cerr << " symbol=";
+    std::cerr << symbol;
     std::cerr << " type=";
-    type->debug(0);
+    type->debug();
     std::cerr << " />";
   }
 
@@ -685,7 +705,7 @@ public:
   const Type_ptr& get_type() const { return type; }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new Variable(symbol, type->clone());
+    Expression* e = new Variable(symbol, type);
     return std::shared_ptr<Expression>(e);
   }
 
@@ -696,21 +716,25 @@ public:
   }
 
   static std::shared_ptr<Variable> cast(Node_ptr n) {
-    assert(n->get_kind() == Node::Kind::VARIABLE);
+    assert(n->get_kind() == Node::Kind::VARIABLE ||
+           n->get_kind() == Node::Kind::VARIABLE_DECL);
     return std::shared_ptr<Variable>(static_cast<Variable*>(n.get()));
   }
 };
 
 typedef std::shared_ptr<Variable> Variable_ptr;
 
-class VariableDecl : public Variable {
+class VariableDecl : public Expression {
 private:
+  std::string symbol;
+  Type_ptr type;
+
   VariableDecl(const std::string& _symbol, const Type_ptr& _type)
-    : Variable(_symbol, _type) {
-    kind = VARIABLE_DECL;
-  }
+    : Expression(VARIABLE_DECL), symbol(_symbol), type(_type->clone()) {}
 
 public:
+  const std::string& get_symbol() const { return symbol; }
+  const Type_ptr& get_type() const { return type; }
 
   void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
     indent(ofs, lvl);
@@ -732,6 +756,11 @@ public:
     std::cerr << " type=";
     type->debug(0);
     std::cerr << " />";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new VariableDecl(symbol, type);
+    return std::shared_ptr<Expression>(e);
   }
 
   static std::shared_ptr<VariableDecl> build(const std::string& _symbol, const Type_ptr& _type) {
@@ -864,16 +893,16 @@ typedef std::shared_ptr<Function> Function_ptr;
 
 class Assignment : public Expression {
 private:
-  Variable_ptr variable;
+  Expr_ptr variable;
   Expr_ptr value;
 
-  Assignment(const Variable_ptr& _variable, Expr_ptr _value)
-    : Expression(ASSIGNMENT), variable(_variable), value(_value) {
+  Assignment(const Expr_ptr& _variable, Expr_ptr _value)
+    : Expression(ASSIGNMENT),
+      variable(_variable->clone()), value(_value->clone()) {
     variable->set_terminate_line(false);
   }
 
 public:
-
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
     indent(ofs, lvl);
 
@@ -896,12 +925,17 @@ public:
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new Assignment(Variable::cast(variable->clone()), value->clone());
+    Expression* e = new Assignment(variable, value);
     return std::shared_ptr<Expression>(e);
   }
 
   static std::shared_ptr<Assignment> build(const Variable_ptr& _variable, Expr_ptr _value) {
     Assignment* assignment = new Assignment(_variable, _value);
+    return std::shared_ptr<Assignment>(assignment);
+  }
+
+  static std::shared_ptr<Assignment> build(const VariableDecl_ptr& _variable_decl, Expr_ptr _value) {
+    Assignment* assignment = new Assignment(_variable_decl, _value);
     return std::shared_ptr<Assignment>(assignment);
   }
 
@@ -1223,6 +1257,10 @@ private:
   Expr_ptr result;
   std::pair<bool, unsigned int> symbol_width;
 
+  void save_result(Expr_ptr _result) {
+    result = _result->clone();
+  }
+
 public:
   KleeExprToASTNodeConverter(AST* _ast)
     : ExprVisitor(false), ast(_ast) {}
@@ -1266,7 +1304,7 @@ public:
     auto constant_index = static_cast<klee::ConstantExpr *>(index.get());
     auto index_value = constant_index->getZExtValue();
 
-    result = Read::build(var, size, index_value);
+    save_result(Read::build(var, size, index_value));
 
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -1292,10 +1330,12 @@ public:
 
       KleeExprToASTNodeConverter converter(ast);
       converter.visit(left);
+      std::cerr << "returned" << "\n";
 
       left_expr = converter.get_result();
       saved_symbol_width = converter.get_symbol_width();
 
+      assert(left_expr);
       assert(saved_symbol_width.first);
     }
 
@@ -1306,8 +1346,11 @@ public:
 
       KleeExprToASTNodeConverter converter(ast);
       converter.visit(right);
+      std::cerr << "returned" << "\n";
 
       right_expr = converter.get_result();
+
+      assert(right_expr);
 
       assert(converter.get_symbol_width().first == saved_symbol_width.first);
       assert(converter.get_symbol_width().second == saved_symbol_width.second);
@@ -1346,8 +1389,19 @@ public:
                                       left_read->get_size() + right_read->get_size(),
                                       right_read->get_offset());
 
+    std::cerr << "left read var" << "\n";
+    left_read_var->debug();
+    std::cerr << "\n";
+
+    std::cerr << "created simplified" << "\n";
+    simplified->debug();
+    std::cerr << "\n";
+
     if (simplified->get_size() == saved_symbol_width.second && simplified->get_offset() == 0) {
-      result = simplified->get_expr();
+      std::cerr << "FINISHED" << "\n";
+      assert(false);
+
+      save_result(simplified->get_expr());
       symbol_width = saved_symbol_width;
       return klee::ExprVisitor::Action::skipChildren();
     }
@@ -1357,8 +1411,10 @@ public:
     simplified->debug();
     std::cerr << "\n";
 
-    result = simplified;
+    save_result(simplified);
     symbol_width = saved_symbol_width;
+
+    std::cerr << "returning..." << "\n";
 
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -1482,7 +1538,7 @@ public:
       }
     }
 
-    result = Equals::build(left, right);
+    save_result(Equals::build(left, right));
 
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -1542,7 +1598,7 @@ public:
   }
 
   Expr_ptr get_result() {
-    return result == nullptr ? result : result->clone();
+    return (result == nullptr ? result : result->clone());
   }
 };
 
