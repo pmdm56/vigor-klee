@@ -1030,6 +1030,23 @@ public:
     local_variables.pop_back();
   }
 
+  Return_ptr get_failed_return() {
+    switch (context) {
+      case INIT: {
+        SignedLiteral_ptr zero = SignedLiteral::build(0);
+        return Return::build(zero);
+      }
+      case PROCESS: {
+        Variable_ptr device = get_from_local("device");
+        assert(device != nullptr);
+        return Return::build(device);
+      }
+      case DONE: assert(false);
+    }
+
+    return nullptr;
+  }
+
   Node_ptr node_from_call(call_t call) {
     std::cerr << "* node from call" << "\n";
 
@@ -1038,6 +1055,8 @@ public:
       case PROCESS: return process_state_node_from_call(call);
       case DONE: assert(false);
     }
+
+    return nullptr;
   }
 
   void context_switch(Context ctx) {
@@ -1771,27 +1790,39 @@ bool are_call_paths_finished(std::vector<call_path_t*> call_paths, unsigned int 
 }
 
 Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx=0) {
-  assert(manager.call_paths.size() > 0);
+  std::cerr << "\n"
+            << "********* CALL BUILD AST *********" << "\n"
+            << "  call_idx   " << call_idx << "\n"
+            << "  call paths " << manager.call_paths.size() << "\n"
+            << "**********************************" << "\n"
+            << "\n";
 
   std::vector<Node_ptr> nodes;
 
   // commit nf_init and nf_process
   bool should_commit = (call_idx == 0 ||
-                        (call_idx < manager.call_paths[0]->calls.size() &&
+                        (manager.call_paths.size() > 0 &&
+                        call_idx < manager.call_paths[0]->calls.size() &&
                         manager.call_paths[0]->calls[call_idx].function_name == "start_time"));
 
-  if (manager.call_paths.size() == 1) {
-    return ast.node_from_call(manager.call_paths[0]->calls[call_idx]);
-  }
-
   for (;;) {
+    if (manager.call_paths.size() == 0) {
+      break;
+    }
+
     call_paths_group_t group(manager, call_idx);
 
-    if (group.in.size() == manager.call_paths.size()) {
+    bool finished = are_call_paths_finished(group.in, call_idx);
+
+    if (group.in.size() == manager.call_paths.size() && !finished) {
       auto node = ast.node_from_call(manager.call_paths[0]->calls[call_idx]);
       nodes.push_back(node);
       call_idx++;
       continue;
+    }
+
+    else if (group.in.size() == manager.call_paths.size() && finished) {
+      break;
     }
 
     std::cerr << "total: " << manager.call_paths.size()
@@ -1850,9 +1881,9 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
   }
 
   if (nodes.size() == 0) {
-    Variable_ptr device = ast.get_from_local("device");
-    assert(device != nullptr);
-    return Return::build(device);
+    Return_ptr failed_ret = ast.get_failed_return();
+    assert(failed_ret);
+    return failed_ret;
   }
 
   if (nodes.size() > 1) {
