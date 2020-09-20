@@ -250,8 +250,6 @@ public:
     ofs << (relative ? "\"" : "<");
     ofs << path;
     ofs << (relative ? "\"" : ">");
-
-    ofs << "\n";
   }
 
   void debug(unsigned int lvl=0) const override {
@@ -834,6 +832,11 @@ public:
     VariableDecl* variable_decl = new VariableDecl(_symbol, _type);
     return std::shared_ptr<VariableDecl>(variable_decl);
   }
+
+  static std::shared_ptr<VariableDecl> build(Variable_ptr variable) {
+    VariableDecl* variable_decl = new VariableDecl(variable->get_symbol(), variable->get_type());
+    return std::shared_ptr<VariableDecl>(variable_decl);
+  }
 };
 
 typedef std::shared_ptr<VariableDecl> VariableDecl_ptr;
@@ -1038,7 +1041,9 @@ private:
 
 private:
   std::string output_path;
-  std::vector<Variable_ptr> state;
+
+  std::vector<Import_ptr> imports;
+  std::vector<Variable_ptr> state;  
   std::vector<std::vector<Variable_ptr>> local_variables;
 
   VariableGenerator variable_generator;
@@ -1243,7 +1248,20 @@ private:
   }
 
 public:
-  AST() { context_switch(INIT); }
+  AST() {
+    context_switch(INIT);
+
+    imports = std::vector<Import_ptr> {
+      Import::build("stdint", false),
+      Import::build("nf.h", true),
+      Import::build("nf-util.h", true),
+      Import::build("nf-log.h", true),
+      Import::build("libvig/verified/double-chain.h", true),
+      Import::build("libvig/verified/map.h", true),
+      Import::build("libvig/verified/vector.h", true),
+      Import::build("libvig/verified/expirator.h", true)
+    };
+  }
 
   void push() {
     local_variables.emplace_back();
@@ -1324,7 +1342,12 @@ public:
 
   }
 
-  void commit(std::vector<Node_ptr> nodes) {
+  void commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr constraint) {
+    if (nodes.size() == 0) {
+      Node_ptr ret = get_return(call_path, constraint);
+      nodes.push_back(ret);
+    }
+
     switch (context) {
     case INIT: {
       std::vector<FunctionArgDecl_ptr> _args;
@@ -1364,6 +1387,42 @@ public:
   }
 
   void dump() const {
+    debug();
+    print();
+  }
+
+private:
+  void print() const {
+
+    for (auto import : imports) {
+      import->synthesize(std::cout);
+      std::cout << "\n";
+    }
+
+    if (state.size()) {
+      std::cout<< "\n";
+    }
+
+    for (auto gv : state) {
+      VariableDecl_ptr decl = VariableDecl::build(gv);
+      decl->synthesize(std::cout);
+      std::cout<< "\n";
+    }
+
+    if (nf_init) {
+      std::cout<< "\n";
+      nf_init->synthesize(std::cout);
+      std::cout<< "\n";
+    }
+
+    if (nf_process) {
+      std::cout<< "\n";
+      nf_process->synthesize(std::cout);
+      std::cout<< "\n";
+    }
+  }
+
+  void debug() const {
     std::cerr << "\n";
 
     std::cerr << "Global variables" << "\n";
@@ -1391,18 +1450,6 @@ public:
       std::cerr << "\n";
       nf_process->debug();
       std::cerr << "\n";
-    }
-
-    if (nf_init) {
-      std::cout<< "\n";
-      nf_init->synthesize(std::cout);
-      std::cout<< "\n";
-    }
-
-    if (nf_process) {
-      std::cout<< "\n";
-      nf_process->synthesize(std::cout);
-      std::cout<< "\n";
     }
   }
 
@@ -1819,25 +1866,35 @@ struct ast_builder_assistant_t {
   unsigned int call_idx;
   Node_ptr discriminating_constraint;
   bool root;
+  bool overflow;
 
   static klee::Solver *solver;
   static klee::ExprBuilder *exprBuilder;
 
   ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
                           unsigned int _call_idx,
-                          Node_ptr _discriminating_constraint)
+                          Node_ptr _discriminating_constraint,
+                          bool _overflow)
     : call_paths(_call_paths),
       call_idx(_call_idx),
       discriminating_constraint(_discriminating_constraint),
-      root(_call_idx == 0) {}
+      root(_call_idx == 0),
+      overflow(_overflow) {}
 
   ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
-                          unsigned int _call_idx)
+                          unsigned int _call_idx,
+                          bool _overflow)
     : call_paths(_call_paths),
-      call_idx(_call_idx) {}
+      call_idx(_call_idx),
+      root(_call_idx == 0),
+      overflow(_overflow)  {}
+
+  ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
+                          bool _overflow)
+    : ast_builder_assistant_t(_call_paths, 0, _overflow) {}
 
   ast_builder_assistant_t(std::vector<call_path_t*> _call_paths)
-    : ast_builder_assistant_t(_call_paths, 0) {}
+    : ast_builder_assistant_t(_call_paths, 0, false) {}
 
   static void init() {
     ast_builder_assistant_t::solver = klee::createCoreSolver(klee::Z3_SOLVER);
@@ -1869,6 +1926,18 @@ struct ast_builder_assistant_t {
   unsigned int get_calls_size(unsigned int call_path_idx) {
     assert(call_path_idx < call_paths.size());
     return call_paths[call_path_idx]->calls.size();
+  }
+
+  void jump_to_call_idx(unsigned _call_idx) {
+    call_idx = _call_idx;
+
+    auto overflows = [&](call_path_t* call_path) {
+      return call_idx >= call_path->calls.size();
+    };
+
+    call_paths.erase(std::remove_if(call_paths.begin(),
+                                    call_paths.end(),
+                                    overflows));
   }
 };
 
@@ -2067,7 +2136,15 @@ bool are_call_paths_finished(std::vector<call_path_t*> call_paths, unsigned int 
   return finished;
 }
 
-Node_ptr build_ast(AST& ast, ast_builder_assistant_t assistant) {
+struct ast_builder_ret_t {
+  Node_ptr node;
+  unsigned int last_call_idx;
+
+  ast_builder_ret_t(Node_ptr _node, unsigned int _last_call_idx)
+    : node(_node), last_call_idx(_last_call_idx) {}
+};
+
+ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   assert(assistant.call_paths.size());
 
   std::cerr << "\n"
@@ -2079,14 +2156,15 @@ Node_ptr build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
   std::vector<Node_ptr> nodes;
 
-  while (assistant.call_paths.size() > 1) {
+  while (!assistant.overflow && assistant.call_paths.size() > 1) {
     call_paths_group_t group(assistant);
 
-    bool should_non_root_stop = !group.overflow && assistant.get_call().function_name == "start_time";
+    bool should_non_root_stop = assistant.get_call().function_name == "start_time";
 
     std::cerr << "\n";
     std::cerr << "===================================" << "\n";
     std::cerr << "fname          " << assistant.get_call().function_name << "\n";
+    std::cerr << "nodes          " << nodes.size() << "\n";
     std::cerr << "in:            " << group.in.size() << "\n";
     std::cerr << "out:           " << group.out.size() << "\n";
     std::cerr << "overflow:      " << group.overflow << "\n";
@@ -2095,7 +2173,7 @@ Node_ptr build_ast(AST& ast, ast_builder_assistant_t assistant) {
     std::cerr << "===================================" << "\n";
 
     if (should_non_root_stop && assistant.root) {
-      ast.commit(nodes);
+      ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
       nodes.clear();
     }
 
@@ -2123,35 +2201,40 @@ Node_ptr build_ast(AST& ast, ast_builder_assistant_t assistant) {
     Node_ptr cond = node_from_expr(&ast, constraint);
     Node_ptr not_cond = node_from_expr(&ast, not_constraint);
 
-    ast_builder_assistant_t then_assistant(group.in, assistant.call_idx, cond);
-    ast_builder_assistant_t else_assistant(group.out, assistant.call_idx, not_cond);
+    ast_builder_assistant_t then_assistant(group.in, assistant.call_idx + 1, cond, group.overflow);
+    ast_builder_assistant_t else_assistant(group.out, assistant.call_idx + 1, not_cond, false);
 
-    Node_ptr _then = build_ast(ast, then_assistant);
-    Node_ptr _else = build_ast(ast, else_assistant);
+    ast_builder_ret_t _then_ret = build_ast(ast, then_assistant);
+    ast_builder_ret_t _else_ret = build_ast(ast, else_assistant);
 
-    Node_ptr branch = Branch::build(cond, _then, _else);
+    Node_ptr branch = Branch::build(cond, _then_ret.node, _else_ret.node);
 
     nodes.push_back(branch);
-    assistant.call_idx++;
+
+    assert(_else_ret.last_call_idx >= _then_ret.last_call_idx);
+    assistant.jump_to_call_idx(_else_ret.last_call_idx);
+
+    if (!assistant.root) {
+      break;
+    }
   }
 
-  if (assistant.root) {
-    ast.commit(nodes);
-  }
-
-  std::cerr << "nodes " << nodes.size() << "\n";
+  Node_ptr ret;
 
   if (nodes.size() == 0) {
-    Return_ptr ret = ast.get_return(assistant.call_paths[0], assistant.discriminating_constraint);
+    ret = ast.get_return(assistant.call_paths[0], assistant.discriminating_constraint);
     assert(ret);
-    return ret;
   }
 
-  if (nodes.size() > 1) {
-    return Block::build(nodes);
+  else if (nodes.size() > 1) {
+    ret = Block::build(nodes);
   }
 
-  return nodes[0];
+  else {
+    ret = nodes[0];
+  }
+
+  return ast_builder_ret_t(ret, assistant.call_idx);
 }
 
 int main(int argc, char **argv) {
