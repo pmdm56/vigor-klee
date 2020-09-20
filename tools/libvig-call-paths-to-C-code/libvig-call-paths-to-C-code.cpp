@@ -55,6 +55,7 @@ std::string expr_to_string(klee::expr::ExprHandle expr) {
 class Node {
 public:
   enum Kind {
+    COMMENT,
     TYPE,
     POINTER,
     IMPORT,
@@ -68,6 +69,7 @@ public:
     FUNCTION,
     ASSIGNMENT,
     ADDRESSOF,
+    NOT,
     EQUALS,
     READ,
     SIGNED_LITERAL,
@@ -98,6 +100,32 @@ public:
 };
 
 typedef std::shared_ptr<Node> Node_ptr;
+
+class Comment : public Node {
+private:
+  std::string comment;
+
+  Comment(const std::string& _comment)
+    : Node(COMMENT), comment(_comment) {}
+
+public:
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(lvl);
+    ofs << "// " << comment;
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<!-- " << comment << " -->" << "\n";
+  }
+
+  static std::shared_ptr<Comment> build(const std::string& _comment) {
+    Comment* c = new Comment(_comment);
+    return std::shared_ptr<Comment>(c);
+  }
+};
+
+typedef std::shared_ptr<Comment> Comment_ptr;
 
 class Expression : public Node {
 protected:
@@ -249,8 +277,6 @@ private:
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(ofs, lvl);
-
     ofs << "{";
     ofs << "\n";
     for (const auto& node : nodes) {
@@ -288,33 +314,54 @@ private:
   Node_ptr on_true;
   Node_ptr on_false;
 
+  Comment_ptr on_false_comment;
+
   Branch(Node_ptr _condition, Node_ptr _on_true, Node_ptr _on_false)
-    : Node(BRANCH), condition(_condition), on_true(_on_true), on_false(_on_false) {}
+    : Node(BRANCH), condition(_condition), on_true(_on_true), on_false(_on_false) {
+    std::stringstream msg_stream;
+    condition->synthesize(msg_stream);
+    on_false_comment = Comment::build(msg_stream.str());
+  }
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "\n";
+
     indent(ofs, lvl);
 
     ofs << "if (";
     condition->synthesize(ofs);
-    ofs << ")" << "\n";
+    ofs << ") ";
 
     if (on_true->get_kind() == Node::Kind::BLOCK) {
       on_true->synthesize(ofs, lvl);
     } else {
+      ofs << "{" << "\n";
       on_true->synthesize(ofs, lvl+2);
+      ofs << "\n";
+      indent(ofs, lvl);
+      ofs << "}";
     }
 
     ofs << "\n";
+    ofs << "\n";
 
     indent(ofs, lvl);
-    ofs << "else " << "\n";
+    ofs << "else ";
 
     if (on_false->get_kind() == Node::Kind::BLOCK) {
       on_false->synthesize(ofs, lvl);
     } else {
+      ofs << "{" << "\n";
       on_false->synthesize(ofs, lvl+2);
+      ofs << "\n";
+      indent(ofs, lvl);
+      ofs << "}";
     }
+
+    ofs << " ";
+    on_false_comment->synthesize(ofs);
+    ofs << "\n";
   }
 
   void debug(unsigned int lvl=0) const override {
@@ -443,7 +490,7 @@ class UnsignedLiteral : public Expression {
 private:
   uint64_t value;
 
-  UnsignedLiteral(uint64_t _value) : Expression(SIGNED_LITERAL), value(_value) {}
+  UnsignedLiteral(uint64_t _value) : Expression(UNSIGNED_LITERAL), value(_value) {}
 
 public:
   uint64_t get_value() const { return value; }
@@ -545,6 +592,8 @@ public:
   }
 };
 
+typedef std::shared_ptr<AddressOf> AddressOf_ptr;
+
 class Equals : public Expression {
 private:
   Expr_ptr lhs;
@@ -588,6 +637,53 @@ public:
 };
 
 typedef std::shared_ptr<Equals> Equals_ptr;
+
+class Not : public Expression {
+private:
+  Expr_ptr expr;
+
+  Not(Expr_ptr _expr)
+    : Expression(NOT), expr(_expr->clone()) {
+    expr->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_expr() const { return expr; }
+
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(lvl);
+
+    ofs << "!(";
+    expr->synthesize(ofs);
+    ofs << ")";
+
+    if (terminate_line) {
+      ofs << ";";
+    }
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<not>" << "\n";
+
+    expr->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</not>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Not(expr);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Not> build(Expr_ptr _expr) {
+    Not* n = new Not(_expr);
+    return std::shared_ptr<Not>(n);
+  }
+};
+
+typedef std::shared_ptr<Not> Not_ptr;
 
 class Read : public Expression {
 private:
@@ -1073,20 +1169,6 @@ private:
 
     push_to_local(Variable::build(ret->get_symbol(), ret->get_type()));
 
-    std::cerr << "\n";
-    std::cerr << "~~~~~~~ NODE FROM CALL START ~~~~~~~" << "\n";
-
-    std::cerr << "\n";
-    assignment->debug();
-    std::cerr << "\n";
-
-    std::cout << "\n";
-    assignment->synthesize(std::cout);
-    std::cout << "\n";
-
-    std::cout << "\n";
-    std::cerr << "~~~~~~~ NODE FROM CALL END ~~~~~~~" << "\n\n";
-
     return assignment;
   }
 
@@ -1107,7 +1189,52 @@ private:
 
     std::cerr << expr_to_string(call.ret) << "\n";
 
+    assert(false && "Not implemented");
+  }
 
+  Return_ptr get_return_from_init(call_path_t *call_path, Node_ptr constraint) {
+    Expr_ptr ret_expr;
+
+    switch (constraint->get_kind()) {
+    case Node::Kind::EQUALS: {
+      Equals* equals = static_cast<Equals*>(constraint.get());
+
+      assert(equals->get_lhs()->get_kind() == Node::Kind::UNSIGNED_LITERAL);
+      assert(equals->get_rhs()->get_kind() == Node::Kind::VARIABLE);
+
+      UnsignedLiteral* literal = static_cast<UnsignedLiteral*>(equals->get_lhs().get());
+
+      ret_expr = UnsignedLiteral::build(literal->get_value() != 0);
+      break;
+    }
+
+    case Node::Kind::NOT: {
+      Not* _not = static_cast<Not*>(constraint.get());
+      assert(_not->get_expr()->get_kind() == Node::Kind::EQUALS);
+
+      Equals* equals = static_cast<Equals*>(_not->get_expr().get());
+
+      assert(equals->get_lhs()->get_kind() == Node::Kind::UNSIGNED_LITERAL);
+      assert(equals->get_rhs()->get_kind() == Node::Kind::VARIABLE);
+
+      UnsignedLiteral* literal = static_cast<UnsignedLiteral*>(equals->get_lhs().get());
+
+      ret_expr = UnsignedLiteral::build(literal->get_value() == 0);
+      break;
+    }
+
+    default:
+      std::cerr << "\n";
+      constraint->debug(0);
+      std::cerr << "\n";
+
+      assert(false && "Return from INIT: unexpected node");
+    }
+
+    return Return::build(ret_expr);
+  }
+
+  Return_ptr get_return_from_process(call_path_t *call_path, Node_ptr constraint) {
     assert(false && "Not implemented");
   }
 
@@ -1121,6 +1248,16 @@ public:
   void pop() {
     assert(local_variables.size() > 0);
     local_variables.pop_back();
+  }
+
+  Return_ptr get_return(call_path_t *call_path, Node_ptr constraint) {
+    switch (context) {
+      case INIT: return get_return_from_init(call_path, constraint);
+      case PROCESS: return get_return_from_process(call_path, constraint);
+      case DONE: assert(false);
+    }
+
+    return nullptr;
   }
 
   Return_ptr get_failed_return() {
@@ -1228,7 +1365,6 @@ public:
     std::cerr << "Global variables" << "\n";
     for (const auto& gv : state) {
       gv->debug(2);
-      std::cerr << "\n";
     }
     std::cerr << "\n";
 
@@ -1237,7 +1373,6 @@ public:
       std::cerr << "  ===================================" << "\n";
       for (const auto var : stack) {
         var->debug(2);
-        std::cerr << "\n";
       }
     }
     std::cerr << "\n";
@@ -1449,7 +1584,14 @@ public:
   }
 
   klee::ExprVisitor::Action visitNot(const klee::NotExpr& e) {
-    assert(false && "Not implemented");
+    klee::ref<klee::Expr> klee_expr = e.getKid(0);
+
+    KleeExprToASTNodeConverter expr_converter(ast);
+    expr_converter.visit(klee_expr);
+    Expr_ptr expr = expr_converter.get_result();
+
+    save_result(Not::build(expr));
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -1670,12 +1812,26 @@ public:
 
 struct call_paths_manager_t {
   std::vector<call_path_t*> call_paths;
+  unsigned int call_idx;
+  Node_ptr discriminating_constraint;
 
   static klee::Solver *solver;
   static klee::ExprBuilder *exprBuilder;
 
   call_paths_manager_t(std::vector<call_path_t*> _call_paths)
-    : call_paths(_call_paths) {}
+    : call_paths(_call_paths), call_idx(0) {}
+
+  call_paths_manager_t(std::vector<call_path_t*> _call_paths,
+                       unsigned int _call_idx)
+    : call_paths(_call_paths),
+      call_idx(_call_idx) {}
+
+  call_paths_manager_t(std::vector<call_path_t*> _call_paths,
+                       unsigned int _call_idx,
+                       Node_ptr _discriminating_constraint)
+    : call_paths(_call_paths),
+      call_idx(_call_idx),
+      discriminating_constraint(_discriminating_constraint) {}
 
   static void init() {
     call_paths_manager_t::solver = klee::createCoreSolver(klee::Z3_SOLVER);
@@ -1687,6 +1843,17 @@ struct call_paths_manager_t {
 
     call_paths_manager_t::exprBuilder = klee::createDefaultExprBuilder();
   }
+
+  call_t get_call(unsigned int call_path_idx) {
+    assert(call_path_idx < call_paths.size());
+    assert(call_idx < call_paths[call_path_idx]->calls.size());
+    return call_paths[call_path_idx]->calls[call_idx];
+  }
+
+  unsigned int get_calls_size(unsigned int call_path_idx) {
+    assert(call_path_idx < call_paths.size());
+    return call_paths[call_path_idx]->calls.size();
+  }
 };
 
 klee::Solver* call_paths_manager_t::solver;
@@ -1696,11 +1863,11 @@ struct call_paths_group_t {
   std::vector<call_path_t*> in;
   std::vector<call_path_t*> out;
 
-  call_paths_group_t(call_paths_manager_t manager, unsigned int call_idx) {
+  call_paths_group_t(call_paths_manager_t manager) {
     assert(manager.call_paths.size());
 
     for (auto call_path : manager.call_paths) {
-      if (call_idx < call_path->calls.size()) {
+      if (manager.call_idx < call_path->calls.size()) {
         out.push_back(call_path);
       }
 
@@ -1718,10 +1885,10 @@ struct call_paths_group_t {
       return;
     }
 
-    call_t call = manager.call_paths[0]->calls[call_idx];
+    call_t call = manager.get_call(0);
 
     for (auto call_path : manager.call_paths) {
-      if (are_calls_equal(call_path->calls[call_idx], call)) {
+      if (are_calls_equal(call_path->calls[manager.call_idx], call)) {
         in.push_back(call_path);
       }
 
@@ -1881,10 +2048,12 @@ bool are_call_paths_finished(std::vector<call_path_t*> call_paths, unsigned int 
   return finished;
 }
 
-Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx=0) {
+Node_ptr build_ast(AST& ast, call_paths_manager_t manager) {
+  assert(manager.call_paths.size());
+
   std::cerr << "\n"
             << "********* CALL BUILD AST *********" << "\n"
-            << "  call_idx   " << call_idx << "\n"
+            << "  call_idx   " << manager.call_idx << "\n"
             << "  call paths " << manager.call_paths.size() << "\n"
             << "**********************************" << "\n"
             << "\n";
@@ -1892,29 +2061,26 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
   std::vector<Node_ptr> nodes;
 
   // commit nf_init and nf_process
-  bool should_commit = (call_idx == 0 ||
-                        (manager.call_paths.size() > 0 &&
-                        call_idx < manager.call_paths[0]->calls.size() &&
-                        manager.call_paths[0]->calls[call_idx].function_name == "start_time"));
+  bool should_commit = false;
 
-  for (;;) {
-    if (manager.call_paths.size() == 0) {
-      break;
-    }
+  should_commit |= manager.call_idx == 0;
+  should_commit |= (manager.call_idx < manager.get_calls_size(0) &&
+                    manager.get_call(0).function_name == "start_time");
 
-    call_paths_group_t group(manager, call_idx);
+  while (manager.call_paths.size() > 1) {
+    call_paths_group_t group(manager);
 
     bool finished = false;
 
-    finished |= are_call_paths_finished(group.in, call_idx);
+    finished |= are_call_paths_finished(group.in, manager.call_idx);
     finished |= !finished ?
-          manager.call_paths[0]->calls[call_idx].function_name == "start_time" :
+          manager.get_call(0).function_name == "start_time" :
           finished;
 
     if (group.in.size() == manager.call_paths.size() && !finished) {
-      auto node = ast.node_from_call(manager.call_paths[0]->calls[call_idx]);
+      auto node = ast.node_from_call(manager.get_call(0));
       nodes.push_back(node);
-      call_idx++;
+      manager.call_idx++;
       continue;
     }
 
@@ -1927,11 +2093,17 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
               << " out: " << group.out.size()
               << "\n";
 
-    auto discriminating_constraint = group.find_discriminating_constraint(manager);
+    klee::ref<klee::Expr> constraint = group.find_discriminating_constraint(manager);
+    klee::ref<klee::Expr> not_constraint = call_paths_manager_t::exprBuilder->Not(constraint);
 
-    Node_ptr cond = node_from_expr(&ast, discriminating_constraint);
-    Node_ptr _then = build_ast(ast, call_paths_manager_t(group.in), call_idx);
-    Node_ptr _else = build_ast(ast, call_paths_manager_t(group.out), call_idx);
+    Node_ptr cond = node_from_expr(&ast, constraint);
+    Node_ptr not_cond = node_from_expr(&ast, not_constraint);
+
+    call_paths_manager_t then_manager(group.in, manager.call_idx, cond);
+    call_paths_manager_t else_manager(group.out, manager.call_idx, not_cond);
+
+    Node_ptr _then = build_ast(ast, then_manager);
+    Node_ptr _else = build_ast(ast, else_manager);
 
     Node_ptr branch = Branch::build(cond, _then, _else);
 
@@ -1978,7 +2150,8 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
   }
 
   if (nodes.size() == 0) {
-    Return_ptr failed_ret = ast.get_failed_return();
+    assert(manager.discriminating_constraint);
+    Return_ptr failed_ret = ast.get_return(manager.call_paths[0], manager.discriminating_constraint);
     assert(failed_ret);
     return failed_ret;
   }
