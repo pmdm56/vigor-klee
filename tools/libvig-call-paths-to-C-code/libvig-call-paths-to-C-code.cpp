@@ -67,6 +67,7 @@ public:
     VARIABLE,
     FUNCTION,
     ASSIGNMENT,
+    ADDRESSOF,
     EQUALS,
     READ,
     SIGNED_LITERAL,
@@ -102,7 +103,8 @@ class Expression : public Node {
 protected:
   bool terminate_line;
 
-  Expression(Kind kind) : Node(kind), terminate_line(true) {}
+  Expression(Kind kind)
+    : Node(kind), terminate_line(true) {}
 
 public:
   virtual std::shared_ptr<Expression> clone() const = 0;
@@ -255,6 +257,8 @@ public:
       node->synthesize(ofs, lvl+2);
       ofs << "\n";
     }
+
+    indent(ofs, lvl);
     ofs << "}";
   }
 
@@ -264,11 +268,10 @@ public:
 
     for (const auto& node : nodes) {
       node->debug(lvl+2);
-      std::cerr << "\n";
     }
 
     indent(lvl);
-    std::cerr << "</block>";
+    std::cerr << "</block>" << "\n";
   }
 
   static std::shared_ptr<Block> build(const std::vector<Node_ptr> _nodes) {
@@ -293,34 +296,44 @@ public:
     indent(ofs, lvl);
 
     ofs << "if (";
-    condition->synthesize(ofs, lvl);
-    ofs << ") ";
+    condition->synthesize(ofs);
+    ofs << ")" << "\n";
 
-    on_true->synthesize(ofs, lvl);
+    if (on_true->get_kind() == Node::Kind::BLOCK) {
+      on_true->synthesize(ofs, lvl);
+    } else {
+      on_true->synthesize(ofs, lvl+2);
+    }
+
     ofs << "\n";
 
     indent(ofs, lvl);
+    ofs << "else " << "\n";
 
-    ofs << "else ";
-    on_false->synthesize(ofs, lvl);
+    if (on_false->get_kind() == Node::Kind::BLOCK) {
+      on_false->synthesize(ofs, lvl);
+    } else {
+      on_false->synthesize(ofs, lvl+2);
+    }
   }
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
+    std::cerr << "<if>" << "\n";
 
-    std::cerr << "<if";
-    std::cerr << " condition=";
-    condition->debug(lvl);
-    std::cerr << ">" << "\n";
+    condition->debug(lvl+2);
     on_true->debug(lvl+2);
+
     indent(lvl);
     std::cerr << "</if>" << "\n";
 
     indent(lvl);
     std::cerr << "<else>" << "\n";
+
     on_false->debug(lvl+2);
+
     indent(lvl);
-    std::cerr << "</else>";
+    std::cerr << "</else>" << "\n";
   }
 
   static std::shared_ptr<Branch> build(Node_ptr _condition, Node_ptr _on_true, Node_ptr _on_false) {
@@ -335,7 +348,9 @@ class Return : public Node {
 private:
   Expr_ptr value;
 
-  Return(Expr_ptr _value) : Node(RETURN), value(_value) {}
+  Return(Expr_ptr _value) : Node(RETURN), value(_value) {
+    value->set_terminate_line(false);
+  }
 
 public:
   void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
@@ -343,7 +358,7 @@ public:
 
     ofs << "return ";
     value->synthesize(ofs, lvl);
-    ofs << "\n";
+    ofs << ";";
   }
 
   void debug(unsigned int lvl=0) const override {
@@ -351,7 +366,7 @@ public:
     std::cerr << "<return>" << "\n";
     value->debug(lvl+2);
     indent(lvl);
-    std::cerr << "</return>";
+    std::cerr << "</return>" << "\n";
   }
 
   static std::shared_ptr<Return> build(Expr_ptr _value) {
@@ -405,11 +420,10 @@ public:
 
     for (const auto& arg : args) {
       arg->debug(lvl+2);
-      std::cerr << "\n";
     }
 
     indent(lvl);
-    std::cerr << "</call>";
+    std::cerr << "</call>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -435,7 +449,6 @@ public:
   uint64_t get_value() const { return value; }
 
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(lvl);
     ofs << std::to_string(value);
   }
 
@@ -444,7 +457,7 @@ public:
     std::cerr << "<literal";
     std::cerr << " signed=false";
     std::cerr << " value=" << std::to_string(value);
-    std::cerr << " />";
+    std::cerr << " />" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -470,7 +483,6 @@ public:
   int64_t get_value() const { return value; }
 
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(lvl);
     ofs << std::to_string(value);
   }
 
@@ -479,7 +491,7 @@ public:
     std::cerr << "<literal";
     std::cerr << " signed=true";
     std::cerr << " value=" << std::to_string(value);
-    std::cerr << " />";
+    std::cerr << " />" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -494,6 +506,44 @@ public:
 };
 
 typedef std::shared_ptr<SignedLiteral> SignedLiteral_ptr;
+
+class AddressOf : public Expression {
+private:
+  Expr_ptr expr;
+
+  AddressOf(Expr_ptr _expr) : Expression(ADDRESSOF) {
+    assert(_expr->get_kind() == Node::Kind::VARIABLE);
+    expr = _expr->clone();
+  }
+
+public:
+  Expr_ptr get_expr() const { return expr; }
+
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "&";
+    expr->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<address_of>" << "\n";
+
+    expr->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</address_of>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new AddressOf(expr);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<AddressOf> build(Expr_ptr _expr) {
+    AddressOf* address_of = new AddressOf(_expr);
+    return std::shared_ptr<AddressOf>(address_of);
+  }
+};
 
 class Equals : public Expression {
 private:
@@ -510,8 +560,6 @@ public:
   Expr_ptr get_rhs() const { return rhs; }
 
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(lvl);
-
     lhs->synthesize(ofs, lvl);
     ofs << " == ";
     rhs->synthesize(ofs, lvl);
@@ -522,12 +570,10 @@ public:
     std::cerr << "<equals>" << "\n";
 
     lhs->debug(lvl+2);
-    std::cerr << "\n";
     rhs->debug(lvl+2);
-    std::cerr << "\n";
 
     indent(lvl);
-    std::cerr << "</equals>";
+    std::cerr << "</equals>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -631,7 +677,7 @@ public:
     std::cerr << symbol;
     std::cerr << " type=";
     type->debug();
-    std::cerr << " />";
+    std::cerr << " />" << "\n";
   }
 
   const std::string& get_symbol() const { return symbol; }
@@ -664,8 +710,6 @@ public:
   Type_ptr get_type() const { return type; }
 
   void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
-    indent(ofs, lvl);
-
     type->synthesize(ofs, lvl);
     ofs << " ";
     ofs << symbol;
@@ -682,7 +726,7 @@ public:
     std::cerr << " symbol=" << symbol;
     std::cerr << " type=";
     type->debug(0);
-    std::cerr << " />";
+    std::cerr << " />" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -784,11 +828,9 @@ public:
 
     for (const auto& arg : args) {
       arg->debug(lvl+2);
-      std::cerr << "\n";
     }
 
     body->debug(lvl+2);
-    std::cerr << "\n";
 
     indent(lvl);
     std::cerr << "</function>";
@@ -818,9 +860,9 @@ public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
     indent(ofs, lvl);
 
-    variable->synthesize(ofs, lvl);
+    variable->synthesize(ofs);
     ofs << " = ";
-    value->synthesize(ofs, lvl);
+    value->synthesize(ofs);
   }
 
   void debug(unsigned int lvl=0) const override {
@@ -828,12 +870,10 @@ public:
     std::cerr << "<assignment>" << "\n";
 
     variable->debug(lvl+2);
-    std::cerr << "\n";
-
     value->debug(lvl+2);
-    std::cerr << "\n";
 
-    std::cerr << "</assignment>";
+    indent(lvl);
+    std::cerr << "</assignment>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -967,12 +1007,12 @@ private:
 
     if (fname == "map_allocate") {      
       Variable_ptr capacity = variable_generator.generate("capacity", "uint32_t");
-      Variable_ptr new_map = variable_generator.generate("map", "struct Map", 2);
+      Variable_ptr new_map = variable_generator.generate("map", "struct Map", 1);
 
       push_to_state(capacity);
       push_to_state(new_map);
 
-      args = std::vector<Expr_ptr>{ capacity, new_map };
+      args = std::vector<Expr_ptr>{ capacity, AddressOf::build(new_map) };
 
       Variable_ptr ret_var = variable_generator.generate("map_allocation_succeeded", "int");
       ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
@@ -981,13 +1021,13 @@ private:
     else if (fname == "vector_allocate") {
       Variable_ptr capacity = variable_generator.generate("capacity", "uint32_t");
       Variable_ptr elem_size = variable_generator.generate("elem_size", "uint32_t");
-      Variable_ptr new_vector = variable_generator.generate("vector", "struct Vector", 2);
+      Variable_ptr new_vector = variable_generator.generate("vector", "struct Vector", 1);
 
       push_to_state(capacity);
       push_to_state(elem_size);
       push_to_state(new_vector);
 
-      args = std::vector<Expr_ptr>{ capacity, elem_size, new_vector };
+      args = std::vector<Expr_ptr>{ capacity, elem_size, AddressOf::build(new_vector) };
 
       Variable_ptr ret_var = variable_generator.generate("vector_alloc_success", "int");
       ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
@@ -995,12 +1035,12 @@ private:
 
     else if (fname == "dchain_allocate") {
         Variable_ptr capacity = variable_generator.generate("index_range", "int");
-        Variable_ptr new_dchain  = variable_generator.generate("dchain", "struct DoubleChain", 2);
+        Variable_ptr new_dchain  = variable_generator.generate("dchain", "struct DoubleChain", 1);
 
         push_to_state(capacity);
         push_to_state(new_dchain);
 
-        args = std::vector<Expr_ptr>{ capacity, new_dchain };
+        args = std::vector<Expr_ptr>{ capacity, AddressOf::build(new_dchain) };
 
         Variable_ptr ret_var = variable_generator.generate("is_dchain_allocated", "int");
         ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
@@ -1101,12 +1141,10 @@ public:
   }
 
   Node_ptr node_from_call(call_t call) {
-    std::cerr << "* node from call" << "\n";
-
     switch (context) {
-      case INIT: return init_state_node_from_call(call);
-      case PROCESS: return process_state_node_from_call(call);
-      case DONE: assert(false);
+    case INIT: return init_state_node_from_call(call);
+    case PROCESS: return process_state_node_from_call(call);
+    case DONE: assert(false);
     }
 
     return nullptr;
@@ -1116,74 +1154,71 @@ public:
     context = ctx;
 
     switch (context) {
-      case INIT: {
-        push();
-        break;
+    case INIT:
+      push();
+      break;
+
+    case PROCESS: {
+      pop();
+      push();
+
+      std::vector<VariableDecl_ptr> vars {
+        VariableDecl::build("device", NamedType::build("uint16_t")),
+        VariableDecl::build("buffer", Pointer::build(NamedType::build("uint8_t"))),
+        VariableDecl::build("buffer_length", NamedType::build("uint16_t")),
+        VariableDecl::build("now", NamedType::build("vigor_time_t"))
+      };
+
+      for (const auto& var : vars) {
+        push_to_local(Variable::build(var->get_symbol(), var->get_type()));
       }
 
-      case PROCESS: {
-        pop();
-        push();
-
-        std::vector<VariableDecl_ptr> vars {
-          VariableDecl::build("device", NamedType::build("uint16_t")),
-          VariableDecl::build("buffer", Pointer::build(NamedType::build("uint8_t"))),
-          VariableDecl::build("buffer_length", NamedType::build("uint16_t")),
-          VariableDecl::build("now", NamedType::build("vigor_time_t"))
-        };
-
-        for (const auto& var : vars) {
-          push_to_local(Variable::build(var->get_symbol(), var->get_type()));
-        }
-
-        break;
-      }
-
-      case DONE: {
-        pop();
-        break;
-      }
+      break;
     }
+
+    case DONE:
+      pop();
+      break;
+    }
+
   }
 
   void commit(std::vector<Node_ptr> nodes) {
     switch (context) {
-      case INIT: {
-        std::vector<FunctionArgDecl_ptr> _args;
-        Block_ptr _body = Block::build(nodes);
-        Type_ptr _return = NamedType::build("bool");
+    case INIT: {
+      std::vector<FunctionArgDecl_ptr> _args;
+      Block_ptr _body = Block::build(nodes);
+      Type_ptr _return = NamedType::build("bool");
 
-        nf_init = Function::build("nf_init", _args, _body, _return);
+      nf_init = Function::build("nf_init", _args, _body, _return);
 
-        nf_init->debug();
-        nf_init->synthesize(std::cout);
+      dump();
 
-        exit(0);
+      exit(0);
 
-        context_switch(PROCESS);
-        break;
-      }
+      context_switch(PROCESS);
+      break;
+    }
 
-      case PROCESS: {
-        std::vector<FunctionArgDecl_ptr> _args{
-          FunctionArgDecl::build("device", NamedType::build("uint16_t")),
-          FunctionArgDecl::build("buffer", Pointer::build(NamedType::build("uint8_t"))),
-          FunctionArgDecl::build("buffer_length", NamedType::build("uint16_t")),
-          FunctionArgDecl::build("now", NamedType::build("vigor_time_t")),
-        };
+    case PROCESS: {
+      std::vector<FunctionArgDecl_ptr> _args{
+        FunctionArgDecl::build("device", NamedType::build("uint16_t")),
+        FunctionArgDecl::build("buffer", Pointer::build(NamedType::build("uint8_t"))),
+        FunctionArgDecl::build("buffer_length", NamedType::build("uint16_t")),
+        FunctionArgDecl::build("now", NamedType::build("vigor_time_t")),
+      };
 
-        Block_ptr _body = Block::build(nodes);
-        Type_ptr _return = NamedType::build("int");
+      Block_ptr _body = Block::build(nodes);
+      Type_ptr _return = NamedType::build("int");
 
-        nf_process = Function::build("nf_process", _args, _body, _return);
+      nf_process = Function::build("nf_process", _args, _body, _return);
 
-        context_switch(DONE);
-        break;
-      }
+      context_switch(DONE);
+      break;
+    }
 
-      case DONE: {
-        assert(false);
-      }
+    case DONE:
+      assert(false);
     }
   }
 
@@ -1208,21 +1243,25 @@ public:
     std::cerr << "\n";
 
     if (nf_init) {
+      std::cerr << "\n";
       nf_init->debug();
       std::cerr << "\n";
     }
 
     if (nf_process) {
+      std::cerr << "\n";
       nf_process->debug();
       std::cerr << "\n";
     }
 
     if (nf_init) {
+      std::cout<< "\n";
       nf_init->synthesize(std::cout);
       std::cout<< "\n";
     }
 
     if (nf_process) {
+      std::cout<< "\n";
       nf_process->synthesize(std::cout);
       std::cout<< "\n";
     }
@@ -1865,7 +1904,12 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
 
     call_paths_group_t group(manager, call_idx);
 
-    bool finished = are_call_paths_finished(group.in, call_idx);
+    bool finished = false;
+
+    finished |= are_call_paths_finished(group.in, call_idx);
+    finished |= !finished ?
+          manager.call_paths[0]->calls[call_idx].function_name == "start_time" :
+          finished;
 
     if (group.in.size() == manager.call_paths.size() && !finished) {
       auto node = ast.node_from_call(manager.call_paths[0]->calls[call_idx]);
@@ -1891,6 +1935,7 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
 
     Node_ptr branch = Branch::build(cond, _then, _else);
 
+    /*
     std::cerr << "discriminating constraint" << "\n";
     std::cerr << expr_to_string(discriminating_constraint) << "\n";
 
@@ -1921,8 +1966,7 @@ Node_ptr build_ast(AST& ast, call_paths_manager_t manager, unsigned int call_idx
     branch->synthesize(std::cout);
     std::cout << "\n";
     std::cout << "\n";
-
-    assert(false);
+    */
 
     nodes.push_back(branch);
 
