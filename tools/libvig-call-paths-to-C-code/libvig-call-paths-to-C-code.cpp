@@ -1192,8 +1192,12 @@ private:
     assert(false && "Not implemented");
   }
 
-  Return_ptr get_return_from_init(call_path_t *call_path, Node_ptr constraint) {
+  Return_ptr get_return_from_init(Node_ptr constraint) {
     Expr_ptr ret_expr;
+
+    if (!constraint) {
+      return Return::build(UnsignedLiteral::build(1));
+    }
 
     switch (constraint->get_kind()) {
     case Node::Kind::EQUALS: {
@@ -1252,7 +1256,7 @@ public:
 
   Return_ptr get_return(call_path_t *call_path, Node_ptr constraint) {
     switch (context) {
-      case INIT: return get_return_from_init(call_path, constraint);
+      case INIT: return get_return_from_init(constraint);
       case PROCESS: return get_return_from_process(call_path, constraint);
       case DONE: assert(false);
     }
@@ -1810,38 +1814,50 @@ public:
   }
 };
 
-struct call_paths_manager_t {
+struct ast_builder_assistant_t {
   std::vector<call_path_t*> call_paths;
   unsigned int call_idx;
   Node_ptr discriminating_constraint;
+  bool root;
 
   static klee::Solver *solver;
   static klee::ExprBuilder *exprBuilder;
 
-  call_paths_manager_t(std::vector<call_path_t*> _call_paths)
-    : call_paths(_call_paths), call_idx(0) {}
+  ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
+                          unsigned int _call_idx,
+                          Node_ptr _discriminating_constraint)
+    : call_paths(_call_paths),
+      call_idx(_call_idx),
+      discriminating_constraint(_discriminating_constraint),
+      root(_call_idx == 0) {}
 
-  call_paths_manager_t(std::vector<call_path_t*> _call_paths,
-                       unsigned int _call_idx)
+  ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
+                          unsigned int _call_idx)
     : call_paths(_call_paths),
       call_idx(_call_idx) {}
 
-  call_paths_manager_t(std::vector<call_path_t*> _call_paths,
-                       unsigned int _call_idx,
-                       Node_ptr _discriminating_constraint)
-    : call_paths(_call_paths),
-      call_idx(_call_idx),
-      discriminating_constraint(_discriminating_constraint) {}
+  ast_builder_assistant_t(std::vector<call_path_t*> _call_paths)
+    : ast_builder_assistant_t(_call_paths, 0) {}
 
   static void init() {
-    call_paths_manager_t::solver = klee::createCoreSolver(klee::Z3_SOLVER);
+    ast_builder_assistant_t::solver = klee::createCoreSolver(klee::Z3_SOLVER);
     assert(solver);
 
-    call_paths_manager_t::solver = createCexCachingSolver(solver);
-    call_paths_manager_t::solver = createCachingSolver(solver);
-    call_paths_manager_t::solver = createIndependentSolver(solver);
+    ast_builder_assistant_t::solver = createCexCachingSolver(solver);
+    ast_builder_assistant_t::solver = createCachingSolver(solver);
+    ast_builder_assistant_t::solver = createIndependentSolver(solver);
 
-    call_paths_manager_t::exprBuilder = klee::createDefaultExprBuilder();
+    ast_builder_assistant_t::exprBuilder = klee::createDefaultExprBuilder();
+  }
+
+  call_t get_call() {
+    for (call_path_t* call_path : call_paths) {
+      if (call_idx < call_path->calls.size()) {
+        return call_path->calls[call_idx];
+      }
+    }
+
+    assert(false);
   }
 
   call_t get_call(unsigned int call_path_idx) {
@@ -1856,18 +1872,20 @@ struct call_paths_manager_t {
   }
 };
 
-klee::Solver* call_paths_manager_t::solver;
-klee::ExprBuilder* call_paths_manager_t::exprBuilder;
+klee::Solver* ast_builder_assistant_t::solver;
+klee::ExprBuilder* ast_builder_assistant_t::exprBuilder;
 
 struct call_paths_group_t {
   std::vector<call_path_t*> in;
   std::vector<call_path_t*> out;
+  bool overflow;
 
-  call_paths_group_t(call_paths_manager_t manager) {
-    assert(manager.call_paths.size());
+  call_paths_group_t(ast_builder_assistant_t assistant) {
+    assert(assistant.call_paths.size());
 
-    for (auto call_path : manager.call_paths) {
-      if (manager.call_idx < call_path->calls.size()) {
+    for (auto call_path : assistant.call_paths) {
+      assert(assistant.call_idx < call_path->calls.size());
+      if (assistant.call_idx + 1 < call_path->calls.size()) {
         out.push_back(call_path);
       }
 
@@ -1879,16 +1897,18 @@ struct call_paths_group_t {
     if (in.size() == 0) {
       in.clear();
       out.clear();
+      overflow = false;
     }
 
     else {
+      overflow = true;
       return;
     }
 
-    call_t call = manager.get_call(0);
+    call_t call = assistant.get_call(0);
 
-    for (auto call_path : manager.call_paths) {
-      if (are_calls_equal(call_path->calls[manager.call_idx], call)) {
+    for (auto call_path : assistant.call_paths) {
+      if (are_calls_equal(call_path->calls[assistant.call_idx], call)) {
         in.push_back(call_path);
       }
 
@@ -1896,7 +1916,6 @@ struct call_paths_group_t {
         out.push_back(call_path);
       }
     }
-
   }
 
   void dump_call(call_t call) {
@@ -1963,7 +1982,7 @@ struct call_paths_group_t {
     return true;
   }
 
-  klee::ref<klee::Expr> find_discriminating_constraint(call_paths_manager_t manager) {
+  klee::ref<klee::Expr> find_discriminating_constraint(ast_builder_assistant_t assistant) {
     assert(in.size());
     assert(out.size());
 
@@ -1989,7 +2008,7 @@ struct call_paths_group_t {
         klee::Query neg_sat_query = sat_query.negateExpr();
 
         bool result = false;
-        bool success = call_paths_manager_t::solver->mustBeFalse(neg_sat_query, result);
+        bool success = ast_builder_assistant_t::solver->mustBeFalse(neg_sat_query, result);
 
         assert(success);
 
@@ -2014,7 +2033,7 @@ struct call_paths_group_t {
         klee::Query neg_sat_query = sat_query.negateExpr();
 
         bool result = false;
-        bool success = call_paths_manager_t::solver->mustBeTrue(neg_sat_query, result);
+        bool success = ast_builder_assistant_t::solver->mustBeTrue(neg_sat_query, result);
 
         assert(success);
 
@@ -2048,112 +2067,84 @@ bool are_call_paths_finished(std::vector<call_path_t*> call_paths, unsigned int 
   return finished;
 }
 
-Node_ptr build_ast(AST& ast, call_paths_manager_t manager) {
-  assert(manager.call_paths.size());
+Node_ptr build_ast(AST& ast, ast_builder_assistant_t assistant) {
+  assert(assistant.call_paths.size());
 
   std::cerr << "\n"
             << "********* CALL BUILD AST *********" << "\n"
-            << "  call_idx   " << manager.call_idx << "\n"
-            << "  call paths " << manager.call_paths.size() << "\n"
+            << "  call_idx   " << assistant.call_idx << "\n"
+            << "  call paths " << assistant.call_paths.size() << "\n"
             << "**********************************" << "\n"
             << "\n";
 
   std::vector<Node_ptr> nodes;
 
-  // commit nf_init and nf_process
-  bool should_commit = false;
+  while (assistant.call_paths.size() > 1) {
+    call_paths_group_t group(assistant);
 
-  should_commit |= manager.call_idx == 0;
-  should_commit |= (manager.call_idx < manager.get_calls_size(0) &&
-                    manager.get_call(0).function_name == "start_time");
+    bool should_non_root_stop = !group.overflow && assistant.get_call().function_name == "start_time";
 
-  while (manager.call_paths.size() > 1) {
-    call_paths_group_t group(manager);
+    std::cerr << "\n";
+    std::cerr << "===================================" << "\n";
+    std::cerr << "fname          " << assistant.get_call().function_name << "\n";
+    std::cerr << "in:            " << group.in.size() << "\n";
+    std::cerr << "out:           " << group.out.size() << "\n";
+    std::cerr << "overflow:      " << group.overflow << "\n";
+    std::cerr << "should stop:   " << should_non_root_stop << "\n";
+    std::cerr << "root           " << assistant.root << "\n";
+    std::cerr << "===================================" << "\n";
 
-    bool finished = false;
-
-    finished |= are_call_paths_finished(group.in, manager.call_idx);
-    finished |= !finished ?
-          manager.get_call(0).function_name == "start_time" :
-          finished;
-
-    if (group.in.size() == manager.call_paths.size() && !finished) {
-      auto node = ast.node_from_call(manager.get_call(0));
-      nodes.push_back(node);
-      manager.call_idx++;
-      continue;
+    if (should_non_root_stop && assistant.root) {
+      ast.commit(nodes);
+      nodes.clear();
     }
 
-    else if (group.in.size() == manager.call_paths.size() && finished) {
+    else if (should_non_root_stop) {
       break;
     }
 
-    std::cerr << "total: " << manager.call_paths.size()
-              << " in: " << group.in.size()
-              << " out: " << group.out.size()
-              << "\n";
+    // TODO: ignore loop_invariant_consume
 
-    klee::ref<klee::Expr> constraint = group.find_discriminating_constraint(manager);
-    klee::ref<klee::Expr> not_constraint = call_paths_manager_t::exprBuilder->Not(constraint);
+    bool equal_calls = group.in.size() == assistant.call_paths.size();
+
+    if (group.overflow || equal_calls) {
+      Node_ptr node = ast.node_from_call(assistant.get_call());
+      nodes.push_back(node);
+    }
+
+    if (!group.overflow && equal_calls) {
+      assistant.call_idx++;
+      continue;
+    }
+
+    klee::ref<klee::Expr> constraint = group.find_discriminating_constraint(assistant);
+    klee::ref<klee::Expr> not_constraint = ast_builder_assistant_t::exprBuilder->Not(constraint);
 
     Node_ptr cond = node_from_expr(&ast, constraint);
     Node_ptr not_cond = node_from_expr(&ast, not_constraint);
 
-    call_paths_manager_t then_manager(group.in, manager.call_idx, cond);
-    call_paths_manager_t else_manager(group.out, manager.call_idx, not_cond);
+    ast_builder_assistant_t then_assistant(group.in, assistant.call_idx, cond);
+    ast_builder_assistant_t else_assistant(group.out, assistant.call_idx, not_cond);
 
-    Node_ptr _then = build_ast(ast, then_manager);
-    Node_ptr _else = build_ast(ast, else_manager);
+    Node_ptr _then = build_ast(ast, then_assistant);
+    Node_ptr _else = build_ast(ast, else_assistant);
 
     Node_ptr branch = Branch::build(cond, _then, _else);
 
-    /*
-    std::cerr << "discriminating constraint" << "\n";
-    std::cerr << expr_to_string(discriminating_constraint) << "\n";
-
-    std::cerr << "\n";
-    std::cerr << "condition node" << "\n";
-    cond->debug();
-    std::cerr << "\n";
-    std::cerr << "\n";
-
-    std::cerr << "\n";
-    std::cerr << "then node" << "\n";
-    _then->debug();
-    std::cerr << "\n";
-    std::cerr << "\n";
-
-    std::cerr << "\n";
-    std::cerr << "else node" << "\n";
-    _else->debug();
-    std::cerr << "\n";
-    std::cerr << "\n";
-
-    std::cerr << "\n";
-    std::cerr << "Final branch code" << "\n";
-    branch->debug();
-    std::cerr << "\n";
-    std::cerr << "\n";
-
-    branch->synthesize(std::cout);
-    std::cout << "\n";
-    std::cout << "\n";
-    */
-
     nodes.push_back(branch);
-
-    if (should_commit) {
-      ast.commit(nodes);
-    }
-
-    break;
+    assistant.call_idx++;
   }
 
+  if (assistant.root) {
+    ast.commit(nodes);
+  }
+
+  std::cerr << "nodes " << nodes.size() << "\n";
+
   if (nodes.size() == 0) {
-    assert(manager.discriminating_constraint);
-    Return_ptr failed_ret = ast.get_return(manager.call_paths[0], manager.discriminating_constraint);
-    assert(failed_ret);
-    return failed_ret;
+    Return_ptr ret = ast.get_return(assistant.call_paths[0], assistant.discriminating_constraint);
+    assert(ret);
+    return ret;
   }
 
   if (nodes.size() > 1) {
@@ -2177,12 +2168,12 @@ int main(int argc, char **argv) {
     call_paths.push_back(call_path);
   }
 
-  call_paths_manager_t::init();
+  ast_builder_assistant_t::init();
 
   AST ast;
-  call_paths_manager_t manager(call_paths);
+  ast_builder_assistant_t assistant(call_paths);
 
-  build_ast(ast, manager);
+  build_ast(ast, assistant);
   ast.dump();
 
   for (auto call_path : call_paths) {
