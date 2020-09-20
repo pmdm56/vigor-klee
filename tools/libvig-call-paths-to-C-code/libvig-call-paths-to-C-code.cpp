@@ -1099,10 +1099,6 @@ private:
     local_variables.back().push_back(std::move(var));
   }
 
-  void declare_variables_if_needed(call_t call) {
-    assert(false && "Not implemented");
-  }
-
   Node_ptr init_state_node_from_call(call_t call) {
     auto fname = call.function_name;
 
@@ -1924,6 +1920,41 @@ struct ast_builder_assistant_t {
     ast_builder_assistant_t::exprBuilder = klee::createDefaultExprBuilder();
   }
 
+  static bool is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr) {
+    klee::Query sat_query(constraints, expr);
+
+    bool result;
+    bool success = ast_builder_assistant_t::solver->mustBeTrue(sat_query, result);
+
+    assert(success);
+
+    return result;
+  }
+
+  static bool is_expr_always_true(klee::ref<klee::Expr> expr) {
+    klee::ConstraintManager no_constraints;
+    return is_expr_always_true(no_constraints, expr);
+  }
+
+  static bool are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee::ref<klee::Expr> expr2) {
+    if (expr1.isNull() != expr2.isNull()) {
+      return false;
+    }
+
+    if (expr1.isNull()) {
+      return true;
+    }
+
+    RetrieveSymbols symbol_retriever;
+    symbol_retriever.visit(expr1);
+    std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
+
+    ReplaceSymbols symbol_replacer(symbols);
+    klee::ref<klee::Expr> replaced = symbol_replacer.visit(expr2);
+
+    return is_expr_always_true(exprBuilder->Eq(expr1, replaced));
+  }
+
   call_t get_call() {
     for (call_path_t* call_path : call_paths) {
       if (call_idx < call_path->calls.size()) {
@@ -2047,10 +2078,16 @@ struct call_paths_group_t {
   }
 
   bool are_calls_equal(call_t c1, call_t c2) {
+
     if (c1.function_name != c2.function_name) {
       return false;
     }
 
+    if (!ast_builder_assistant_t::are_exprs_always_equal(c1.ret, c2.ret)) {
+      return false;
+    }
+
+    /*
     for (auto arg_name_value_pair : c1.args) {
       auto arg_name = arg_name_value_pair.first;
 
@@ -2061,19 +2098,22 @@ struct call_paths_group_t {
       auto c1_arg = arg_name_value_pair.second;
       auto c2_arg = c2.args[arg_name];
 
-      if (c1_arg.first.isNull() != c2_arg.first.isNull()) {
-        return false;
-      }
+      if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.first, c2_arg.first)) {
+        std::cerr << "first arg " << c1_arg_name << "\n";
+        std::cerr << expr_to_string(c1_arg.first) << "\n";
 
-      if (!c1_arg.first.isNull() && c1_arg.first.compare(c2_arg.first) != 0) {
+        std::cerr << "second arg " << c2_arg_name << "\n";
+        std::cerr << expr_to_string(c2_arg.first) << "\n";
+        std::cerr << "\n";
         return false;
       }
     }
+    */
 
     return true;
   }
 
-  klee::ref<klee::Expr> find_discriminating_constraint(ast_builder_assistant_t assistant) {
+  klee::ref<klee::Expr> find_discriminating_constraint() {
     assert(in.size());
     assert(out.size());
 
@@ -2198,8 +2238,11 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     std::cerr << "should commit: " << should_commit << "\n";
     std::cerr << "===================================" << "\n";
 
+    for (auto cp : assistant.call_paths) {
+      std::cerr << cp->file_name << " : " << cp->calls[assistant.call_idx].function_name << "\n";
+    }
+
     if (should_commit && assistant.root) {
-      std::cerr << "commiting..." << "\n";
       ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
       nodes.clear();
     }
@@ -2225,7 +2268,7 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
       continue;
     }
 
-    klee::ref<klee::Expr> constraint = group.find_discriminating_constraint(assistant);
+    klee::ref<klee::Expr> constraint = group.find_discriminating_constraint();
     klee::ref<klee::Expr> not_constraint = ast_builder_assistant_t::exprBuilder->Not(constraint);
 
     Node_ptr cond = node_from_expr(&ast, constraint);

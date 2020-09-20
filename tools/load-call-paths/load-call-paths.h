@@ -14,6 +14,7 @@ typedef struct {
 } call_t;
 
 typedef struct {
+  std::string file_name;
   klee::ConstraintManager constraints;
   std::vector<call_t> calls;
   std::map<std::string, const klee::Array *> arrays;

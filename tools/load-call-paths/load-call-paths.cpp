@@ -32,6 +32,7 @@ call_path_t *load_call_path(std::string file_name,
   assert(call_path_file.is_open() && "Unable to open call path file.");
 
   call_path_t *call_path = new call_path_t;
+  call_path->file_name = file_name;
 
   enum {
     STATE_INIT,
