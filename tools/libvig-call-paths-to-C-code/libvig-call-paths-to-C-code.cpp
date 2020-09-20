@@ -1042,6 +1042,9 @@ private:
 private:
   std::string output_path;
 
+  std::vector<std::string> skip_functions;
+  std::vector<std::string> commit_functions;
+
   std::vector<Import_ptr> imports;
   std::vector<Variable_ptr> state;  
   std::vector<std::vector<Variable_ptr>> local_variables;
@@ -1259,8 +1262,26 @@ public:
       Import::build("libvig/verified/double-chain.h", true),
       Import::build("libvig/verified/map.h", true),
       Import::build("libvig/verified/vector.h", true),
-      Import::build("libvig/verified/expirator.h", true)
     };
+
+    skip_functions = std::vector<std::string> {
+      "start_time",
+      "loop_invariant_consume",
+      "loop_invariant_produce",
+      "current_time"
+    };
+
+    commit_functions = std::vector<std::string> { "start_time" };
+  }
+
+  bool is_skip_function(const std::string& fname) {
+    auto found_it = std::find(skip_functions.begin(), skip_functions.end(), fname);
+    return found_it != skip_functions.end();
+  }
+
+  bool is_commit_function(const std::string& fname) {
+    auto found_it = std::find(commit_functions.begin(), commit_functions.end(), fname);
+    return found_it != commit_functions.end();
   }
 
   void push() {
@@ -1355,10 +1376,6 @@ public:
       Type_ptr _return = NamedType::build("bool");
 
       nf_init = Function::build("nf_init", _args, _body, _return);
-
-      dump();
-
-      exit(0);
 
       context_switch(PROCESS);
       break;
@@ -1935,9 +1952,14 @@ struct ast_builder_assistant_t {
       return call_idx >= call_path->calls.size();
     };
 
-    call_paths.erase(std::remove_if(call_paths.begin(),
-                                    call_paths.end(),
-                                    overflows));
+    std::vector<call_path_t*> trimmed_call_paths;
+    for (auto cp : call_paths) {
+      if (!overflows(cp)) {
+        trimmed_call_paths.push_back(cp);
+      }
+    }
+
+    call_paths = trimmed_call_paths;
   }
 };
 
@@ -2159,29 +2181,37 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   while (!assistant.overflow && assistant.call_paths.size() > 1) {
     call_paths_group_t group(assistant);
 
-    bool should_non_root_stop = assistant.get_call().function_name == "start_time";
+    std::string fname = assistant.get_call().function_name;
+
+    bool should_commit = ast.is_commit_function(fname);
+    bool should_skip = ast.is_skip_function(fname);
 
     std::cerr << "\n";
     std::cerr << "===================================" << "\n";
-    std::cerr << "fname          " << assistant.get_call().function_name << "\n";
+    std::cerr << "fname          " << fname << "\n";
     std::cerr << "nodes          " << nodes.size() << "\n";
     std::cerr << "in:            " << group.in.size() << "\n";
     std::cerr << "out:           " << group.out.size() << "\n";
     std::cerr << "overflow:      " << group.overflow << "\n";
-    std::cerr << "should stop:   " << should_non_root_stop << "\n";
     std::cerr << "root           " << assistant.root << "\n";
+    std::cerr << "should skip:   " << should_skip << "\n";
+    std::cerr << "should commit: " << should_commit << "\n";
     std::cerr << "===================================" << "\n";
 
-    if (should_non_root_stop && assistant.root) {
+    if (should_commit && assistant.root) {
+      std::cerr << "commiting..." << "\n";
       ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
       nodes.clear();
     }
 
-    else if (should_non_root_stop) {
+    else if (should_commit && !assistant.root) {
       break;
     }
 
-    // TODO: ignore loop_invariant_consume
+    if (should_skip) {
+      assistant.jump_to_call_idx(assistant.call_idx+1);
+      continue;
+    }
 
     bool equal_calls = group.in.size() == assistant.call_paths.size();
 
