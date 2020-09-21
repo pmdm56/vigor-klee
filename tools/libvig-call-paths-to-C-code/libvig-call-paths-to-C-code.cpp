@@ -68,9 +68,15 @@ public:
     VARIABLE,
     FUNCTION,
     ASSIGNMENT,
+    SELECT,
     ADDRESSOF,
     NOT,
     EQUALS,
+    NOT_EQUALS,
+    LESS,
+    LESS_EQ,
+    GREATER,
+    GREATER_EQ,
     ADD,
     SUB,
     MUL,
@@ -78,6 +84,8 @@ public:
     AND,
     OR,
     XOR,
+    SHIFT_LEFT,
+    SHIFT_RIGHT,
     READ,
     SIGNED_LITERAL,
     UNSIGNED_LITERAL
@@ -525,9 +533,10 @@ typedef std::shared_ptr<FunctionCall> FunctionCall_ptr;
 class UnsignedLiteral : public Expression {
 private:
   uint64_t value;
+  bool hex;
 
-  UnsignedLiteral(uint64_t _value)
-    : Expression(UNSIGNED_LITERAL), value(_value) {
+  UnsignedLiteral(uint64_t _value, bool _hex)
+    : Expression(UNSIGNED_LITERAL), value(_value), hex(_hex) {
     set_wrap(false);
   }
 
@@ -535,24 +544,34 @@ public:
   uint64_t get_value() const { return value; }
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << std::to_string(value);
+    if (hex) {
+      ofs << std::hex;
+    }
+
+    ofs << value;
+    ofs << std::dec;
   }
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
     std::cerr << "<literal";
     std::cerr << " signed=false";
-    std::cerr << " value=" << std::to_string(value);
+    std::cerr << " value=" << value;
     std::cerr << " />" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new UnsignedLiteral(value);
+    Expression* e = new UnsignedLiteral(value, hex);
     return std::shared_ptr<Expression>(e);
   }
 
   static std::shared_ptr<UnsignedLiteral> build(uint64_t _value) {
-    UnsignedLiteral* literal = new UnsignedLiteral(_value);
+    UnsignedLiteral* literal = new UnsignedLiteral(_value, false);
+    return std::shared_ptr<UnsignedLiteral>(literal);
+  }
+
+  static std::shared_ptr<UnsignedLiteral> build(uint64_t _value, bool _hex) {
+    UnsignedLiteral* literal = new UnsignedLiteral(_value, _hex);
     return std::shared_ptr<UnsignedLiteral>(literal);
   }
 };
@@ -562,9 +581,10 @@ typedef std::shared_ptr<UnsignedLiteral> UnsignedLiteral_ptr;
 class SignedLiteral : public Expression {
 private:
   int64_t value;
+  bool hex;
 
-  SignedLiteral(int64_t _value)
-    : Expression(SIGNED_LITERAL), value(_value) {
+  SignedLiteral(int64_t _value, bool _hex)
+    : Expression(SIGNED_LITERAL), value(_value), hex(_hex) {
     set_wrap(false);
   }
 
@@ -572,24 +592,34 @@ public:
   int64_t get_value() const { return value; }
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << std::to_string(value);
+    if (hex) {
+      ofs << std::hex;
+    }
+
+    ofs << value;
+    ofs << std::dec;
   }
 
   void debug(unsigned int lvl=0) const override {
     indent(lvl);
     std::cerr << "<literal";
     std::cerr << " signed=true";
-    std::cerr << " value=" << std::to_string(value);
+    std::cerr << " value=" << value;
     std::cerr << " />" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new SignedLiteral(value);
+    Expression* e = new SignedLiteral(value, hex);
     return std::shared_ptr<Expression>(e);
   }
 
   static std::shared_ptr<SignedLiteral> build(int64_t _value) {
-    SignedLiteral* literal = new SignedLiteral(_value);
+    SignedLiteral* literal = new SignedLiteral(_value, false);
+    return std::shared_ptr<SignedLiteral>(literal);
+  }
+
+  static std::shared_ptr<SignedLiteral> build(int64_t _value, bool _hex) {
+    SignedLiteral* literal = new SignedLiteral(_value, _hex);
     return std::shared_ptr<SignedLiteral>(literal);
   }
 };
@@ -681,6 +711,226 @@ public:
 };
 
 typedef std::shared_ptr<Equals> Equals_ptr;
+
+class NotEquals : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  NotEquals(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(NOT_EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " != ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<not-equals>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</not-equals>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new NotEquals(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<NotEquals> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    NotEquals* nequals = new NotEquals(_lhs, _rhs);
+    return std::shared_ptr<NotEquals>(nequals);
+  }
+};
+
+typedef std::shared_ptr<NotEquals> NotEquals_ptr;
+
+class Greater : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Greater(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(GREATER), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " > ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<greater-than>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</greater-than>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Greater(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Greater> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    Greater* g = new Greater(_lhs, _rhs);
+    return std::shared_ptr<Greater>(g);
+  }
+};
+
+typedef std::shared_ptr<Greater> Greater_ptr;
+
+class GreaterEq : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  GreaterEq(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(GREATER_EQ), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " >= ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<greater-eq>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</greater-eq>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new GreaterEq(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<GreaterEq> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    GreaterEq* ge = new GreaterEq(_lhs, _rhs);
+    return std::shared_ptr<GreaterEq>(ge);
+  }
+};
+
+typedef std::shared_ptr<GreaterEq> GreaterEq_ptr;
+
+class Less : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Less(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(LESS), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " < ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<less>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</less>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Less(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Less> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    Less* l = new Less(_lhs, _rhs);
+    return std::shared_ptr<Less>(l);
+  }
+};
+
+typedef std::shared_ptr<Less> Less_ptr;
+
+class LessEq : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  LessEq(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(LESS_EQ), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " <= ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<less-eq>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</less-eq>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new LessEq(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<LessEq> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    LessEq* le = new LessEq(_lhs, _rhs);
+    return std::shared_ptr<LessEq>(le);
+  }
+};
+
+typedef std::shared_ptr<LessEq> LessEq_ptr;
 
 class Add : public Expression {
 private:
@@ -992,6 +1242,138 @@ public:
 
 typedef std::shared_ptr<Xor> Xor_ptr;
 
+class Mod : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Mod(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(XOR), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " % ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<mod>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</mod>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Mod(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Mod> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    Mod* mod = new Mod(_lhs, _rhs);
+    return std::shared_ptr<Mod>(mod);
+  }
+};
+
+typedef std::shared_ptr<Mod> Mod_ptr;
+
+class ShiftLeft : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  ShiftLeft(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(SHIFT_LEFT), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " << ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<shift-left>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</shift-left>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new ShiftLeft(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<ShiftLeft> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    ShiftLeft* sl = new ShiftLeft(_lhs, _rhs);
+    return std::shared_ptr<ShiftLeft>(sl);
+  }
+};
+
+typedef std::shared_ptr<ShiftLeft> ShiftLeft_ptr;
+
+class ShiftRight: public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  ShiftRight(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(SHIFT_RIGHT), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " >> ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<shift-right>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</shift-right>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new ShiftRight(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<ShiftRight> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    ShiftRight* sr = new ShiftRight(_lhs, _rhs);
+    return std::shared_ptr<ShiftRight>(sr);
+  }
+};
+
+typedef std::shared_ptr<ShiftRight> ShiftRight_ptr;
+
 class Not : public Expression {
 private:
   Expr_ptr expr;
@@ -1288,6 +1670,55 @@ public:
 };
 
 typedef std::shared_ptr<Function> Function_ptr;
+
+class Select : public Expression {
+private:
+  Expr_ptr cond;
+  Expr_ptr first;
+  Expr_ptr second;
+
+  Select(Expr_ptr _cond, Expr_ptr _first, Expr_ptr _second)
+    : Expression(SELECT),
+      cond(_cond->clone()), first(_first->clone()), second(_second->clone()) {
+
+    cond->set_terminate_line(false);
+    first->set_terminate_line(false);
+    second->set_terminate_line(false);
+  }
+
+public:
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    cond->synthesize(ofs);
+    ofs << " ? ";
+    first->synthesize(ofs);
+    ofs << " : ";
+    second->synthesize(ofs);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<select>" << "\n";
+
+    cond->debug(lvl+2);
+    first->debug(lvl+2);
+    second->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</select>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Select(cond, first, second);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Select> build(Expr_ptr _cond, Expr_ptr _first, Expr_ptr _second) {
+    Select* select = new Select(_cond, _first, _second);
+    return std::shared_ptr<Select>(select);
+  }
+};
+
+typedef std::shared_ptr<Select> Select_ptr;
 
 class Assignment : public Expression {
 private:
@@ -1722,9 +2153,6 @@ public:
 
       nf_init = Function::build("nf_init", _args, _body, _return);
 
-      dump();
-      exit(0);
-
       context_switch(PROCESS);
       break;
     }
@@ -1830,6 +2258,22 @@ private:
     result = _result->clone();
   }
 
+  unsigned int evaluate_width(klee::Expr::Width w) {
+    unsigned int size = 0;
+
+    switch (w) {
+    case klee::Expr::InvalidWidth:
+    case klee::Expr::Fl80: assert(false);
+    case klee::Expr::Bool: size = 1; break;
+    case klee::Expr::Int8: size = 8; break;
+    case klee::Expr::Int16: size = 16; break;
+    case klee::Expr::Int32: size = 32; break;
+    case klee::Expr::Int64: size = 64; break;
+    }
+
+    return size;
+  }
+
 public:
   KleeExprToASTNodeConverter(AST* _ast)
     : ExprVisitor(false), ast(_ast) {}
@@ -1859,31 +2303,51 @@ public:
     Variable_ptr var = ast->get_from_local(symbol);
     assert(var != nullptr);
 
-    unsigned int size = 0;
-
-    switch (e.getWidth()) {
-    case klee::Expr::InvalidWidth:
-    case klee::Expr::Fl80: assert(false);
-    case klee::Expr::Bool: size = 1; break;
-    case klee::Expr::Int8: size = 8; break;
-    case klee::Expr::Int16: size = 16; break;
-    case klee::Expr::Int32: size = 32; break;
-    case klee::Expr::Int64: size = 64; break;
-    }
-
     auto index = e.index;
     assert(index->getKind() == klee::Expr::Kind::Constant);
 
     auto constant_index = static_cast<klee::ConstantExpr *>(index.get());
     auto index_value = constant_index->getZExtValue();
 
-    save_result(Read::build(var, size, index_value));
+    save_result(Read::build(var, evaluate_width(e.getWidth()), index_value));
 
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSelect(const klee::SelectExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 3);
+
+    auto cond = e.getKid(0);
+    auto first = e.getKid(0);
+    auto second = e.getKid(0);
+
+    Expr_ptr cond_expr;
+    Expr_ptr first_expr;
+    Expr_ptr second_expr;
+
+    KleeExprToASTNodeConverter cond_converter(ast);
+    KleeExprToASTNodeConverter first_converter(ast);
+    KleeExprToASTNodeConverter second_converter(ast);
+
+    cond_converter.visit(cond);
+    cond_expr = cond_converter.get_result();
+
+    assert(cond_expr);
+
+    first_converter.visit(first);
+    first_expr = first_converter.get_result();
+
+    assert(first_expr);
+
+    second_converter.visit(second);
+    second_expr = second_converter.get_result();
+
+    assert(second_expr);
+
+    Select_ptr select = Select::build(cond_expr, first_expr, second_expr);
+
+    save_result(select);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -1946,7 +2410,6 @@ public:
       return klee::ExprVisitor::Action::skipChildren();
     }
 
-
     save_result(simplified);
     symbol_width = saved_symbol_width;
 
@@ -1954,17 +2417,84 @@ public:
   }
 
   klee::ExprVisitor::Action visitExtract(const klee::ExtractExpr& e) {
-    assert(false && "Not implemented");
+    auto expr = e.expr;
+    auto offset = e.offset;
+    auto size = evaluate_width(e.width);
+
+    KleeExprToASTNodeConverter expr_converter(ast);
+
+    expr_converter.visit(expr);
+    Expr_ptr ast_expr = expr_converter.get_result();
+
+    assert(ast_expr);
+
+    Read_ptr read = Read::build(ast_expr, size, offset);
+    save_result(read);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitZExt(const klee::ZExtExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 1);
+
+    auto size = evaluate_width(e.getWidth());
+    auto expr = e.getKid(0);
+    auto expr_size = evaluate_width(e.getWidth());
+
+    KleeExprToASTNodeConverter expr_converter(ast);
+
+    expr_converter.visit(expr);
+    Expr_ptr ast_expr = expr_converter.get_result();
+    assert(ast_expr);
+
+    Expr_ptr to_be_extended;
+
+    if (size > expr_size) {
+      to_be_extended = ast_expr;
+    } else {
+      to_be_extended = Read::build(ast_expr, size, 0);
+    }
+
+    save_result(to_be_extended);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSExt(const klee::SExtExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 1);
+
+    auto size = evaluate_width(e.getWidth());
+    auto expr = e.getKid(0);
+    auto expr_size = evaluate_width(e.getWidth());
+
+    KleeExprToASTNodeConverter expr_converter(ast);
+
+    expr_converter.visit(expr);
+    Expr_ptr ast_expr = expr_converter.get_result();
+    assert(ast_expr);
+
+    unsigned int mask = 0;
+    for (unsigned int i = 0; i < size; i++) {
+      if (i < (size - expr_size)) {
+        mask = (mask << 1) | 1;
+      } else {
+        mask = (mask << 1);
+      }
+    }
+
+    Expr_ptr mask_expr = UnsignedLiteral::build(mask, true);
+    Expr_ptr to_be_extended;
+
+    if (size > expr_size) {
+      Read_ptr msb = Read::build(ast_expr, 1, expr_size - 1);
+      Expr_ptr if_msb_one = Or::build(mask_expr, ast_expr);
+      to_be_extended = Select::build(msb, if_msb_one, ast_expr);
+    } else {
+      to_be_extended = Read::build(ast_expr, size, 0);
+    }
+
+    save_result(to_be_extended);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -2119,12 +2649,62 @@ public:
   }
 
   klee::ExprVisitor::Action visitURem(const klee::URemExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Mod_ptr mod = Mod::build(left, right);
+    save_result(mod);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSRem(const klee::SRemExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Mod_ptr mod = Mod::build(left, right);
+    save_result(mod);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -2141,37 +2721,188 @@ public:
   }
 
   klee::ExprVisitor::Action visitAnd(const klee::AndExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    And_ptr div = And::build(left, right);
+    save_result(div);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitOr(const klee::OrExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Or_ptr div = Or::build(left, right);
+    save_result(div);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitXor(const klee::XorExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Xor_ptr div = Xor::build(left, right);
+    save_result(div);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitShl(const klee::ShlExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    ShiftLeft_ptr div = ShiftLeft::build(left, right);
+    save_result(div);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitLShr(const klee::LShrExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    ShiftRight_ptr div = ShiftRight::build(left, right);
+    save_result(div);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitAShr(const klee::AShrExpr& e) {
-    assert(false && "Not implemented");
-    return klee::ExprVisitor::Action::skipChildren();
-  }
+    assert(e.getNumKids() == 2);
 
-  klee::ExprVisitor::Action visitConstant(const klee::ConstantExpr& e) {
-    assert(false && "Not implemented");
+    Expr_ptr left, right;
+
+    auto left_size = evaluate_width(e.getKid(0)->getWidth());
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Read_ptr msb = Read::build(left, 1, left_size - 1);
+    ShiftLeft_ptr mask = ShiftLeft::build(msb, UnsignedLiteral::build(left_size - 1));
+    ShiftRight_ptr shr = ShiftRight::build(left, right);
+    Expr_ptr ashr = Or::build(mask, shr);
+
+    save_result(ashr);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -2206,47 +2937,272 @@ public:
   }
 
   klee::ExprVisitor::Action visitNe(const klee::NeExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    NotEquals_ptr nequals = NotEquals::build(left, right);
+    save_result(nequals);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitUlt(const klee::UltExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Less_ptr lt = Less::build(left, right);
+    save_result(lt);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitUle(const klee::UleExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    LessEq_ptr le = LessEq::build(left, right);
+    save_result(le);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitUgt(const klee::UgtExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Greater_ptr gt = Greater::build(left, right);
+    save_result(gt);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitUge(const klee::UgeExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    GreaterEq_ptr ge = GreaterEq::build(left, right);
+    save_result(ge);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSlt(const klee::SltExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Less_ptr lt = Less::build(left, right);
+    save_result(lt);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSle(const klee::SleExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    LessEq_ptr le = LessEq::build(left, right);
+    save_result(le);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSgt(const klee::SgtExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Greater_ptr gt = Greater::build(left, right);
+    save_result(gt);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSge(const klee::SgeExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    GreaterEq_ptr ge = GreaterEq::build(left, right);
+    save_result(ge);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
