@@ -71,6 +71,13 @@ public:
     ADDRESSOF,
     NOT,
     EQUALS,
+    ADD,
+    SUB,
+    MUL,
+    DIV,
+    AND,
+    OR,
+    XOR,
     READ,
     SIGNED_LITERAL,
     UNSIGNED_LITERAL
@@ -130,15 +137,39 @@ typedef std::shared_ptr<Comment> Comment_ptr;
 class Expression : public Node {
 protected:
   bool terminate_line;
+  bool wrap;
 
   Expression(Kind kind)
-    : Node(kind), terminate_line(true) {}
+    : Node(kind), terminate_line(true), wrap(true) {}
 
 public:
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(lvl);
+
+    if (wrap) {
+      ofs << "(";
+    }
+
+    synthesize_expr(ofs, lvl);
+
+    if (wrap) {
+      ofs << ")";
+    }
+
+    if (terminate_line) {
+      ofs << ";";
+    }
+  }
+
+  virtual void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const = 0;
   virtual std::shared_ptr<Expression> clone() const = 0;
 
   void set_terminate_line(bool terminate) {
     terminate_line = terminate;
+  }
+
+  void set_wrap(bool _wrap) {
+    wrap = _wrap;
   }
 };
 
@@ -308,14 +339,17 @@ typedef std::shared_ptr<Block> Block_ptr;
 
 class Branch : public Node {
 private:
-  Node_ptr condition;
+  Expr_ptr condition;
   Node_ptr on_true;
   Node_ptr on_false;
 
   Comment_ptr on_false_comment;
 
-  Branch(Node_ptr _condition, Node_ptr _on_true, Node_ptr _on_false)
+  Branch(Expr_ptr _condition, Node_ptr _on_true, Node_ptr _on_false)
     : Node(BRANCH), condition(_condition), on_true(_on_true), on_false(_on_false) {
+    condition->set_terminate_line(false);
+    condition->set_wrap(false);
+
     std::stringstream msg_stream;
     condition->synthesize(msg_stream);
     on_false_comment = Comment::build(msg_stream.str());
@@ -381,7 +415,7 @@ public:
     std::cerr << "</else>" << "\n";
   }
 
-  static std::shared_ptr<Branch> build(Node_ptr _condition, Node_ptr _on_true, Node_ptr _on_false) {
+  static std::shared_ptr<Branch> build(Expr_ptr _condition, Node_ptr _on_true, Node_ptr _on_false) {
     Branch* branch = new Branch(_condition, _on_true, _on_false);
     return std::shared_ptr<Branch>(branch);
   }
@@ -395,6 +429,7 @@ private:
 
   Return(Expr_ptr _value) : Node(RETURN), value(_value) {
     value->set_terminate_line(false);
+    value->set_wrap(false);
   }
 
 public:
@@ -402,7 +437,7 @@ public:
     indent(ofs, lvl);
 
     ofs << "return ";
-    value->synthesize(ofs, lvl);
+    value->synthesize(ofs);
     ofs << ";";
   }
 
@@ -431,21 +466,24 @@ private:
     : Expression(FUNCTION_CALL), name(_name) {
     for (const auto& arg : _args) {
       Expr_ptr cloned = arg->clone();
+
       cloned->set_terminate_line(false);
+      cloned->set_wrap(false);
+
       args.push_back(std::move(cloned));
     }
+
+    set_wrap(false);
   }
 
 public:
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(ofs, lvl);
-
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     ofs << name;
     ofs << "(";
 
     for (unsigned int i = 0; i < args.size(); i++) {
       const auto& arg = args[i];
-      arg->synthesize(ofs, lvl);
+      arg->synthesize(ofs);
 
       if (i < args.size() - 1) {
         ofs << ", ";
@@ -453,7 +491,7 @@ public:
     }
 
     if (terminate_line) {
-      ofs << ");";
+      ofs << ")";
     }
   }
 
@@ -488,12 +526,15 @@ class UnsignedLiteral : public Expression {
 private:
   uint64_t value;
 
-  UnsignedLiteral(uint64_t _value) : Expression(UNSIGNED_LITERAL), value(_value) {}
+  UnsignedLiteral(uint64_t _value)
+    : Expression(UNSIGNED_LITERAL), value(_value) {
+    set_wrap(false);
+  }
 
 public:
   uint64_t get_value() const { return value; }
 
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     ofs << std::to_string(value);
   }
 
@@ -522,12 +563,15 @@ class SignedLiteral : public Expression {
 private:
   int64_t value;
 
-  SignedLiteral(int64_t _value) : Expression(SIGNED_LITERAL), value(_value) {}
+  SignedLiteral(int64_t _value)
+    : Expression(SIGNED_LITERAL), value(_value) {
+    set_wrap(false);
+  }
 
 public:
   int64_t get_value() const { return value; }
 
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     ofs << std::to_string(value);
   }
 
@@ -559,12 +603,14 @@ private:
   AddressOf(Expr_ptr _expr) : Expression(ADDRESSOF) {
     assert(_expr->get_kind() == Node::Kind::VARIABLE);
     expr = _expr->clone();
+
+    expr->set_wrap(false);
   }
 
 public:
   Expr_ptr get_expr() const { return expr; }
 
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     ofs << "&";
     expr->synthesize(ofs, lvl);
   }
@@ -606,7 +652,7 @@ public:
   Expr_ptr get_lhs() const { return lhs; }
   Expr_ptr get_rhs() const { return rhs; }
 
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     lhs->synthesize(ofs, lvl);
     ofs << " == ";
     rhs->synthesize(ofs, lvl);
@@ -636,6 +682,316 @@ public:
 
 typedef std::shared_ptr<Equals> Equals_ptr;
 
+class Add : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Add(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(ADD), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " + ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<add>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</add>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Add(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Add> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    Add* add = new Add(_lhs, _rhs);
+    return std::shared_ptr<Add>(add);
+  }
+};
+
+typedef std::shared_ptr<Add> Add_ptr;
+
+class Sub : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Sub(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(SUB), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " - ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<sub>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</sub>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Sub(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Sub> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    Sub* sub = new Sub(_lhs, _rhs);
+    return std::shared_ptr<Sub>(sub);
+  }
+};
+
+typedef std::shared_ptr<Sub> Sub_ptr;
+
+class Mul : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Mul(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(MUL), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " * ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<mul>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</mul>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Mul(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Mul> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    Mul* mul = new Mul(_lhs, _rhs);
+    return std::shared_ptr<Mul>(mul);
+  }
+};
+
+typedef std::shared_ptr<Mul> Mul_ptr;
+
+class Div : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Div(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(DIV), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " / ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<div>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</div>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Div(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Div> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    Div* div = new Div(_lhs, _rhs);
+    return std::shared_ptr<Div>(div);
+  }
+};
+
+typedef std::shared_ptr<Div> Div_ptr;
+
+class And : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  And(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(AND), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " & ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<bitwise-and>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</bitwise-and>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new And(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<And> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    And* _and = new And(_lhs, _rhs);
+    return std::shared_ptr<And>(_and);
+  }
+};
+
+typedef std::shared_ptr<And> And_ptr;
+
+class Or : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Or(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(OR), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "(";
+    lhs->synthesize(ofs, lvl);
+    ofs << " | ";
+    rhs->synthesize(ofs, lvl);
+    ofs << ")";
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<bitwise-or>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</bitwise-or>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Or(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Or> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    Or* _or = new Or(_lhs, _rhs);
+    return std::shared_ptr<Or>(_or);
+  }
+};
+
+typedef std::shared_ptr<Or> Or_ptr;
+
+class Xor : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  Xor(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(XOR), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " ^ ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<xor>" << "\n";
+
+    lhs->debug(lvl+2);
+    rhs->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</xor>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Xor(lhs, rhs);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Xor> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    Xor* _xor = new Xor(_lhs, _rhs);
+    return std::shared_ptr<Xor>(_xor);
+  }
+};
+
+typedef std::shared_ptr<Xor> Xor_ptr;
+
 class Not : public Expression {
 private:
   Expr_ptr expr;
@@ -648,16 +1004,10 @@ private:
 public:
   Expr_ptr get_expr() const { return expr; }
 
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(lvl);
-
-    ofs << "!(";
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "!";
     expr->synthesize(ofs);
-    ofs << ")";
-
-    if (terminate_line) {
-      ofs << ";";
-    }
+    ofs << "";
   }
 
   void debug(unsigned int lvl=0) const override {
@@ -699,10 +1049,8 @@ public:
   unsigned int get_size() const { return size; }
   unsigned int get_offset() const { return offset; }
 
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     assert(expr);
-
-    indent(lvl);
 
     ofs << "(";
     expr->synthesize(ofs);
@@ -714,10 +1062,6 @@ public:
     stream << std::hex << ((1 << size) - 1);
     std::string mask_hex( stream.str() );
     ofs << mask_hex;
-
-    if (terminate_line) {
-      ofs << ";";
-    }
   }
 
   void debug(unsigned int lvl=0) const override {
@@ -756,10 +1100,13 @@ private:
   Type_ptr type;
 
   Variable(std::string _symbol , Type_ptr _type)
-    : Expression(VARIABLE), symbol(_symbol), type(_type->clone()) {}
+    : Expression(VARIABLE), symbol(_symbol), type(_type->clone()) {
+    set_wrap(false);
+    set_terminate_line(false);
+  }
 
 public:
-  void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
+  void synthesize_expr(std::ostream &ofs, unsigned int lvl=0) const override {
     ofs << symbol;
   }
 
@@ -797,20 +1144,18 @@ private:
   Type_ptr type;
 
   VariableDecl(const std::string& _symbol, Type_ptr _type)
-    : Expression(VARIABLE_DECL), symbol(_symbol), type(_type->clone()) {}
+    : Expression(VARIABLE_DECL), symbol(_symbol), type(_type->clone()) {
+    set_wrap(false);
+  }
 
 public:
   const std::string& get_symbol() const { return symbol; }
   Type_ptr get_type() const { return type; }
 
-  void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
+  void synthesize_expr(std::ostream &ofs, unsigned int lvl=0) const override {
     type->synthesize(ofs, lvl);
     ofs << " ";
     ofs << symbol;
-
-    if (terminate_line) {
-      ofs << ";";
-    }
   }
 
   void debug(unsigned int lvl=0) const override {
@@ -953,12 +1298,13 @@ private:
     : Expression(ASSIGNMENT),
       variable(_variable->clone()), value(_value->clone()) {
     variable->set_terminate_line(false);
+    value->set_terminate_line(false);
+
+    set_wrap(false);
   }
 
 public:
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(ofs, lvl);
-
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     variable->synthesize(ofs);
     ofs << " = ";
     value->synthesize(ofs);
@@ -1264,7 +1610,10 @@ public:
       "start_time",
       "loop_invariant_consume",
       "loop_invariant_produce",
-      "current_time"
+      "current_time",
+      "packet_receive",
+      "packet_state_total_length",
+      "packet_send"
     };
 
     commit_functions = std::vector<std::string> { "start_time" };
@@ -1339,9 +1688,9 @@ public:
       push();
 
       std::vector<VariableDecl_ptr> vars {
-        VariableDecl::build("device", NamedType::build("uint16_t")),
-        VariableDecl::build("buffer", Pointer::build(NamedType::build("uint8_t"))),
-        VariableDecl::build("buffer_length", NamedType::build("uint16_t")),
+        VariableDecl::build("src_devices", NamedType::build("uint16_t")),
+        VariableDecl::build("p", Pointer::build(NamedType::build("uint8_t"))),
+        VariableDecl::build("pkt_len", NamedType::build("uint16_t")),
         VariableDecl::build("now", NamedType::build("vigor_time_t"))
       };
 
@@ -1373,15 +1722,18 @@ public:
 
       nf_init = Function::build("nf_init", _args, _body, _return);
 
+      dump();
+      exit(0);
+
       context_switch(PROCESS);
       break;
     }
 
     case PROCESS: {
       std::vector<FunctionArgDecl_ptr> _args{
-        FunctionArgDecl::build("device", NamedType::build("uint16_t")),
-        FunctionArgDecl::build("buffer", Pointer::build(NamedType::build("uint8_t"))),
-        FunctionArgDecl::build("buffer_length", NamedType::build("uint16_t")),
+        FunctionArgDecl::build("src_devices", NamedType::build("uint16_t")),
+        FunctionArgDecl::build("p", Pointer::build(NamedType::build("uint8_t"))),
+        FunctionArgDecl::build("pkt_len", NamedType::build("uint16_t")),
         FunctionArgDecl::build("now", NamedType::build("vigor_time_t")),
       };
 
@@ -1498,6 +1850,10 @@ public:
     const klee::Array *root = ul.root;
     std::string symbol = root->name;
 
+    if (symbol == "VIGOR_DEVICE") {
+      symbol = "src_devices";
+    }
+
     symbol_width = std::make_pair(true, root->getSize() * 8);
 
     Variable_ptr var = ast->get_from_local(symbol);
@@ -1613,27 +1969,152 @@ public:
   }
 
   klee::ExprVisitor::Action visitAdd(const klee::AddExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Add_ptr add = Add::build(left, right);
+    save_result(add);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSub(const klee::SubExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Sub_ptr sub = Sub::build(left, right);
+    save_result(sub);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitMul(const klee::MulExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Mul_ptr mul = Mul::build(left, right);
+    save_result(mul);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitUDiv(const klee::UDivExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Div_ptr div = Div::build(left, right);
+    save_result(div);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSDiv(const klee::SDivExpr& e) {
-    assert(false && "Not implemented");
+    assert(e.getNumKids() == 2);
+
+    Expr_ptr left, right;
+
+    KleeExprToASTNodeConverter left_converter(ast);
+    KleeExprToASTNodeConverter right_converter(ast);
+
+    left_converter.visit(e.getKid(0));
+    left = left_converter.get_result();
+
+    if (left == nullptr) {
+      left = const_to_ast_expr(e.getKid(0));
+      assert(left != nullptr);
+    }
+
+    right_converter.visit(e.getKid(1));
+    right = right_converter.get_result();
+
+    if (right == nullptr) {
+      right = const_to_ast_expr(e.getKid(1));
+      assert(right != nullptr);
+    }
+
+    Div_ptr div = Div::build(left, right);
+    save_result(div);
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -1783,7 +2264,7 @@ public:
   }
 };
 
-Node_ptr node_from_expr(AST *ast, klee::ref<klee::Expr> expr) {
+Expr_ptr node_from_expr(AST *ast, klee::ref<klee::Expr> expr) {
   KleeExprToASTNodeConverter exprToNodeConverter(ast);
   exprToNodeConverter.visit(expr);
 
@@ -2078,7 +2559,6 @@ struct call_paths_group_t {
   }
 
   bool are_calls_equal(call_t c1, call_t c2) {
-
     if (c1.function_name != c2.function_name) {
       return false;
     }
@@ -2087,7 +2567,6 @@ struct call_paths_group_t {
       return false;
     }
 
-    /*
     for (auto arg_name_value_pair : c1.args) {
       auto arg_name = arg_name_value_pair.first;
 
@@ -2098,17 +2577,25 @@ struct call_paths_group_t {
       auto c1_arg = arg_name_value_pair.second;
       auto c2_arg = c2.args[arg_name];
 
-      if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.first, c2_arg.first)) {
-        std::cerr << "first arg " << c1_arg_name << "\n";
-        std::cerr << expr_to_string(c1_arg.first) << "\n";
+      if (c1_arg.second.isNull() != c2_arg.second.isNull()) {
+        return false;
+      }
 
-        std::cerr << "second arg " << c2_arg_name << "\n";
-        std::cerr << expr_to_string(c2_arg.first) << "\n";
+      if (!c1_arg.second.isNull()) {
+        continue;
+      }
+
+      if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.first, c2_arg.first)) {
         std::cerr << "\n";
+        std::cerr << "fname        " << c1.function_name << "\n";
+        std::cerr << "arg name     " << arg_name << "\n";
+        std::cerr << "first value  " << expr_to_string(c1_arg.first) << "\n";
+        std::cerr << "second value " << expr_to_string(c2_arg.first) << "\n";
+        std::cerr << "\n";
+
         return false;
       }
     }
-    */
 
     return true;
   }
@@ -2228,19 +2715,16 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
     std::cerr << "\n";
     std::cerr << "===================================" << "\n";
-    std::cerr << "fname          " << fname << "\n";
-    std::cerr << "nodes          " << nodes.size() << "\n";
-    std::cerr << "in:            " << group.in.size() << "\n";
-    std::cerr << "out:           " << group.out.size() << "\n";
-    std::cerr << "overflow:      " << group.overflow << "\n";
-    std::cerr << "root           " << assistant.root << "\n";
-    std::cerr << "should skip:   " << should_skip << "\n";
-    std::cerr << "should commit: " << should_commit << "\n";
+    std::cerr << "fname           " << fname << "\n";
+    std::cerr << "nodes           " << nodes.size() << "\n";
+    std::cerr << "in              " << group.in.size() << "\n";
+    std::cerr << "out             " << group.out.size() << "\n";
+    std::cerr << "first call_path " << assistant.call_paths[0]->file_name << "\n";
+    std::cerr << "overflow        " << group.overflow << "\n";
+    std::cerr << "root            " << assistant.root << "\n";
+    std::cerr << "should skip     " << should_skip << "\n";
+    std::cerr << "should commit   " << should_commit << "\n";
     std::cerr << "===================================" << "\n";
-
-    for (auto cp : assistant.call_paths) {
-      std::cerr << cp->file_name << " : " << cp->calls[assistant.call_idx].function_name << "\n";
-    }
 
     if (should_commit && assistant.root) {
       ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
@@ -2271,8 +2755,8 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     klee::ref<klee::Expr> constraint = group.find_discriminating_constraint();
     klee::ref<klee::Expr> not_constraint = ast_builder_assistant_t::exprBuilder->Not(constraint);
 
-    Node_ptr cond = node_from_expr(&ast, constraint);
-    Node_ptr not_cond = node_from_expr(&ast, not_constraint);
+    Expr_ptr cond = node_from_expr(&ast, constraint);
+    Expr_ptr not_cond = node_from_expr(&ast, not_constraint);
 
     ast_builder_assistant_t then_assistant(group.in, assistant.call_idx + 1, cond, group.overflow);
     ast_builder_assistant_t else_assistant(group.out, assistant.call_idx + 1, not_cond, false);
