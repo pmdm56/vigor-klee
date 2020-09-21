@@ -515,9 +515,7 @@ public:
       }
     }
 
-    if (terminate_line) {
-      ofs << ")";
-    }
+    ofs << ")";
   }
 
   void debug(unsigned int lvl=0) const override {
