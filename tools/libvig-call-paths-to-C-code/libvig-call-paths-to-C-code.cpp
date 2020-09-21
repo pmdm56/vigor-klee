@@ -2308,7 +2308,8 @@ public:
       Type_ptr _return = NamedType::build("bool");
 
       nf_init = Function::build("nf_init", _args, _body, _return);
-
+      dump();
+      exit(0);
       context_switch(PROCESS);
       break;
     }
@@ -3652,10 +3653,21 @@ struct call_paths_group_t {
 
   bool are_calls_equal(call_t c1, call_t c2) {
     if (c1.function_name != c2.function_name) {
+      std::cerr << "\n";
+      std::cerr << "Different functions" << "\n";
+      std::cerr << "first fname  " << c1.function_name << "\n";
+      std::cerr << "second fname " << c2.function_name << "\n";
+      std::cerr << "\n";
       return false;
     }
 
     if (!ast_builder_assistant_t::are_exprs_always_equal(c1.ret, c2.ret)) {
+      std::cerr << "\n";
+      std::cerr << "Different returns" << "\n";
+      std::cerr << "fname        " << c1.function_name << "\n";
+      std::cerr << "first value  " << expr_to_string(c1.ret) << "\n";
+      std::cerr << "second value " << expr_to_string(c2.ret) << "\n";
+      std::cerr << "\n";
       return false;
     }
 
@@ -3788,6 +3800,20 @@ struct ast_builder_ret_t {
 ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   assert(assistant.call_paths.size());
 
+  if (assistant.root) {
+    auto is_skip_call = [&](const call_t& call) -> bool {
+      return ast.is_skip_function(call.function_name);
+    };
+
+    for (unsigned int i = 0; i < assistant.call_paths.size(); i++) {
+      auto skip_call_removal = std::remove_if(assistant.call_paths[i]->calls.begin(),
+                                              assistant.call_paths[i]->calls.end(),
+                                              is_skip_call);
+
+      assistant.call_paths[i]->calls.erase(skip_call_removal, assistant.call_paths[i]->calls.end());
+    }
+  }
+
   std::cerr << "\n"
             << "********* CALL BUILD AST *********" << "\n"
             << "  call_idx   " << assistant.call_idx << "\n"
@@ -3803,19 +3829,20 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     std::string fname = assistant.get_call().function_name;
 
     bool should_commit = ast.is_commit_function(fname);
-    bool should_skip = ast.is_skip_function(fname);
 
     std::cerr << "\n";
     std::cerr << "===================================" << "\n";
-    std::cerr << "fname           " << fname << "\n";
-    std::cerr << "nodes           " << nodes.size() << "\n";
-    std::cerr << "in              " << group.in.size() << "\n";
-    std::cerr << "out             " << group.out.size() << "\n";
-    std::cerr << "first call_path " << assistant.call_paths[0]->file_name << "\n";
-    std::cerr << "overflow        " << group.overflow << "\n";
-    std::cerr << "root            " << assistant.root << "\n";
-    std::cerr << "should skip     " << should_skip << "\n";
-    std::cerr << "should commit   " << should_commit << "\n";
+    std::cerr << "fname         " << fname << "\n";
+    std::cerr << "nodes         " << nodes.size() << "\n";
+    std::cerr << "in            " << group.in.size() << "\n";
+    std::cerr << "out           " << group.out.size() << "\n";
+    if (group.in.size())
+    std::cerr << "in call_path  " << group.in[0]->file_name << "\n";
+    if (group.out.size())
+    std::cerr << "out call_path " << group.out[0]->file_name << "\n";
+    std::cerr << "overflow      " << group.overflow << "\n";
+    std::cerr << "root          " << assistant.root << "\n";
+    std::cerr << "should commit " << should_commit << "\n";
     std::cerr << "===================================" << "\n";
 
     if (should_commit && assistant.root) {
@@ -3825,11 +3852,6 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
     else if (should_commit && !assistant.root) {
       break;
-    }
-
-    if (should_skip) {
-      assistant.jump_to_call_idx(assistant.call_idx+1);
-      continue;
     }
 
     bool equal_calls = group.in.size() == assistant.call_paths.size();
@@ -3850,8 +3872,24 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     Expr_ptr cond = node_from_expr(&ast, constraint);
     Expr_ptr not_cond = node_from_expr(&ast, not_constraint);
 
-    ast_builder_assistant_t then_assistant(group.in, assistant.call_idx + 1, cond, group.overflow);
-    ast_builder_assistant_t else_assistant(group.out, assistant.call_idx + 1, not_cond, false);
+    std::cerr << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << "\n";
+    std::cerr << "Condition: ";
+    cond->synthesize(std::cerr);
+    std::cerr << "\n";
+
+    if (group.in[0]->calls.size() > assistant.call_idx + 1)
+      std::cerr << "Then function: " << group.in[0]->calls[assistant.call_idx + 1].function_name << "\n";
+    else
+      std::cerr << "Then function: none" << "\n";
+
+    if (group.out[0]->calls.size() > assistant.call_idx + 1)
+      std::cerr << "Else function: " << group.out[0]->calls[assistant.call_idx + 1].function_name << "\n";
+    else
+      std::cerr << "Else function: none" << "\n";
+    std::cerr << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << "\n";
+
+    ast_builder_assistant_t then_assistant(group.in, assistant.call_idx, cond, group.overflow);
+    ast_builder_assistant_t else_assistant(group.out, assistant.call_idx, not_cond, false);
 
     ast_builder_ret_t _then_ret = build_ast(ast, then_assistant);
     ast_builder_ret_t _else_ret = build_ast(ast, else_assistant);
