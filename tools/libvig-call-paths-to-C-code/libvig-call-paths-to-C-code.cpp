@@ -87,6 +87,7 @@ public:
     SHIFT_LEFT,
     SHIFT_RIGHT,
     READ,
+    CONCAT,
     SIGNED_LITERAL,
     UNSIGNED_LITERAL
   };
@@ -545,6 +546,7 @@ public:
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     if (hex) {
+      ofs << "0x";
       ofs << std::hex;
     }
 
@@ -593,6 +595,7 @@ public:
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     if (hex) {
+      ofs << "0x";
       ofs << std::hex;
     }
 
@@ -676,6 +679,7 @@ private:
   Equals(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {
     lhs->set_terminate_line(false);
+    rhs->set_terminate_line(false);
   }
 
 public:
@@ -1415,67 +1419,6 @@ public:
 
 typedef std::shared_ptr<Not> Not_ptr;
 
-class Read : public Expression {
-private:
-  Expr_ptr expr;
-  unsigned int size;
-  unsigned int offset;
-
-  Read(Expr_ptr _expr, unsigned int _size, unsigned int _offset)
-    : Expression(READ), expr(_expr->clone()), size(_size), offset(_offset) {
-    expr->set_terminate_line(false);
-  }
-
-public:
-  Expr_ptr get_expr() const { return expr; }
-  unsigned int get_size() const { return size; }
-  unsigned int get_offset() const { return offset; }
-
-  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    assert(expr);
-
-    ofs << "(";
-    expr->synthesize(ofs);
-    ofs << " >> ";
-    ofs << offset * size;
-    ofs << ") & ";
-
-    std::stringstream stream;
-    stream << std::hex << ((1 << size) - 1);
-    std::string mask_hex( stream.str() );
-    ofs << mask_hex;
-  }
-
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-
-    std::cerr << "<read";
-    std::cerr << " size=" << size;
-    std::cerr << " offset=" << offset;
-    std::cerr << " >" << "\n";
-
-    expr->debug(lvl+2);
-    std::cerr << "\n";
-
-    indent(lvl);
-    std::cerr << "</read>";
-  }
-
-  std::shared_ptr<Expression> clone() const override {
-    Expression* e = new Read(expr, size, offset);
-    return std::shared_ptr<Expression>(e);
-  }
-
-  static std::shared_ptr<Read> build(Expr_ptr _expr, unsigned int _size, unsigned int _offset) {
-    Read* equals = new Read(_expr, _size, _offset);
-    return std::shared_ptr<Read>(equals);
-  }
-};
-
-typedef std::shared_ptr<Read> Read_ptr;
-
-class VariableDecl;
-
 class Variable : public Expression {
 private:
   std::string symbol;
@@ -1519,6 +1462,211 @@ public:
 };
 
 typedef std::shared_ptr<Variable> Variable_ptr;
+
+class Read : public Expression {
+private:
+  Expr_ptr expr;
+  unsigned int idx;
+  unsigned int size;
+
+  Read(Expr_ptr _expr, unsigned int _idx, unsigned int _size)
+    : Expression(READ), expr(_expr->clone()), idx(_idx), size(_size) {
+    assert(expr->get_kind() == VARIABLE);
+
+    expr->set_terminate_line(false);
+    expr->set_wrap(false);
+  }
+
+public:
+  Expr_ptr get_expr() const { return expr; }
+  unsigned int get_idx() const { return idx; }
+  unsigned int get_size() const { return size; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    Variable* var = static_cast<Variable*>(expr.get());
+
+    if (var->get_type()->get_kind() == POINTER) {
+      expr->synthesize(ofs);
+      ofs << "[";
+      ofs << idx;
+      ofs << "]";
+    }
+
+    else {
+      ofs << "(";
+      expr->synthesize(ofs);
+      ofs << " << ";
+      ofs << idx * size;
+      ofs << ") & 0x";
+      ofs << std::hex;
+      ofs << ((1 << size) - 1);
+      ofs << std::dec;
+    }
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+
+    std::cerr << "<read";
+    std::cerr << " size=" << size;
+    std::cerr << " idx=" << idx;
+    std::cerr << " >" << "\n";
+
+    expr->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</read>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Read(expr, idx, size);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Read> build(Expr_ptr _expr, unsigned int _idx, unsigned int _size) {
+    Read* read = new Read(_expr, _idx, _size);
+    return std::shared_ptr<Read>(read);
+  }
+};
+
+typedef std::shared_ptr<Read> Read_ptr;
+
+class Concat : public Expression {
+private:
+  Expr_ptr left;
+  Expr_ptr right;
+
+  Concat(Expr_ptr _left, Expr_ptr _right)
+    : Expression(CONCAT), left(_left->clone()), right(_right->clone()) {
+    assert(left->get_kind() == READ || left->get_kind() == CONCAT);
+    assert(right->get_kind() == READ || right->get_kind() == CONCAT);
+
+    left->set_terminate_line(false);
+    right->set_terminate_line(false);
+  }
+
+public:
+  Expr_ptr get_left() const { return left; }
+  Expr_ptr get_right() const { return right; }
+
+  unsigned int get_elem_size() const {
+    unsigned elem_size = 0;
+
+    if (left->get_kind() == READ) {
+      Read* left_read = static_cast<Read*>(left.get());
+      elem_size = left_read->get_size();
+    }
+
+    else if (right->get_kind() == READ) {
+      Read* right_read = static_cast<Read*>(right.get());
+      elem_size = right_read->get_size();
+    }
+
+    else {
+      Concat* left_concat = static_cast<Concat*>(left.get());
+      elem_size = left_concat->get_elem_size();
+    }
+
+    return elem_size;
+  }
+
+  std::vector<unsigned int> get_idxs() const {
+    std::vector<unsigned int> idxs;
+
+    if (left->get_kind() == READ) {
+      Read* read = static_cast<Read*>(left.get());
+      auto idx = read->get_idx();
+
+      auto found_it = std::find(idxs.begin(), idxs.end(), idx);
+      assert(found_it == idxs.end());
+
+      idxs.push_back(idx);
+    } else {
+      Concat* concat = static_cast<Concat*>(left.get());
+      auto sub_idxs = concat->get_idxs();
+
+      for (auto idx : sub_idxs) {
+        auto found_it = std::find(idxs.begin(), idxs.end(), idx);
+        assert(found_it == idxs.end());
+        idxs.push_back(idx);
+      }
+    }
+
+    if (right->get_kind() == READ) {
+      Read* read = static_cast<Read*>(right.get());
+      auto idx = read->get_idx();
+
+      auto found_it = std::find(idxs.begin(), idxs.end(), idx);
+      assert(found_it == idxs.end());
+
+      idxs.push_back(idx);
+    } else {
+      Concat* concat = static_cast<Concat*>(right.get());
+      auto sub_idxs = concat->get_idxs();
+
+      for (auto idx : sub_idxs) {
+        auto found_it = std::find(idxs.begin(), idxs.end(), idx);
+        assert(found_it == idxs.end());
+        idxs.push_back(idx);
+      }
+    }
+
+    return idxs;
+  }
+
+  Expr_ptr get_var() const {
+    Expr_ptr var;
+
+    if (left->get_kind() == READ) {
+      Read* left_read = static_cast<Read*>(left.get());
+      var = left_read->get_expr();
+    }
+
+    else if (right->get_kind() == READ) {
+      Read* right_read = static_cast<Read*>(right.get());
+      var = right_read->get_expr();
+    }
+
+    else {
+      Concat* left_concat = static_cast<Concat*>(left.get());
+      var = left_concat->get_var();
+    }
+
+    return var;
+  }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "(";
+    left->synthesize(ofs);
+    ofs << " << ";
+    ofs << get_elem_size();
+    ofs << ") | ";
+    right->synthesize(ofs);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<concat>" << "\n";
+
+    left->debug(lvl+2);
+    right->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</concat>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Concat(left, right);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Concat> build(Expr_ptr _left, Expr_ptr _right) {
+    Concat* concat = new Concat(_left, _right);
+    return std::shared_ptr<Concat>(concat);
+  }
+};
+
+typedef std::shared_ptr<Concat> Concat_ptr;
 
 class VariableDecl : public Expression {
 private:
@@ -2118,11 +2266,19 @@ public:
       pop();
       push();
 
-      std::vector<VariableDecl_ptr> vars {
+      std::vector<VariableDecl_ptr> args {
         VariableDecl::build("src_devices", NamedType::build("uint16_t")),
         VariableDecl::build("p", Pointer::build(NamedType::build("uint8_t"))),
         VariableDecl::build("pkt_len", NamedType::build("uint16_t")),
         VariableDecl::build("now", NamedType::build("vigor_time_t"))
+      };
+
+      for (const auto& arg : args) {
+        push_to_local(Variable::build(arg->get_symbol(), arg->get_type()));
+      }
+
+      std::vector<VariableDecl_ptr> vars {
+        VariableDecl::build("packet_chunks", Pointer::build(NamedType::build("uint8_t")))
       };
 
       for (const auto& var : vars) {
@@ -2309,7 +2465,9 @@ public:
     auto constant_index = static_cast<klee::ConstantExpr *>(index.get());
     auto index_value = constant_index->getZExtValue();
 
-    save_result(Read::build(var, evaluate_width(e.getWidth()), index_value));
+    Read_ptr read = Read::build(var, index_value, evaluate_width(e.getWidth()));
+
+    save_result(read);
 
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -2318,8 +2476,8 @@ public:
     assert(e.getNumKids() == 3);
 
     auto cond = e.getKid(0);
-    auto first = e.getKid(0);
-    auto second = e.getKid(0);
+    auto first = e.getKid(1);
+    auto second = e.getKid(2);
 
     Expr_ptr cond_expr;
     Expr_ptr first_expr;
@@ -2331,17 +2489,14 @@ public:
 
     cond_converter.visit(cond);
     cond_expr = cond_converter.get_result();
-
     assert(cond_expr);
 
     first_converter.visit(first);
     first_expr = first_converter.get_result();
-
     assert(first_expr);
 
     second_converter.visit(second);
     second_expr = second_converter.get_result();
-
     assert(second_expr);
 
     Select_ptr select = Select::build(cond_expr, first_expr, second_expr);
@@ -2379,40 +2534,29 @@ public:
     assert(right_converter.get_symbol_width().first == saved_symbol_width.first);
     assert(right_converter.get_symbol_width().second == saved_symbol_width.second);
 
-    assert(left_expr->get_kind() == Node::Kind::READ);
-    assert(right_expr->get_kind() == Node::Kind::READ);
+    Concat_ptr concat = Concat::build(left_expr, right_expr);
 
-    Read* left_read = static_cast<Read*>(left_expr.get());
-    Read* right_read = static_cast<Read*>(right_expr.get());
+    auto total_idxs = saved_symbol_width.second / concat->get_elem_size();
+    auto idxs = concat->get_idxs();
 
-    assert(left_read->get_expr()->get_kind() == Node::Kind::VARIABLE);
-    assert(right_read->get_expr()->get_kind() == Node::Kind::VARIABLE);
+    bool complete = true;
+    for (auto idx : idxs) {
+      if (idx != total_idxs - 1) {
+        complete = false;
+        break;
+      }
 
-    assert((left_read->get_offset() * left_read->get_size()) ==
-           right_read->get_offset() * right_read->get_size() + right_read->get_size());
+      total_idxs--;
+    }
 
-    Expr_ptr left_read_expr = left_read->get_expr();
-    Expr_ptr right_read_expr = right_read->get_expr();
-
-    Variable* left_read_var = static_cast<Variable*>(left_read_expr.get());
-    Variable* right_read_var = static_cast<Variable*>(right_read_expr.get());
-
-    assert(left_read_var->get_symbol() == right_read_var->get_symbol());
-
-    Read_ptr simplified = Read::build(left_read_expr,
-                                      left_read->get_size() + right_read->get_size(),
-                                      right_read->get_offset());
-
-    if (simplified->get_size() == saved_symbol_width.second && simplified->get_offset() == 0) {      
-      save_result(simplified->get_expr());
+    if (complete) {
+      save_result(concat->get_var());
       symbol_width = saved_symbol_width;
-
       return klee::ExprVisitor::Action::skipChildren();
     }
 
-    save_result(simplified);
+    save_result(concat);
     symbol_width = saved_symbol_width;
-
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -2428,8 +2572,10 @@ public:
 
     assert(ast_expr);
 
-    Read_ptr read = Read::build(ast_expr, size, offset);
-    save_result(read);
+    ShiftRight_ptr shift = ShiftRight::build(ast_expr, UnsignedLiteral::build(offset));
+    And_ptr extract = And::build(shift, UnsignedLiteral::build((1 << size) - 1, true));
+
+    save_result(extract);
 
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -2437,9 +2583,7 @@ public:
   klee::ExprVisitor::Action visitZExt(const klee::ZExtExpr& e) {
     assert(e.getNumKids() == 1);
 
-    auto size = evaluate_width(e.getWidth());
     auto expr = e.getKid(0);
-    auto expr_size = evaluate_width(e.getWidth());
 
     KleeExprToASTNodeConverter expr_converter(ast);
 
@@ -2447,15 +2591,7 @@ public:
     Expr_ptr ast_expr = expr_converter.get_result();
     assert(ast_expr);
 
-    Expr_ptr to_be_extended;
-
-    if (size > expr_size) {
-      to_be_extended = ast_expr;
-    } else {
-      to_be_extended = Read::build(ast_expr, size, 0);
-    }
-
-    save_result(to_be_extended);
+    save_result(ast_expr);
 
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -2486,11 +2622,11 @@ public:
     Expr_ptr to_be_extended;
 
     if (size > expr_size) {
-      Read_ptr msb = Read::build(ast_expr, 1, expr_size - 1);
+      ShiftRight_ptr msb = ShiftRight::build(ast_expr, UnsignedLiteral::build(expr_size - 1));
       Expr_ptr if_msb_one = Or::build(mask_expr, ast_expr);
       to_be_extended = Select::build(msb, if_msb_one, ast_expr);
     } else {
-      to_be_extended = Read::build(ast_expr, size, 0);
+      to_be_extended = ast_expr;
     }
 
     save_result(to_be_extended);
@@ -2896,7 +3032,7 @@ public:
       assert(right != nullptr);
     }
 
-    Read_ptr msb = Read::build(left, 1, left_size - 1);
+    ShiftRight_ptr msb = ShiftRight::build(left, UnsignedLiteral::build(left_size - 1));
     ShiftLeft_ptr mask = ShiftLeft::build(msb, UnsignedLiteral::build(left_size - 1));
     ShiftRight_ptr shr = ShiftRight::build(left, right);
     Expr_ptr ashr = Or::build(mask, shr);
