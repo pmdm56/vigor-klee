@@ -2754,6 +2754,14 @@ public:
     : ExprVisitor(false), ast(_ast) {}
 
   klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::ref<klee::Expr> eref = const_cast<klee::ReadExpr *>(&e);
+
+    Expr_ptr local = ast->get_from_local(eref);
+    if (local != nullptr) {
+      save_result(local);
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+
     klee::UpdateList ul = e.updates;
     const klee::Array *root = ul.root;
     std::string symbol = root->name;
