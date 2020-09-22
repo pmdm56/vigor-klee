@@ -248,6 +248,7 @@ public:
   void debug(unsigned int lvl=0) const override {
     type->debug(lvl);
     std::cerr << "*";
+    std::cerr << "[" << id << "]";
   }
 
   Type_ptr get_type() const { return type; }
@@ -2177,6 +2178,15 @@ Expr_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
   return UnsignedLiteral::build(value);
 }
 
+uint64_t const_to_value(const klee::ref<klee::Expr> &e) {
+  assert(e->getKind() == klee::Expr::Kind::Constant);
+
+  klee::ConstantExpr* constant = static_cast<klee::ConstantExpr *>(e.get());
+  uint64_t value = constant->getZExtValue();
+
+  return value;
+}
+
 class AST {
 private:
   enum Context { INIT, PROCESS, DONE };
@@ -2232,8 +2242,120 @@ public:
     return nullptr;
   }
 
+  Variable_ptr get_from_local(const std::string& symbol, unsigned int addr) {
+    auto partial_name_finder = [&](local_variable_t v) -> bool {
+      std::string local_symbol = v.first->get_symbol();
+      return local_symbol.find(symbol) != std::string::npos;
+    };
+
+    auto addr_finder = [&](local_variable_t v) -> bool {
+      Type_ptr type = v.first->get_type();
+
+      if (type->get_kind() != Node::Kind::POINTER) {
+        return false;
+      }
+
+      Pointer* pointer = static_cast<Pointer*>(type.get());
+
+      return pointer->get_id() == addr;
+    };
+
+    for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
+      auto stack = *i;
+      auto it = std::find_if(stack.begin(), stack.end(), addr_finder);
+      if (it != stack.end()) {
+        return it->first;
+      }
+    }
+
+    // allocating)
+    for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
+      auto stack = *i;
+      auto it = std::find_if(stack.begin(), stack.end(), partial_name_finder);
+
+      if (it == stack.end()) {
+        continue;
+      }
+
+      Type_ptr type = it->first->get_type();
+
+      if (type->get_kind() != Node::Kind::POINTER) {
+        continue;
+      }
+
+      Pointer* pointer = static_cast<Pointer*>(type.get());
+
+      if (pointer->get_id() != 0) {
+        continue;
+      }
+
+      pointer->allocate(addr);
+      return it->first;
+    }
+
+    assert(false && "All pointers are allocated, or symbol not found");
+  }
+
+  Variable_ptr get_from_state(const std::string& symbol, unsigned int addr) {
+    auto partial_name_finder = [&](Variable_ptr v) -> bool {
+      std::string local_symbol = v->get_symbol();
+      return local_symbol.find(symbol) != std::string::npos;
+    };
+
+    auto addr_finder = [&](Variable_ptr v) -> bool {
+      Type_ptr type = v->get_type();
+
+      if (type->get_kind() != Node::Kind::POINTER) {
+        return false;
+      }
+
+      Pointer* pointer = static_cast<Pointer*>(type.get());
+
+      return pointer->get_id() == addr;
+    };
+
+    auto addr_finder_it = std::find_if(state.begin(), state.end(), addr_finder);
+    if (addr_finder_it != state.end()) {
+      return *addr_finder_it;
+    }
+
+    // allocating)
+    for (Variable_ptr v : state) {
+      if (!partial_name_finder(v)) {
+        continue;
+      }
+
+      Type_ptr type = v->get_type();
+
+      if (type->get_kind() != Node::Kind::POINTER) {
+        continue;
+      }
+
+      Pointer* pointer = static_cast<Pointer*>(type.get());
+
+      if (pointer->get_id() != 0) {
+        continue;
+      }
+
+      pointer->allocate(addr);
+      return v;
+    }
+
+    assert(false && "All pointers are allocated, or symbol not found");
+  }
+
   Variable_ptr get_from_local(klee::ref<klee::Expr> expr) {
+    assert(!expr.isNull());
+
     auto finder = [&](local_variable_t v) -> bool {
+      if (v.second.isNull()) {
+        return false;
+      }
+
+      if (expr->getWidth() != v.second->getWidth()) {
+        return false;
+      }
+
       return ast_builder_assistant_t::are_exprs_always_equal(v.second, expr);
     };
 
@@ -2379,11 +2501,15 @@ private:
           assert(false && "Missing layers implementation");
       }
 
+      push_to_local(chunk, call.extra_vars["the_chunk"].second);
+
       VariableDecl_ptr chunk_decl = VariableDecl::build(chunk);
       chunk_decl->set_terminate_line(true);
       exprs.push_back(chunk_decl);
 
       args = std::vector<Expr_ptr>{ p, pkt_len, chunk };
+
+      layer++;
     }
 
     else if (fname == "packet_get_unread_length") {
@@ -2391,6 +2517,30 @@ private:
       args = std::vector<Expr_ptr>{ p };
 
       Variable_ptr ret_var = variable_generator.generate("unread_len", "uint16_t");
+      push_to_local(ret_var);
+
+      ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    }
+
+    else if (fname == "expire_items_single_map") {
+      Comment_ptr comm = Comment::build("FIXME: 'now' arg");
+      exprs.push_back(comm);
+
+      uint64_t chain_addr = const_to_value(call.args["chain"].first);
+      uint64_t vector_addr = const_to_value(call.args["vector"].first);
+      uint64_t map_addr = const_to_value(call.args["map"].first);
+
+      Variable_ptr chain = get_from_state("chain", chain_addr);
+      Variable_ptr vector = get_from_state("vector", vector_addr);
+      Variable_ptr map = get_from_state("map", map_addr);
+      Variable_ptr now = get_from_local("now");
+      assert(now);
+
+      args = std::vector<Expr_ptr>{ chain, vector, map, now };
+
+      Variable_ptr ret_var = variable_generator.generate("unmber_of_freed_flows", "int");
+      push_to_local(ret_var, call.ret);
+
       ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
     }
 
@@ -2415,7 +2565,6 @@ private:
     }
 
     assert(args.size() == call.args.size());
-
     FunctionCall_ptr fcall = FunctionCall::build(fname, args);
 
     if (ret) {
@@ -2423,7 +2572,6 @@ private:
       assignment->set_terminate_line(true);
 
       exprs.push_back(assignment);
-      push_to_local(Variable::build(ret->get_symbol(), ret->get_type()));
     }
 
     else {
@@ -2684,7 +2832,7 @@ private:
     }
   }
 
-  void debug() const {
+  void stack_dump() const {
     std::cerr << "\n";
 
     std::cerr << "Global variables" << "\n";
@@ -2701,6 +2849,10 @@ private:
       }
     }
     std::cerr << "\n";
+  }
+
+  void debug() const {
+    stack_dump();
 
     if (nf_init) {
       std::cerr << "\n";
