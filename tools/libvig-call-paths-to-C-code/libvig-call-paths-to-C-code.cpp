@@ -149,7 +149,7 @@ protected:
   bool wrap;
 
   Expression(Kind kind)
-    : Node(kind), terminate_line(true), wrap(true) {}
+    : Node(kind), terminate_line(false), wrap(true) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -453,7 +453,6 @@ private:
   Expr_ptr value;
 
   Return(Expr_ptr _value) : Node(RETURN), value(_value) {
-    value->set_terminate_line(false);
     value->set_wrap(false);
   }
 
@@ -492,7 +491,6 @@ private:
     for (const auto& arg : _args) {
       Expr_ptr cloned = arg->clone();
 
-      cloned->set_terminate_line(false);
       cloned->set_wrap(false);
 
       args.push_back(std::move(cloned));
@@ -691,10 +689,7 @@ private:
   Expr_ptr rhs;
 
   Equals(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-    rhs->set_terminate_line(false);
-  }
+    : Expression(EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -736,9 +731,7 @@ private:
   Expr_ptr rhs;
 
   NotEquals(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(NOT_EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(NOT_EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -780,9 +773,7 @@ private:
   Expr_ptr rhs;
 
   Greater(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(GREATER), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(GREATER), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -824,9 +815,7 @@ private:
   Expr_ptr rhs;
 
   GreaterEq(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(GREATER_EQ), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(GREATER_EQ), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -868,9 +857,7 @@ private:
   Expr_ptr rhs;
 
   Less(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(LESS), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(LESS), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -912,9 +899,7 @@ private:
   Expr_ptr rhs;
 
   LessEq(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(LESS_EQ), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(LESS_EQ), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -956,9 +941,7 @@ private:
   Expr_ptr rhs;
 
   Add(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(ADD), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(ADD), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1000,9 +983,7 @@ private:
   Expr_ptr rhs;
 
   Sub(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(SUB), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(SUB), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1044,9 +1025,7 @@ private:
   Expr_ptr rhs;
 
   Mul(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(MUL), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(MUL), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1088,9 +1067,7 @@ private:
   Expr_ptr rhs;
 
   Div(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(DIV), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(DIV), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1132,9 +1109,7 @@ private:
   Expr_ptr rhs;
 
   And(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(AND), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(AND), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1176,9 +1151,7 @@ private:
   Expr_ptr rhs;
 
   Or(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(OR), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(OR), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1222,9 +1195,7 @@ private:
   Expr_ptr rhs;
 
   Xor(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(XOR), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(XOR), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1266,9 +1237,7 @@ private:
   Expr_ptr rhs;
 
   Mod(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(XOR), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(XOR), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1310,9 +1279,7 @@ private:
   Expr_ptr rhs;
 
   ShiftLeft(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(SHIFT_LEFT), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(SHIFT_LEFT), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1354,9 +1321,7 @@ private:
   Expr_ptr rhs;
 
   ShiftRight(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(SHIFT_RIGHT), lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    lhs->set_terminate_line(false);
-  }
+    : Expression(SHIFT_RIGHT), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1397,9 +1362,7 @@ private:
   Expr_ptr expr;
 
   Not(Expr_ptr _expr)
-    : Expression(NOT), expr(_expr->clone()) {
-    expr->set_terminate_line(false);
-  }
+    : Expression(NOT), expr(_expr->clone()) {}
 
 public:
   Expr_ptr get_expr() const { return expr; }
@@ -1441,7 +1404,6 @@ private:
   Variable(std::string _symbol , Type_ptr _type)
     : Expression(VARIABLE), symbol(_symbol), type(_type->clone()) {
     set_wrap(false);
-    set_terminate_line(false);
   }
 
 public:
@@ -1487,10 +1449,7 @@ private:
     : Expression(READ), expr(_expr->clone()), idx(_idx), size(_size) {
     assert(expr->get_kind() == VARIABLE);
 
-    expr->set_terminate_line(false);
     expr->set_wrap(false);
-
-    set_terminate_line(false);
     set_wrap(false);
   }
 
@@ -1557,9 +1516,6 @@ private:
     : Expression(CONCAT), left(_left->clone()), right(_right->clone()) {
     assert(left->get_kind() == READ || left->get_kind() == CONCAT);
     assert(right->get_kind() == READ || right->get_kind() == CONCAT);
-
-    left->set_terminate_line(false);
-    right->set_terminate_line(false);
   }
 
 public:
@@ -1844,12 +1800,7 @@ private:
 
   Select(Expr_ptr _cond, Expr_ptr _first, Expr_ptr _second)
     : Expression(SELECT),
-      cond(_cond->clone()), first(_first->clone()), second(_second->clone()) {
-
-    cond->set_terminate_line(false);
-    first->set_terminate_line(false);
-    second->set_terminate_line(false);
-  }
+      cond(_cond->clone()), first(_first->clone()), second(_second->clone()) {}
 
 public:
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -1893,9 +1844,6 @@ private:
   Assignment(Expr_ptr _variable, Expr_ptr _value)
     : Expression(ASSIGNMENT),
       variable(_variable->clone()), value(_value->clone()) {
-    variable->set_terminate_line(false);
-    value->set_terminate_line(false);
-
     set_wrap(false);
   }
 
@@ -2390,6 +2338,8 @@ private:
     FunctionCall_ptr fcall = FunctionCall::build(fname, args);
     Assignment_ptr assignment = Assignment::build(ret, fcall);
 
+    assignment->set_terminate_line(true);
+
     push_to_local(Variable::build(ret->get_symbol(), ret->get_type()));
 
     return assignment;
@@ -2429,13 +2379,17 @@ private:
           assert(false && "Missing layers implementation");
       }
 
-      exprs.push_back(VariableDecl::build(chunk));
+      VariableDecl_ptr chunk_decl = VariableDecl::build(chunk);
+      chunk_decl->set_terminate_line(true);
+      exprs.push_back(chunk_decl);
+
       args = std::vector<Expr_ptr>{ p, pkt_len, chunk };
     }
 
     else if (fname == "packet_get_unread_length") {
       Variable_ptr p = get_from_local("p");
       args = std::vector<Expr_ptr>{ p };
+
       Variable_ptr ret_var = variable_generator.generate("unread_len", "uint16_t");
       ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
     }
@@ -2465,11 +2419,15 @@ private:
     FunctionCall_ptr fcall = FunctionCall::build(fname, args);
 
     if (ret) {
-      exprs.push_back(Assignment::build(ret, fcall));
+      Assignment_ptr assignment = Assignment::build(ret, fcall);
+      assignment->set_terminate_line(true);
+
+      exprs.push_back(assignment);
       push_to_local(Variable::build(ret->get_symbol(), ret->get_type()));
     }
 
     else {
+      fcall->set_terminate_line(true);
       exprs.push_back(fcall);
     }
 
@@ -2708,6 +2666,7 @@ private:
 
     for (auto gv : state) {
       VariableDecl_ptr decl = VariableDecl::build(gv);
+      decl->set_terminate_line(true);
       decl->synthesize(std::cout);
       std::cout<< "\n";
     }
