@@ -1489,6 +1489,9 @@ private:
 
     expr->set_terminate_line(false);
     expr->set_wrap(false);
+
+    set_terminate_line(false);
+    set_wrap(false);
   }
 
 public:
@@ -2118,6 +2121,21 @@ struct ast_builder_assistant_t {
     return result;
   }
 
+  static bool is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr,
+                                  ReplaceSymbols& symbol_replacer) {
+    klee::ConstraintManager replaced_constraints;
+    for (auto constr : constraints) {
+      replaced_constraints.addConstraint(symbol_replacer.visit(constr));
+    }
+
+    return is_expr_always_true(replaced_constraints, expr);
+  }
+
+  static bool is_expr_always_true(klee::ref<klee::Expr> expr) {
+    klee::ConstraintManager no_constraints;
+    return is_expr_always_true(no_constraints, expr);
+  }
+
   static bool is_expr_always_false(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr) {
     klee::Query sat_query(constraints, expr);
 
@@ -2129,9 +2147,14 @@ struct ast_builder_assistant_t {
     return result;
   }
 
-  static bool is_expr_always_true(klee::ref<klee::Expr> expr) {
-    klee::ConstraintManager no_constraints;
-    return is_expr_always_true(no_constraints, expr);
+  static bool is_expr_always_false(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr,
+                                  ReplaceSymbols& symbol_replacer) {
+    klee::ConstraintManager replaced_constraints;
+    for (auto constr : constraints) {
+      replaced_constraints.addConstraint(symbol_replacer.visit(constr));
+    }
+
+    return is_expr_always_false(replaced_constraints, expr);
   }
 
   static bool are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee::ref<klee::Expr> expr2) {
@@ -2373,7 +2396,7 @@ private:
   }
 
   Node_ptr process_state_node_from_call(call_t call) {
-    static int layer = 4;
+    static int layer = 2;
     static bool ip_opts = false;
 
     auto fname = call.function_name;
@@ -2393,16 +2416,28 @@ private:
       Variable_ptr chunk;
 
       switch (layer) {
-      case 4:
+      case 2:
+          chunk = Variable::build("ether_hdr", Pointer::build(NamedType::build("struct ether_hdr")));
+          break;
+      case 3:
           chunk = Variable::build("ipv4_hdr", Pointer::build(NamedType::build("struct ipv4_hdr")));
+          break;
+      case 4:
+          chunk = Variable::build("tcpudp_hdr", Pointer::build(NamedType::build("struct tcpudp_hdr")));
           break;
       default:
           assert(false && "Missing layers implementation");
       }
 
       exprs.push_back(VariableDecl::build(chunk));
-
       args = std::vector<Expr_ptr>{ p, pkt_len, chunk };
+    }
+
+    else if (fname == "packet_get_unread_length") {
+      Variable_ptr p = get_from_local("p");
+      args = std::vector<Expr_ptr>{ p };
+      Variable_ptr ret_var = variable_generator.generate("unread_len", "uint16_t");
+      ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
     }
 
     else {
@@ -3796,66 +3831,86 @@ struct call_paths_group_t {
     return true;
   }
 
-  klee::ref<klee::Expr> find_discriminating_constraint() {
-    assert(in.size());
-    assert(out.size());
+  // https://rosettacode.org/wiki/Combinations#C.2B.2B
+  // why reinvent the wheel?
+  std::vector<std::vector<int>> comb(int N, int K) {
+    std::vector<std::vector<int>> result;
 
-    bool chosen_constraint;
+    std::string bitmask(K, 1); // K leading 1's
+    bitmask.resize(N, 0); // N-K trailing 0's
 
-    for (auto i : in)
-      std::cerr << "in " << i->file_name << "\n";
-
-    while (in.size()) {
-      for (klee::ref<klee::Expr> constraint : in[0]->constraints) {
-        chosen_constraint = true;
-
-        RetrieveSymbols symbol_retriever;
-        symbol_retriever.visit(constraint);
-        std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
-
-        ReplaceSymbols symbol_replacer(symbols);
-
-        for (call_path_t* call_path : in) {
-          klee::ConstraintManager replaced_constraints;
-          for (auto constr : call_path->constraints) {
-            replaced_constraints.addConstraint(symbol_replacer.visit(constr));
-          }
-
-          if (!ast_builder_assistant_t::is_expr_always_true(replaced_constraints, constraint)) {
-            chosen_constraint = false;
-            break;
-          }
+    // permute bitmask
+    do {
+      result.emplace_back();
+      for (int i = 0; i < N; ++i) // [0..N-1] integers
+      {
+        if (bitmask[i]) {
+          result.back().push_back(i);
         }
-
-        if (!chosen_constraint) {
-          continue;
-        }
-
-        for (call_path_t* call_path : out) {
-          klee::ConstraintManager replaced_constraints;
-          for (auto constr : call_path->constraints) {
-            replaced_constraints.addConstraint(symbol_replacer.visit(constr));
-          }
-
-          if (!ast_builder_assistant_t::is_expr_always_false(replaced_constraints, constraint)) {
-            chosen_constraint = false;
-            break;
-          }
-
-        }
-
-        if (!chosen_constraint) {
-          continue;
-        }
-
-        return constraint;
       }
+    } while (std::prev_permutation(bitmask.begin(), bitmask.end()));
 
-      out.push_back(in.back());
-      in.pop_back();
+    return result;
+  }
+
+  klee::ref<klee::Expr> find_discriminating_constraint() {
+    std::vector<klee::ref<klee::Expr>> constraints;
+    klee::ref<klee::Expr> constraint;
+
+    for (auto c : in[0]->constraints) {
+      constraints.push_back(c);
+    }
+
+    for (unsigned int n_comb = 1; n_comb <= constraints.size(); n_comb++) {
+      auto combinations = comb(constraints.size(), n_comb);
+      std::cerr << "\n" << "Combining constraints " << n_comb << " by " << n_comb << "...";
+
+      for (auto combination : combinations) {
+        bool set = false;
+        for (auto idx : combination) {
+          if (!set) {
+            constraint = constraints[idx];
+            set = true;
+          } else {
+            constraint = ast_builder_assistant_t::exprBuilder->And(constraint, constraints[idx]);
+          }
+        }
+
+        if (check_discriminating_constraint(constraint)) {
+          std::cerr << "\n";
+          return constraint;
+        }
+
+        std::cerr << ".";
+      }
     }
 
     assert(false && "Unable to find discriminating constraint");
+  }
+
+  bool check_discriminating_constraint(klee::ref<klee::Expr> constraint) {
+    assert(in.size());
+    assert(out.size());
+
+    RetrieveSymbols symbol_retriever;
+    symbol_retriever.visit(constraint);
+    std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
+
+    ReplaceSymbols symbol_replacer(symbols);
+
+    for (call_path_t* call_path : in) {
+      if (!ast_builder_assistant_t::is_expr_always_true(call_path->constraints, constraint, symbol_replacer)) {
+        return false;
+      }
+    }
+
+    for (call_path_t* call_path : out) {
+      if (!ast_builder_assistant_t::is_expr_always_false(call_path->constraints, constraint, symbol_replacer)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 };
 
@@ -3897,7 +3952,6 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     call_paths_group_t group(assistant);
 
     std::string fname = assistant.get_call().function_name;
-
     bool should_commit = ast.is_commit_function(fname);
 
     std::cerr << "\n";
