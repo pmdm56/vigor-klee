@@ -491,9 +491,7 @@ private:
     : Expression(FUNCTION_CALL), name(_name) {
     for (const auto& arg : _args) {
       Expr_ptr cloned = arg->clone();
-
       cloned->set_wrap(false);
-
       args.push_back(std::move(cloned));
     }
 
@@ -2655,7 +2653,7 @@ public:
       "packet_send"
     };
 
-    commit_functions = std::vector<std::string> { "start_time" };
+    commit_functions = std::vector<std::string> { "start_time", "packet_return_chunk" };
   }
 
   bool is_skip_function(const std::string& fname) {
@@ -2756,10 +2754,7 @@ public:
   }
 
   void commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr constraint) {
-    if (nodes.size() == 0) {
-      Node_ptr ret = get_return(call_path, constraint);
-      nodes.push_back(ret);
-    }
+    assert(nodes.size());
 
     switch (context) {
     case INIT: {
@@ -2768,7 +2763,7 @@ public:
       Type_ptr _return = NamedType::build("bool");
 
       nf_init = Function::build("nf_init", _args, _body, _return);
-
+      dump(); exit(0);
       context_switch(PROCESS);
       break;
     }
@@ -4035,6 +4030,7 @@ struct ast_builder_ret_t {
 
 ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   assert(assistant.call_paths.size());
+  bool bifurcates = false;
 
   if (assistant.root) {
     auto is_skip_call = [&](const call_t& call) -> bool {
@@ -4107,6 +4103,7 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
       continue;
     }
 
+    bifurcates = true;
     klee::ref<klee::Expr> constraint = group.find_discriminating_constraint();
     klee::ref<klee::Expr> not_constraint = ast_builder_assistant_t::exprBuilder->Not(constraint);
 
@@ -4149,22 +4146,14 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     }
   }
 
-  Node_ptr ret;
-
-  if (nodes.size() == 0) {
-    ret = ast.get_return(assistant.call_paths[0], assistant.discriminating_constraint);
+  if (!bifurcates) {
+    Node_ptr ret = ast.get_return(assistant.call_paths[0], assistant.discriminating_constraint);
     assert(ret);
+    nodes.push_back(ret);
   }
 
-  else if (nodes.size() > 1) {
-    ret = Block::build(nodes);
-  }
-
-  else {
-    ret = nodes[0];
-  }
-
-  return ast_builder_ret_t(ret, assistant.call_idx);
+  Node_ptr final = Block::build(nodes);
+  return ast_builder_ret_t(final, assistant.call_idx);
 }
 
 int main(int argc, char **argv) {
