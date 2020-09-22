@@ -98,7 +98,10 @@ protected:
   Node(Kind _kind) : kind(_kind) {}
 
   void indent(std::ostream& ofs, unsigned int lvl=0) const {
-    ofs << std::string(lvl, ' ');
+    while (lvl != 0) {
+      ofs << " ";
+      lvl--;
+    }
   }
 
   void indent(unsigned int lvl=0) const {
@@ -126,7 +129,7 @@ private:
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(lvl);
+    indent(ofs, lvl);
     ofs << "// " << comment;
   }
 
@@ -153,7 +156,7 @@ protected:
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(lvl);
+    indent(ofs, lvl);
 
     if (wrap) {
       ofs << "(";
