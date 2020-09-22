@@ -2757,7 +2757,11 @@ public:
   }
 
   void commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr constraint) {
-    assert(nodes.size());
+    if (nodes.size() == 0) {
+      Node_ptr ret = get_return(call_path, constraint);
+      assert(ret);
+      nodes.push_back(ret);
+    }
 
     switch (context) {
     case INIT: {
