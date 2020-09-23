@@ -134,22 +134,10 @@ struct call_paths_group_t {
 
   bool are_calls_equal(call_t c1, call_t c2) {
     if (c1.function_name != c2.function_name) {
-      std::cerr << "\n";
-      std::cerr << "Different functions" << "\n";
-      std::cerr << "first fname  " << c1.function_name << "\n";
-      std::cerr << "second fname " << c2.function_name << "\n";
-      std::cerr << "\n";
       return false;
     }
 
     if (!ast_builder_assistant_t::are_exprs_always_equal(c1.ret, c2.ret)) {
-      std::cerr << "\n";
-      std::cerr << "Different returns" << "\n";
-      std::cerr << "fname        " << c1.function_name << "\n";
-      std::cerr << "first value  " << expr_to_string(c1.ret) << "\n";
-      std::cerr << "second value " << expr_to_string(c2.ret) << "\n";
-      std::cerr << "\n";
-
       ret_diff = true;
       return false;
     }
@@ -173,13 +161,6 @@ struct call_paths_group_t {
       }
 
       if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.first, c2_arg.first)) {
-        std::cerr << "\n";
-        std::cerr << "fname        " << c1.function_name << "\n";
-        std::cerr << "arg name     " << arg_name << "\n";
-        std::cerr << "first value  " << expr_to_string(c1_arg.first) << "\n";
-        std::cerr << "second value " << expr_to_string(c2_arg.first) << "\n";
-        std::cerr << "\n";
-
         return false;
       }
     }
