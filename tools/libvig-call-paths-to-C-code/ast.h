@@ -16,6 +16,8 @@
 #include "klee_transpiler.h"
 #include "misc.h"
 
+class AST;
+
 class RetrieveSymbols : public klee::ExprVisitor::ExprVisitor {
 private:
   std::vector<klee::ref<klee::ReadExpr>> retrieved;
@@ -98,7 +100,6 @@ public:
   }
 };
 
-
 class VariableGenerator {
 private:
   std::map<std::string, unsigned int> symbol_counter;
@@ -106,7 +107,10 @@ private:
 public:
   VariableGenerator() {}
 
-  Variable_ptr generate(const std::string& symbol, const std::string& type_name, unsigned int ptr_lvl) {
+  Variable_ptr generate(const std::string& symbol,
+                        const std::string& type_name,
+                        unsigned int ptr_lvl,
+                        unsigned int counter_begins) {
     std::string indexer = type_name + "::" + symbol + (ptr_lvl > 0 ? "::ptr" : "");
     auto counter = symbol_counter[indexer];
 
@@ -119,6 +123,11 @@ public:
 
     std::string new_symbol = symbol;
 
+    if (counter == 0 && counter_begins > 0) {
+      symbol_counter[indexer] = counter_begins - 1;
+      counter = counter_begins;
+    }
+
     if (counter > 0) {
       new_symbol += "_" + std::to_string(counter);
     }
@@ -129,15 +138,7 @@ public:
   }
 
   Variable_ptr generate(const std::string& symbol, const std::string& type_name) {
-    return generate(symbol, type_name, 0);
-  }
-
-  Variable_ptr generate(const std::string& type_name, unsigned int ptr_lvl) {
-    return generate("var", type_name, ptr_lvl);
-  }
-
-  Variable_ptr generate(const std::string& type_name) {
-    return generate("var", type_name, 0);
+    return generate(symbol, type_name, 0, 0);
   }
 };
 
@@ -146,26 +147,31 @@ struct ast_builder_assistant_t {
   unsigned int call_idx;
   Node_ptr discriminating_constraint;
   bool root;
+  unsigned int layer;
 
   static klee::Solver *solver;
   static klee::ExprBuilder *exprBuilder;
 
   ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
                           unsigned int _call_idx,
-                          Node_ptr _discriminating_constraint)
+                          Node_ptr _discriminating_constraint,
+                          unsigned int _layer)
     : call_paths(_call_paths),
       call_idx(_call_idx),
       discriminating_constraint(_discriminating_constraint),
-      root(_call_idx == 0) {}
+      root(_call_idx == 0),
+      layer(_layer) {}
 
   ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
-                          unsigned int _call_idx)
+                          unsigned int _call_idx,
+                          unsigned int _layer)
     : call_paths(_call_paths),
       call_idx(_call_idx),
-      root(_call_idx == 0)  {}
+      root(_call_idx == 0),
+      layer(_layer) {}
 
   ast_builder_assistant_t(std::vector<call_path_t*> _call_paths)
-    : ast_builder_assistant_t(_call_paths, 0) {}
+    : ast_builder_assistant_t(_call_paths, 0, 2) {}
 
   bool are_call_paths_finished() {
     if (call_paths.size() == 0) {
@@ -180,6 +186,8 @@ struct ast_builder_assistant_t {
 
     return finished;
   }
+
+  void remove_skip_functions(const AST& ast);
 
   static void init() {
     ast_builder_assistant_t::solver = klee::createCoreSolver(klee::Z3_SOLVER);
@@ -334,8 +342,8 @@ private:
   void push_to_local(Variable_ptr var);
   void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);
 
-  Node_ptr init_state_node_from_call(call_t call);
-  Node_ptr process_state_node_from_call(call_t call);
+  Node_ptr init_state_node_from_call(ast_builder_assistant_t& assistant);
+  Node_ptr process_state_node_from_call(ast_builder_assistant_t& assistant);
   Node_ptr get_return_from_init(Node_ptr constraint);
   Node_ptr get_return_from_process(call_path_t *call_path, Node_ptr constraint);
 
@@ -367,14 +375,14 @@ public:
   void context_switch(Context ctx);
   void commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr constraint);
 
-  bool is_skip_function(const std::string& fname);
-  bool is_commit_function(const std::string& fname);
+  bool is_skip_function(const std::string& fname) const;
+  bool is_commit_function(const std::string& fname) const;
 
   void push();
   void pop();
 
   Node_ptr get_return(call_path_t *call_path, Node_ptr constraint);
-  Node_ptr node_from_call(call_t call);
+  Node_ptr node_from_call(ast_builder_assistant_t& assistant);
 
   void dump() const {
     debug();

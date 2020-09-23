@@ -182,13 +182,9 @@ typedef std::shared_ptr<NamedType> NamedType_ptr;
 class Pointer : public Type {
 private:
   Type_ptr type;
-  unsigned int id;
 
   Pointer(Type_ptr _type)
-    : Type(POINTER), type(_type->clone()), id(0) {}
-
-  Pointer(Type_ptr _type, unsigned int _id)
-    : Type(POINTER), type(_type->clone()), id(_id) {}
+    : Type(POINTER), type(_type->clone()) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -199,28 +195,21 @@ public:
   void debug(unsigned int lvl=0) const override {
     type->debug(lvl);
     std::cerr << "*";
-    std::cerr << "[" << id << "]";
   }
 
   Type_ptr get_type() const { return type; }
-  unsigned int get_id() const { return id; }
-
-  void allocate(unsigned int _id) {
-    assert(id == 0 && "Trying to allocate using an already allocate pointer");
-    id = _id;
-  }
 
   const std::string& get_name() const override {
     return type->get_name();
   }
 
   std::shared_ptr<Type> clone() const override {
-    Type* ptr = new Pointer(type, id);
+    Type* ptr = new Pointer(type);
     return std::shared_ptr<Type>(ptr);
   }
 
-  static std::shared_ptr<Pointer> build(Type_ptr _type, unsigned int _id=0) {
-    Pointer* ptr = new Pointer(_type, _id);
+  static std::shared_ptr<Pointer> build(Type_ptr _type) {
+    Pointer* ptr = new Pointer(_type);
     return std::shared_ptr<Pointer>(ptr);
   }
 };
@@ -590,48 +579,6 @@ public:
 };
 
 typedef std::shared_ptr<SignedLiteral> SignedLiteral_ptr;
-
-class AddressOf : public Expression {
-private:
-  Expr_ptr expr;
-
-  AddressOf(Expr_ptr _expr) : Expression(ADDRESSOF) {
-    assert(_expr->get_kind() == Node::Kind::VARIABLE);
-    expr = _expr->clone();
-
-    expr->set_wrap(false);
-  }
-
-public:
-  Expr_ptr get_expr() const { return expr; }
-
-  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << "&";
-    expr->synthesize(ofs, lvl);
-  }
-
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<address_of>" << "\n";
-
-    expr->debug(lvl+2);
-
-    indent(lvl);
-    std::cerr << "</address_of>" << "\n";
-  }
-
-  std::shared_ptr<Expression> clone() const override {
-    Expression* e = new AddressOf(expr);
-    return std::shared_ptr<Expression>(e);
-  }
-
-  static std::shared_ptr<AddressOf> build(Expr_ptr _expr) {
-    AddressOf* address_of = new AddressOf(_expr);
-    return std::shared_ptr<AddressOf>(address_of);
-  }
-};
-
-typedef std::shared_ptr<AddressOf> AddressOf_ptr;
 
 class Equals : public Expression {
 private:
@@ -1350,9 +1297,15 @@ class Variable : public Expression {
 private:
   std::string symbol;
   Type_ptr type;
+  unsigned int addr;
 
   Variable(std::string _symbol , Type_ptr _type)
-    : Expression(VARIABLE), symbol(_symbol), type(_type->clone()) {
+    : Expression(VARIABLE), symbol(_symbol), type(_type->clone()), addr(0) {
+    set_wrap(false);
+  }
+
+  Variable(std::string _symbol , Type_ptr _type, unsigned int _addr)
+    : Expression(VARIABLE), symbol(_symbol), type(_type->clone()), addr(_addr) {
     set_wrap(false);
   }
 
@@ -1369,11 +1322,19 @@ public:
     std::cerr << symbol;
     std::cerr << " type=";
     type->debug();
+    std::cerr << " addr=";
+    std::cerr << addr;
     std::cerr << " />" << "\n";
   }
 
   const std::string& get_symbol() const { return symbol; }
   Type_ptr get_type() const { return type; }
+  unsigned int get_addr() const { return addr; }
+
+  void set_addr(unsigned int _addr) {
+    assert(addr == 0 && "Double allocation");
+    addr = _addr;
+  }
 
   std::shared_ptr<Expression> clone() const override {
     Expression* e = new Variable(symbol, type);
@@ -1388,6 +1349,48 @@ public:
 };
 
 typedef std::shared_ptr<Variable> Variable_ptr;
+
+class AddressOf : public Expression {
+private:
+  Expr_ptr expr;
+
+  AddressOf(Expr_ptr _expr) : Expression(ADDRESSOF) {
+    assert(_expr->get_kind() == Node::Kind::VARIABLE);
+    expr = _expr->clone();
+    expr->set_wrap(false);
+  }
+
+public:
+  Expr_ptr get_expr() const { return expr; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "&";
+    expr->synthesize(ofs, lvl);
+  }
+
+  void debug(unsigned int lvl=0) const override {
+    indent(lvl);
+    std::cerr << "<address_of>" << "\n";
+
+    expr->debug(lvl+2);
+
+    indent(lvl);
+    std::cerr << "</address_of>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new AddressOf(expr);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<AddressOf> build(Expr_ptr _expr) {
+    assert(_expr->get_kind() == VARIABLE);
+    AddressOf* address_of = new AddressOf(_expr);
+    return std::shared_ptr<AddressOf>(address_of);
+  }
+};
+
+typedef std::shared_ptr<AddressOf> AddressOf_ptr;
 
 class Read : public Expression {
 private:

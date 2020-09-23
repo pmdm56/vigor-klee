@@ -3,6 +3,20 @@
 klee::Solver* ast_builder_assistant_t::solver;
 klee::ExprBuilder* ast_builder_assistant_t::exprBuilder;
 
+void ast_builder_assistant_t::remove_skip_functions(const AST& ast) {
+  auto is_skip_call = [&](const call_t& call) -> bool {
+    return ast.is_skip_function(call.function_name);
+  };
+
+  for (unsigned int i = 0; i < call_paths.size(); i++) {
+    auto skip_call_removal = std::remove_if(call_paths[i]->calls.begin(),
+                                            call_paths[i]->calls.end(),
+                                            is_skip_call);
+
+    call_paths[i]->calls.erase(skip_call_removal, call_paths[i]->calls.end());
+  }
+}
+
 Variable_ptr AST::get_from_state(const std::string& symbol) {
   auto finder = [&](Variable_ptr v) -> bool {
     return symbol == v->get_symbol();
@@ -34,21 +48,16 @@ Variable_ptr AST::get_from_local(const std::string& symbol) {
 }
 
 Variable_ptr AST::get_from_local(const std::string& symbol, unsigned int addr) {
+  assert(addr != 0);
+
   auto partial_name_finder = [&](local_variable_t v) -> bool {
     std::string local_symbol = v.first->get_symbol();
     return local_symbol.find(symbol) != std::string::npos;
   };
 
   auto addr_finder = [&](local_variable_t v) -> bool {
-    Type_ptr type = v.first->get_type();
-
-    if (type->get_kind() != Node::Kind::POINTER) {
-      return false;
-    }
-
-    Pointer* pointer = static_cast<Pointer*>(type.get());
-
-    return pointer->get_id() == addr;
+    unsigned int local_addr = v.first->get_addr();
+    return local_addr == addr;
   };
 
   for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
@@ -68,41 +77,29 @@ Variable_ptr AST::get_from_local(const std::string& symbol, unsigned int addr) {
       continue;
     }
 
-    Type_ptr type = it->first->get_type();
+    Variable_ptr var = it->first;
 
-    if (type->get_kind() != Node::Kind::POINTER) {
+    if (var->get_addr() != 0) {
       continue;
     }
 
-    Pointer* pointer = static_cast<Pointer*>(type.get());
-
-    if (pointer->get_id() != 0) {
-      continue;
-    }
-
-    pointer->allocate(addr);
-    return it->first;
+    var->set_addr(addr);
+    return var;
   }
 
   assert(false && "All pointers are allocated, or symbol not found");
 }
 
 Variable_ptr AST::get_from_state(const std::string& symbol, unsigned int addr) {
+  assert(addr != 0);
+
   auto partial_name_finder = [&](Variable_ptr v) -> bool {
     std::string local_symbol = v->get_symbol();
     return local_symbol.find(symbol) != std::string::npos;
   };
 
   auto addr_finder = [&](Variable_ptr v) -> bool {
-    Type_ptr type = v->get_type();
-
-    if (type->get_kind() != Node::Kind::POINTER) {
-      return false;
-    }
-
-    Pointer* pointer = static_cast<Pointer*>(type.get());
-
-    return pointer->get_id() == addr;
+    return v->get_addr() == addr;
   };
 
   auto addr_finder_it = std::find_if(state.begin(), state.end(), addr_finder);
@@ -116,19 +113,11 @@ Variable_ptr AST::get_from_state(const std::string& symbol, unsigned int addr) {
       continue;
     }
 
-    Type_ptr type = v->get_type();
-
-    if (type->get_kind() != Node::Kind::POINTER) {
+    if (v->get_addr() != 0) {
       continue;
     }
 
-    Pointer* pointer = static_cast<Pointer*>(type.get());
-
-    if (pointer->get_id() != 0) {
-      continue;
-    }
-
-    pointer->allocate(addr);
+    v->set_addr(addr);
     return v;
   }
 
@@ -178,7 +167,9 @@ void AST::push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr) {
   local_variables.back().push_back(std::make_pair(var, expr));
 }
 
-Node_ptr AST::init_state_node_from_call(call_t call) {
+Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
+  call_t call = assistant.get_call();
+
   auto fname = call.function_name;
 
   std::vector<Expr_ptr> args;
@@ -187,7 +178,7 @@ Node_ptr AST::init_state_node_from_call(call_t call) {
   if (fname == "map_allocate") {
     Expr_ptr capacity = transpile(this, call.args["capacity"].first);
     assert(capacity);
-    Variable_ptr new_map = variable_generator.generate("map", "struct Map", 1);
+    Variable_ptr new_map = variable_generator.generate("map", "struct Map", 1, 0);
 
     push_to_state(new_map);
 
@@ -202,7 +193,7 @@ Node_ptr AST::init_state_node_from_call(call_t call) {
     assert(capacity);
     Expr_ptr elem_size = transpile(this, call.args["elem_size"].first);
     assert(elem_size);
-    Variable_ptr new_vector = variable_generator.generate("vector", "struct Vector", 1);
+    Variable_ptr new_vector = variable_generator.generate("vector", "struct Vector", 1, 0);
 
     push_to_state(new_vector);
 
@@ -215,8 +206,7 @@ Node_ptr AST::init_state_node_from_call(call_t call) {
   else if (fname == "dchain_allocate") {
     Expr_ptr index_range = transpile(this, call.args["index_range"].first);
     assert(index_range);
-    Variable_ptr new_dchain  = variable_generator.generate("dchain", "struct DoubleChain", 1);
-
+    Variable_ptr new_dchain  = variable_generator.generate("dchain", "struct DoubleChain", 1, 0);
     push_to_state(new_dchain);
 
     args = std::vector<Expr_ptr>{ index_range, AddressOf::build(new_dchain) };
@@ -257,9 +247,8 @@ Node_ptr AST::init_state_node_from_call(call_t call) {
   return assignment;
 }
 
-Node_ptr AST::process_state_node_from_call(call_t call) {
-  static int layer = 2;
-  static bool ip_opts = false;
+Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
+  call_t call = assistant.get_call();
 
   auto fname = call.function_name;
 
@@ -273,18 +262,25 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr pkt_len = transpile(this, call.args["length"].first);
     Variable_ptr chunk;
 
-    switch (layer) {
+    switch (assistant.layer) {
     case 2:
-        chunk = Variable::build("ether_hdr", Pointer::build(NamedType::build("struct ether_hdr")));
-        break;
+      chunk = Variable::build("ether_hdr", Pointer::build(NamedType::build("struct ether_hdr")));
+      assistant.layer++;
+      break;
     case 3:
-        chunk = Variable::build("ipv4_hdr", Pointer::build(NamedType::build("struct ipv4_hdr")));
-        break;
+      chunk = Variable::build("ipv4_hdr", Pointer::build(NamedType::build("struct ipv4_hdr")));
+      assistant.layer++;
+      break;
     case 4:
+      if (pkt_len->get_kind() == Node::Kind::UNSIGNED_LITERAL) {
+        chunk = Variable::build("ipv4_options", Pointer::build(NamedType::build("struct uint8_t")));
+      } else {
         chunk = Variable::build("tcpudp_hdr", Pointer::build(NamedType::build("struct tcpudp_hdr")));
-        break;
+        assistant.layer++;
+      }
+      break;
     default:
-        assert(false && "Missing layers implementation");
+      assert(false && "Missing layers implementation");
     }
 
     push_to_local(chunk, call.extra_vars["the_chunk"].second);
@@ -294,8 +290,6 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     exprs.push_back(chunk_decl);
 
     args = std::vector<Expr_ptr>{ p, pkt_len, chunk };
-
-    layer++;
   }
 
   else if (fname == "packet_get_unread_length") {
@@ -325,6 +319,58 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     args = std::vector<Expr_ptr>{ chain, vector, map, now };
 
     Variable_ptr ret_var = variable_generator.generate("unmber_of_freed_flows", "int");
+    push_to_local(ret_var, call.ret);
+
+    ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+  }
+
+  else if (fname == "map_get") {
+    uint64_t map_addr = const_to_value(call.args["map"].first);
+    uint64_t value_out_addr = const_to_value(call.args["value_out"].first);
+
+    Expr_ptr key = transpile(this, call.args["key"].first);
+    assert(key);
+    Expr_ptr map = get_from_state("map", map_addr);
+
+    Variable_ptr value_out = variable_generator.generate("value_out", "int");
+
+    value_out->set_addr(value_out_addr);
+    push_to_local(value_out);
+
+    VariableDecl_ptr value_out_decl = VariableDecl::build(value_out);
+    exprs.push_back(value_out_decl);
+
+    args = std::vector<Expr_ptr>{ map, key, AddressOf::build(value_out) };
+
+    Variable_ptr ret_var = variable_generator.generate("map_has_this_key", "int");
+    push_to_local(ret_var, call.ret);
+
+    ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+  }
+
+  else if (fname == "dchain_allocate_new_index") {
+    Comment_ptr comm = Comment::build("FIXME: 'now' arg");
+    exprs.push_back(comm);
+
+    uint64_t chain_addr = const_to_value(call.args["chain"].first);
+
+    Expr_ptr chain = get_from_state("chain", chain_addr);
+
+    // dchain allocates an index when is allocated, so we start with index_out_1
+    Variable_ptr index_out = variable_generator.generate("index_out", "int", 0, 1);
+
+    Variable_ptr now = get_from_local("now");
+    assert(now);
+
+    assert(!call.args["index_out"].second.isNull());
+    push_to_local(index_out, call.args["index_out"].second);
+
+    VariableDecl_ptr index_out_decl = VariableDecl::build(index_out);
+    exprs.push_back(index_out_decl);
+
+    args = std::vector<Expr_ptr>{ chain, AddressOf::build(index_out), now };
+
+    Variable_ptr ret_var = variable_generator.generate("out_of_space", "int", 0, 1);
     push_to_local(ret_var, call.ret);
 
     ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
@@ -462,12 +508,12 @@ Node_ptr AST::get_return_from_process(call_path_t *call_path, Node_ptr constrain
   assert(false && "dst device is a complex expression");
 }
 
-bool AST::is_skip_function(const std::string& fname) {
+bool AST::is_skip_function(const std::string& fname) const {
   auto found_it = std::find(skip_functions.begin(), skip_functions.end(), fname);
   return found_it != skip_functions.end();
 }
 
-bool AST::is_commit_function(const std::string& fname) {
+bool AST::is_commit_function(const std::string& fname) const {
   auto found_it = std::find(commit_functions.begin(), commit_functions.end(), fname);
   return found_it != commit_functions.end();
 }
@@ -491,10 +537,10 @@ Node_ptr AST::get_return(call_path_t *call_path, Node_ptr constraint) {
   return nullptr;
 }
 
-Node_ptr AST::node_from_call(call_t call) {
+Node_ptr AST::node_from_call(ast_builder_assistant_t& assistant) {
   switch (context) {
-  case INIT: return init_state_node_from_call(call);
-  case PROCESS: return process_state_node_from_call(call);
+  case INIT: return init_state_node_from_call(assistant);
+  case PROCESS: return process_state_node_from_call(assistant);
   case DONE: assert(false);
   }
 

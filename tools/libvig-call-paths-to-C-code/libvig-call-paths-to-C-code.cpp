@@ -50,9 +50,6 @@ struct call_paths_group_t {
   typedef std::pair<std::vector<call_path_t*>, std::vector<call_path_t*>> group_t;
   std::vector<group_t> groups;
 
-  std::vector<call_path_t*> in;
-  std::vector<call_path_t*> out;
-
   bool ret_diff;
   bool equal_calls;
 
@@ -244,17 +241,7 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   bool bifurcates = false;
 
   if (assistant.root) {
-    auto is_skip_call = [&](const call_t& call) -> bool {
-      return ast.is_skip_function(call.function_name);
-    };
-
-    for (unsigned int i = 0; i < assistant.call_paths.size(); i++) {
-      auto skip_call_removal = std::remove_if(assistant.call_paths[i]->calls.begin(),
-                                              assistant.call_paths[i]->calls.end(),
-                                              is_skip_call);
-
-      assistant.call_paths[i]->calls.erase(skip_call_removal, assistant.call_paths[i]->calls.end());
-    }
+    assistant.remove_skip_functions(ast);
   }
 
   std::cerr << "\n"
@@ -297,7 +284,7 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     }
 
     if (group.equal_calls || group.ret_diff) {
-      Node_ptr node = ast.node_from_call(assistant.get_call());
+      Node_ptr node = ast.node_from_call(assistant);
       nodes.push_back(node);
 
       std::cerr << "**** NODE FROM CALL ****" << "\n";
@@ -338,17 +325,20 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
     unsigned int next_call_idx = group.ret_diff ? assistant.call_idx + 1 : assistant.call_idx;
 
-    ast_builder_assistant_t then_assistant(chosen_group.first, next_call_idx, cond);
-    ast_builder_assistant_t else_assistant(chosen_group.second, next_call_idx, not_cond);
+    ast_builder_assistant_t then_assistant(chosen_group.first, next_call_idx, cond, assistant.layer);
+    ast_builder_assistant_t else_assistant(chosen_group.second, next_call_idx, not_cond, assistant.layer);
 
+    ast.push();
     ast_builder_ret_t _then_ret = build_ast(ast, then_assistant);
+    ast.pop();
+
+    ast.push();
     ast_builder_ret_t _else_ret = build_ast(ast, else_assistant);
+    ast.pop();
 
     Node_ptr branch = Branch::build(cond, _then_ret.node, _else_ret.node);
 
     nodes.push_back(branch);
-
-    assert(_else_ret.last_call_idx >= _then_ret.last_call_idx);
     assistant.jump_to_call_idx(_else_ret.last_call_idx);
 
     if (!assistant.root) {
