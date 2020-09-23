@@ -2395,11 +2395,11 @@ private:
     std::vector<Expr_ptr> args;
     VariableDecl_ptr ret;
 
-    if (fname == "map_allocate") {      
-      Variable_ptr capacity = variable_generator.generate("capacity", "uint32_t");
+    if (fname == "map_allocate") {
+      Expr_ptr capacity = const_to_ast_expr(call.args["capacity"].first);
+      assert(capacity);
       Variable_ptr new_map = variable_generator.generate("map", "struct Map", 1);
 
-      push_to_state(capacity);
       push_to_state(new_map);
 
       args = std::vector<Expr_ptr>{ capacity, AddressOf::build(new_map) };
@@ -2409,12 +2409,12 @@ private:
     }
 
     else if (fname == "vector_allocate") {
-      Variable_ptr capacity = variable_generator.generate("capacity", "uint32_t");
-      Variable_ptr elem_size = variable_generator.generate("elem_size", "uint32_t");
+      Expr_ptr capacity = const_to_ast_expr(call.args["capacity"].first);
+      assert(capacity);
+      Expr_ptr elem_size = const_to_ast_expr(call.args["elem_size"].first);
+      assert(elem_size);
       Variable_ptr new_vector = variable_generator.generate("vector", "struct Vector", 1);
 
-      push_to_state(capacity);
-      push_to_state(elem_size);
       push_to_state(new_vector);
 
       args = std::vector<Expr_ptr>{ capacity, elem_size, AddressOf::build(new_vector) };
@@ -2424,16 +2424,16 @@ private:
     }
 
     else if (fname == "dchain_allocate") {
-        Variable_ptr capacity = variable_generator.generate("index_range", "int");
-        Variable_ptr new_dchain  = variable_generator.generate("dchain", "struct DoubleChain", 1);
+      Expr_ptr index_range = const_to_ast_expr(call.args["index_range"].first);
+      assert(index_range);
+      Variable_ptr new_dchain  = variable_generator.generate("dchain", "struct DoubleChain", 1);
 
-        push_to_state(capacity);
-        push_to_state(new_dchain);
+      push_to_state(new_dchain);
 
-        args = std::vector<Expr_ptr>{ capacity, AddressOf::build(new_dchain) };
+      args = std::vector<Expr_ptr>{ index_range, AddressOf::build(new_dchain) };
 
-        Variable_ptr ret_var = variable_generator.generate("is_dchain_allocated", "int");
-        ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+      Variable_ptr ret_var = variable_generator.generate("is_dchain_allocated", "int");
+      ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
     }
 
     else {
@@ -2769,7 +2769,7 @@ public:
       Block_ptr _body = Block::build(nodes);
       Type_ptr _return = NamedType::build("bool");
 
-      nf_init = Function::build("nf_init", _args, _body, _return);
+      nf_init = Function::build("nf_init", _args, _body, _return); dump(); exit(0);
 
       context_switch(PROCESS);
       break;
@@ -3528,6 +3528,22 @@ public:
     if (right == nullptr) {
       right = const_to_ast_expr(e.getKid(1));
       assert(right != nullptr);
+    }
+
+    if (right->get_kind() == Node::Kind::EQUALS &&
+        left->get_kind() == Node::Kind::UNSIGNED_LITERAL) {
+      UnsignedLiteral* left_ul = static_cast<UnsignedLiteral*>(left.get());
+      Equals* right_eq = static_cast<Equals*>(right.get());
+      Expr_ptr right_eq_left = right_eq->get_lhs();
+
+      if (right_eq_left->get_kind() == Node::Kind::UNSIGNED_LITERAL) {
+        UnsignedLiteral* right_eq_left_ul = static_cast<UnsignedLiteral*>(right_eq_left.get());
+
+        if (right_eq_left_ul->get_value() == 0 && left_ul->get_value() == 0) {
+          save_result(right_eq->get_rhs());
+          return klee::ExprVisitor::Action::skipChildren();
+        }
+      }
     }
 
     Equals_ptr equals = Equals::build(left, right);
