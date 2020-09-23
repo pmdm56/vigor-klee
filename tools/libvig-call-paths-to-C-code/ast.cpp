@@ -17,6 +17,92 @@ void ast_builder_assistant_t::remove_skip_functions(const AST& ast) {
   }
 }
 
+Variable_ptr AST::generate_new_symbol(const std::string& symbol, const std::string& type_name,
+                                      unsigned int ptr_lvl, unsigned int counter_begins) {
+  auto state_partial_name_finder = [&](Variable_ptr v) -> bool {
+    std::string local_symbol = v->get_symbol();
+    return local_symbol.find(symbol) != std::string::npos;
+  };
+
+  auto local_partial_name_finder = [&](local_variable_t v) -> bool {
+    std::string local_symbol = v.first->get_symbol();
+    return local_symbol.find(symbol) != std::string::npos;
+  };
+
+  auto state_it = std::find_if(state.begin(), state.end(), state_partial_name_finder);
+
+  unsigned int counter = 0;
+  unsigned int last_id = 0;
+
+  while (state_it != state.end()) {
+    Variable_ptr var = *state_it;
+    std::string saved_symbol = var->get_symbol();
+    assert(saved_symbol != symbol || counter == 0);
+    auto delim = saved_symbol.find(symbol);
+    assert(delim != std::string::npos);
+    std::string suffix = saved_symbol.substr(delim + symbol.size());
+    if (suffix.size() > 1 && isdigit(suffix[1])) {
+      assert(suffix[0] == '_');
+      suffix = suffix.substr(1);
+      unsigned int id = std::stoi(suffix, nullptr);
+      if (last_id < id) {
+        last_id = id;
+      }
+    }
+
+    counter++;
+    state_it = std::find_if(++state_it, state.end(), state_partial_name_finder);
+  }
+
+  for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
+    auto stack = *i;
+    auto local_it = std::find_if(stack.begin(), stack.end(), local_partial_name_finder);
+
+    while (local_it != stack.end()) {
+      Variable_ptr var = local_it->first;
+      std::string saved_symbol = var->get_symbol();
+      assert(saved_symbol != symbol || counter == 0);
+      auto delim = saved_symbol.find(symbol);
+      assert(delim != std::string::npos);
+      std::string suffix = saved_symbol.substr(delim + symbol.size());
+      if (suffix.size() > 1 && isdigit(suffix[1])) {
+        assert(suffix[0] == '_');
+        suffix = suffix.substr(1);
+        unsigned int id = std::stoi(suffix, nullptr);
+        if (last_id < id) {
+          last_id = id;
+        }
+      }
+
+      counter++;
+      local_it = std::find_if(++local_it, stack.end(), local_partial_name_finder);
+    }
+  }
+
+  std::string new_symbol = symbol;
+
+  if (counter == 0 && counter_begins > 0) {
+    new_symbol += "_" + std::to_string(counter_begins);
+  }
+
+  else if (counter > 0) {
+    new_symbol += "_" + std::to_string(last_id + 1);
+  }
+
+  Type_ptr type = NamedType::build(type_name);
+
+  while (ptr_lvl != 0) {
+    type = Pointer::build(type);
+    ptr_lvl--;
+  }
+
+  return Variable::build(new_symbol, type);
+}
+
+Variable_ptr AST::generate_new_symbol(const std::string& symbol, const std::string& type_name) {
+  return generate_new_symbol(symbol, type_name, 0, 0);
+}
+
 Variable_ptr AST::get_from_state(const std::string& symbol) {
   auto finder = [&](Variable_ptr v) -> bool {
     return symbol == v->get_symbol();
@@ -31,9 +117,14 @@ Variable_ptr AST::get_from_state(const std::string& symbol) {
   return *it;
 }
 
-Variable_ptr AST::get_from_local(const std::string& symbol) {
+Variable_ptr AST::get_from_local(const std::string& symbol, bool partial) {
   auto finder = [&](local_variable_t v) -> bool {
-    return symbol == v.first->get_symbol();
+    if (!partial) {
+      return v.first->get_symbol() == symbol;
+    } else {
+      std::string local_symbol = v.first->get_symbol();
+      return local_symbol.find(symbol) != std::string::npos;
+    }
   };
 
   for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
@@ -178,13 +269,13 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
   if (fname == "map_allocate") {
     Expr_ptr capacity = transpile(this, call.args["capacity"].first);
     assert(capacity);
-    Variable_ptr new_map = variable_generator.generate("map", "struct Map", 1, 0);
+    Variable_ptr new_map = generate_new_symbol("map", "struct Map", 1, 0);
 
     push_to_state(new_map);
 
     args = std::vector<Expr_ptr>{ capacity, AddressOf::build(new_map) };
 
-    Variable_ptr ret_var = variable_generator.generate("map_allocation_succeeded", "int");
+    Variable_ptr ret_var = generate_new_symbol("map_allocation_succeeded", "int");
     ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
   }
 
@@ -193,25 +284,25 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
     assert(capacity);
     Expr_ptr elem_size = transpile(this, call.args["elem_size"].first);
     assert(elem_size);
-    Variable_ptr new_vector = variable_generator.generate("vector", "struct Vector", 1, 0);
+    Variable_ptr new_vector = generate_new_symbol("vector", "struct Vector", 1, 0);
 
     push_to_state(new_vector);
 
     args = std::vector<Expr_ptr>{ capacity, elem_size, AddressOf::build(new_vector) };
 
-    Variable_ptr ret_var = variable_generator.generate("vector_alloc_success", "int");
+    Variable_ptr ret_var = generate_new_symbol("vector_alloc_success", "int");
     ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
   }
 
   else if (fname == "dchain_allocate") {
     Expr_ptr index_range = transpile(this, call.args["index_range"].first);
     assert(index_range);
-    Variable_ptr new_dchain  = variable_generator.generate("dchain", "struct DoubleChain", 1, 0);
+    Variable_ptr new_dchain  = generate_new_symbol("dchain", "struct DoubleChain", 1, 0);
     push_to_state(new_dchain);
 
     args = std::vector<Expr_ptr>{ index_range, AddressOf::build(new_dchain) };
 
-    Variable_ptr ret_var = variable_generator.generate("is_dchain_allocated", "int");
+    Variable_ptr ret_var = generate_new_symbol("is_dchain_allocated", "int");
     ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
   }
 
@@ -296,7 +387,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     Variable_ptr p = get_from_local("p");
     args = std::vector<Expr_ptr>{ p };
 
-    Variable_ptr ret_var = variable_generator.generate("unread_len", "uint16_t");
+    Variable_ptr ret_var = generate_new_symbol("unread_len", "uint16_t");
     push_to_local(ret_var);
 
     ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
@@ -318,7 +409,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
 
     args = std::vector<Expr_ptr>{ chain, vector, map, now };
 
-    Variable_ptr ret_var = variable_generator.generate("unmber_of_freed_flows", "int");
+    Variable_ptr ret_var = generate_new_symbol("unmber_of_freed_flows", "int");
     push_to_local(ret_var, call.ret);
 
     ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
@@ -332,7 +423,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     assert(key);
     Expr_ptr map = get_from_state("map", map_addr);
 
-    Variable_ptr value_out = variable_generator.generate("value_out", "int");
+    Variable_ptr value_out = generate_new_symbol("value_out", "int");
 
     value_out->set_addr(value_out_addr);
     push_to_local(value_out);
@@ -342,7 +433,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
 
     args = std::vector<Expr_ptr>{ map, key, AddressOf::build(value_out) };
 
-    Variable_ptr ret_var = variable_generator.generate("map_has_this_key", "int");
+    Variable_ptr ret_var = generate_new_symbol("map_has_this_key", "int");
     push_to_local(ret_var, call.ret);
 
     ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
@@ -357,7 +448,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     Expr_ptr chain = get_from_state("chain", chain_addr);
 
     // dchain allocates an index when is allocated, so we start with index_out_1
-    Variable_ptr index_out = variable_generator.generate("index_out", "int", 0, 1);
+    Variable_ptr index_out = generate_new_symbol("index_out", "int", 0, 1);
 
     Variable_ptr now = get_from_local("now");
     assert(now);
@@ -370,10 +461,28 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
 
     args = std::vector<Expr_ptr>{ chain, AddressOf::build(index_out), now };
 
-    Variable_ptr ret_var = variable_generator.generate("out_of_space", "int", 0, 1);
+    Variable_ptr ret_var = generate_new_symbol("out_of_space", "int", 0, 1);
     push_to_local(ret_var, call.ret);
 
     ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+  }
+
+  else if (fname == "vector_borrow") {
+    uint64_t vector_addr = const_to_value(call.args["vector"].first);
+
+    Expr_ptr vector = get_from_state("vector", vector_addr);
+    Expr_ptr index = get_from_local(call.args["index"].first);
+    assert(index);
+
+    Variable_ptr val_out = generate_new_symbol("val_out", "struct DynamicValue", 1, 0);
+
+    assert(!call.extra_vars["borrowed_cell"].second.isNull());
+    push_to_local(val_out, call.extra_vars["borrowed_cell"].second);
+
+    VariableDecl_ptr val_out_decl = VariableDecl::build(val_out);
+    exprs.push_back(Assignment::build(val_out_decl, UnsignedLiteral::build(0)));
+
+    args = std::vector<Expr_ptr>{ vector, index, AddressOf::build(val_out) };
   }
 
   else {

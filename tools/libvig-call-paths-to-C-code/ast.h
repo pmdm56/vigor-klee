@@ -21,17 +21,26 @@ class AST;
 class RetrieveSymbols : public klee::ExprVisitor::ExprVisitor {
 private:
   std::vector<klee::ref<klee::ReadExpr>> retrieved;
+  std::vector<std::string> retrieved_strings;
 
 public:
   RetrieveSymbols() : ExprVisitor(true) {}
 
   klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::UpdateList ul = e.updates;
+    const klee::Array *root = ul.root;
+    retrieved_strings.push_back(root->name);
+
     retrieved.emplace_back((const_cast<klee::ReadExpr *>(&e)));
     return klee::ExprVisitor::Action::doChildren();
   }
 
   std::vector<klee::ref<klee::ReadExpr>> get_retrieved() {
     return retrieved;
+  }
+
+  std::vector<std::string> get_retrieved_strings() {
+    return retrieved_strings;
   }
 };
 
@@ -97,48 +106,6 @@ public:
     }
 
     return Action::doChildren();
-  }
-};
-
-class VariableGenerator {
-private:
-  std::map<std::string, unsigned int> symbol_counter;
-
-public:
-  VariableGenerator() {}
-
-  Variable_ptr generate(const std::string& symbol,
-                        const std::string& type_name,
-                        unsigned int ptr_lvl,
-                        unsigned int counter_begins) {
-    std::string indexer = type_name + "::" + symbol + (ptr_lvl > 0 ? "::ptr" : "");
-    auto counter = symbol_counter[indexer];
-
-    Type_ptr type = NamedType::build(type_name);
-
-    while (ptr_lvl != 0) {
-      type = Pointer::build(type);
-      ptr_lvl--;
-    }
-
-    std::string new_symbol = symbol;
-
-    if (counter == 0 && counter_begins > 0) {
-      symbol_counter[indexer] = counter_begins - 1;
-      counter = counter_begins;
-    }
-
-    if (counter > 0) {
-      new_symbol += "_" + std::to_string(counter);
-    }
-
-    symbol_counter[indexer]++;
-
-    return Variable::build(new_symbol, type);
-  }
-
-  Variable_ptr generate(const std::string& symbol, const std::string& type_name) {
-    return generate(symbol, type_name, 0, 0);
   }
 };
 
@@ -322,8 +289,6 @@ private:
   std::vector<Variable_ptr> state;
   stack_t local_variables;
 
-  VariableGenerator variable_generator;
-
   Node_ptr nf_init;
   Node_ptr nf_process;
 
@@ -331,13 +296,17 @@ private:
 
 public:
   Variable_ptr get_from_local(const std::string& symbol, unsigned int addr);
-  Variable_ptr get_from_local(const std::string& symbol);
+  Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
   Variable_ptr get_from_local(klee::ref<klee::Expr> expr);
 
   Variable_ptr get_from_state(const std::string& symbol, unsigned int addr);
   Variable_ptr get_from_state(const std::string& symbol);
 
 private:
+  Variable_ptr generate_new_symbol(const std::string& symbol, const std::string& type_name,
+                                   unsigned int ptr_lvl, unsigned int counter_begins);
+  Variable_ptr generate_new_symbol(const std::string& symbol, const std::string& type_name);
+
   void push_to_state(Variable_ptr var);
   void push_to_local(Variable_ptr var);
   void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);

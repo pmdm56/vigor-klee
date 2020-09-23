@@ -54,6 +54,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::Read
 
   symbol_width = std::make_pair(true, root->getSize() * 8);
 
+  ast->dump();
   Variable_ptr var = ast->get_from_local(symbol);
   assert(var != nullptr);
 
@@ -105,15 +106,6 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSelect(const klee::Se
 }
 
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::ConcatExpr& e) {
-  {
-    auto concat = klee::ref<klee::Expr>(const_cast<klee::ConcatExpr *>(&e));
-    Variable_ptr v = ast->get_from_local(concat);
-    if (v) {
-      save_result(v);
-      return klee::ExprVisitor::Action::skipChildren();
-    }
-  }
-
   auto left = e.getLeft();
   auto right = e.getRight();
 
