@@ -266,15 +266,16 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
     if (group.equal_calls || group.ret_diff) {
       Node_ptr node = ast.node_from_call(assistant);
-      nodes.push_back(node);
-
-      std::cerr << "**** NODE FROM CALL ****" << "\n";
-      node->synthesize(std::cerr);
-      std::cerr << "\n";
+      if (node) {
+        nodes.push_back(node);
+        std::cerr << "**** NODE FROM CALL ****" << "\n";
+        node->synthesize(std::cerr);
+        std::cerr << "\n";
+      }
     }
 
     if (group.equal_calls) {
-      assistant.call_idx++;
+      assistant.jump_to_call_idx(assistant.call_idx + 1);
       continue;
     }
 

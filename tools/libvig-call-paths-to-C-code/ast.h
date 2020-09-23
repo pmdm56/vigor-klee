@@ -298,6 +298,7 @@ public:
   Variable_ptr get_from_local(const std::string& symbol, unsigned int addr);
   Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
   Variable_ptr get_from_local(klee::ref<klee::Expr> expr);
+  void associate_expr_to_local(const std::string& symbol, klee::ref<klee::Expr> expr);
 
   Variable_ptr get_from_state(const std::string& symbol, unsigned int addr);
   Variable_ptr get_from_state(const std::string& symbol);
@@ -333,7 +334,6 @@ public:
     skip_functions = std::vector<std::string> {
       "loop_invariant_consume",
       "loop_invariant_produce",
-      "current_time",
       "packet_receive",
       "packet_state_total_length",
     };

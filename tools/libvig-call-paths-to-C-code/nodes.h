@@ -1475,8 +1475,14 @@ public:
   Expr_ptr get_left() const { return left; }
   Expr_ptr get_right() const { return right; }
 
+  bool is_concat_of_reads_or_concats() const {
+    return (left->get_kind() == READ || left->get_kind() == CONCAT) &&
+           (right->get_kind() == READ || right->get_kind() == CONCAT);
+  }
+
   unsigned int get_elem_size() const {
-    unsigned elem_size = 0;
+    assert(is_concat_of_reads_or_concats());
+    unsigned int elem_size = 0;
 
     if (left->get_kind() == READ) {
       Read* left_read = static_cast<Read*>(left.get());
@@ -1497,6 +1503,7 @@ public:
   }
 
   std::vector<unsigned int> get_idxs() const {
+    assert(is_concat_of_reads_or_concats());
     std::vector<unsigned int> idxs;
 
     if (left->get_kind() == READ) {
@@ -1541,6 +1548,7 @@ public:
   }
 
   Expr_ptr get_var() const {
+    assert(is_concat_of_reads_or_concats());
     Expr_ptr var;
 
     if (left->get_kind() == READ) {

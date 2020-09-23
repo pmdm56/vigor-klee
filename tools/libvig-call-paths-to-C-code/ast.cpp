@@ -241,6 +241,24 @@ Variable_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
   return nullptr;
 }
 
+void AST::associate_expr_to_local(const std::string& symbol, klee::ref<klee::Expr> expr) {
+  auto name_finder = [&](local_variable_t v) -> bool {
+    return v.first->get_symbol() == symbol;
+  };
+
+  for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
+    auto stack = *i;
+    auto it = std::find_if(stack.begin(), stack.end(), name_finder);
+    if (it != stack.end()) {
+      auto association = std::make_pair(it->first, expr);
+      std::replace_if(stack.begin(), stack.end(), name_finder, association);
+      return;
+    }
+  }
+
+  assert(false && "Variable not found");
+}
+
 void AST::push_to_state(Variable_ptr var) {
   assert(get_from_state(var->get_symbol()) == nullptr);
   state.push_back(var);
@@ -347,7 +365,12 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   VariableDecl_ptr ret;
   std::vector<Node_ptr> exprs;
 
-  if (fname == "packet_borrow_next_chunk") {
+  if (fname == "current_time") {
+    associate_expr_to_local("now", call.ret);
+    return nullptr;
+  }
+
+  else if (fname == "packet_borrow_next_chunk") {
     Variable_ptr p = get_from_local("p");
     assert(p != nullptr);
     Expr_ptr pkt_len = transpile(this, call.args["length"].first);
@@ -394,9 +417,6 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "expire_items_single_map") {
-    Comment_ptr comm = Comment::build("FIXME: 'now' arg");
-    exprs.push_back(comm);
-
     uint64_t chain_addr = const_to_value(call.args["chain"].first);
     uint64_t vector_addr = const_to_value(call.args["vector"].first);
     uint64_t map_addr = const_to_value(call.args["map"].first);
@@ -404,7 +424,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     Variable_ptr chain = get_from_state("chain", chain_addr);
     Variable_ptr vector = get_from_state("vector", vector_addr);
     Variable_ptr map = get_from_state("map", map_addr);
-    Variable_ptr now = get_from_local("now");
+    Expr_ptr now = transpile(this, call.args["time"].first);
     assert(now);
 
     args = std::vector<Expr_ptr>{ chain, vector, map, now };
@@ -440,17 +460,14 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "dchain_allocate_new_index") {
-    Comment_ptr comm = Comment::build("FIXME: 'now' arg");
-    exprs.push_back(comm);
-
     uint64_t chain_addr = const_to_value(call.args["chain"].first);
 
     Expr_ptr chain = get_from_state("chain", chain_addr);
 
-    // dchain allocates an index when is allocated, so we start with index_out_1
-    Variable_ptr index_out = generate_new_symbol("index_out", "int", 0, 1);
+    // dchain allocates an index when is allocated, so we start with new_index_1
+    Variable_ptr index_out = generate_new_symbol("new_index", "int", 0, 1);
 
-    Variable_ptr now = get_from_local("now");
+    Expr_ptr now = transpile(this, call.args["time"].first);
     assert(now);
 
     assert(!call.args["index_out"].second.isNull());
@@ -483,6 +500,30 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     exprs.push_back(Assignment::build(val_out_decl, UnsignedLiteral::build(0)));
 
     args = std::vector<Expr_ptr>{ vector, index, AddressOf::build(val_out) };
+  }
+
+  else if (fname == "map_put") {
+    uint64_t map_addr = const_to_value(call.args["map"].first);
+
+    Expr_ptr map = get_from_state("map", map_addr);
+    Expr_ptr key = transpile(this, call.args["key"].first);
+    assert(key);
+    Expr_ptr value = transpile(this, call.args["value"].first);
+    assert(key);
+
+    args = std::vector<Expr_ptr>{ map, key, value };
+  }
+
+  else if (fname == "vector_return") {
+    uint64_t vector_addr = const_to_value(call.args["vector"].first);
+
+    Expr_ptr vector = get_from_state("vector", vector_addr);
+    Expr_ptr index = transpile(this, call.args["index"].first);
+    assert(index);
+    Expr_ptr value = transpile(this, call.args["value"].first);
+    assert(value);
+
+    args = std::vector<Expr_ptr>{ vector, index, value };
   }
 
   else {

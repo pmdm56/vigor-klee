@@ -52,10 +52,18 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::Read
     symbol = "src_devices";
   }
 
+  else if (symbol == "next_time") {
+    symbol = "now";
+  }
+
+  else if (symbol == "data_len") {
+    symbol = "pkt_len";
+  }
+
   symbol_width = std::make_pair(true, root->getSize() * 8);
 
-  ast->dump();
   Variable_ptr var = ast->get_from_local(symbol);
+  std::cerr << "searching for " << symbol << "\n";
   assert(var != nullptr);
 
   auto index = e.index;
@@ -120,18 +128,17 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::Co
   left_converter.visit(left);
 
   left_expr = left_converter.get_result();
-  saved_symbol_width = left_converter.get_symbol_width();
-
   assert(left_expr);
-  assert(saved_symbol_width.first);
+  saved_symbol_width = left_converter.get_symbol_width();
 
   right_converter.visit(right);
   right_expr = right_converter.get_result();
-
   assert(right_expr);
 
-  assert(right_converter.get_symbol_width().first == saved_symbol_width.first);
-  assert(right_converter.get_symbol_width().second == saved_symbol_width.second);
+  if (!saved_symbol_width.first) {
+    assert(right_converter.get_symbol_width().first);
+    saved_symbol_width = right_converter.get_symbol_width();
+  }
 
   Concat_ptr concat = Concat::build(left_expr, right_expr);
 
