@@ -29,6 +29,8 @@ class AST;
 Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e);
 Expr_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e);
 uint64_t const_to_value(const klee::ref<klee::Expr> &e);
+uint64_t get_first_concat_idx(const klee::ref<klee::Expr> &e);
+uint64_t get_last_concat_idx(const klee::ref<klee::Expr> &e);
 
 class KleeExprToASTNodeConverter : public klee::ExprVisitor::ExprVisitor {
 private:

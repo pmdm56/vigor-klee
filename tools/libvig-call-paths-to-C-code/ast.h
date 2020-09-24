@@ -29,7 +29,11 @@ public:
   klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
     klee::UpdateList ul = e.updates;
     const klee::Array *root = ul.root;
-    retrieved_strings.push_back(root->name);
+
+    auto found_it = std::find(retrieved_strings.begin(), retrieved_strings.end(), root->name);
+    if (found_it == retrieved_strings.end()) {
+      retrieved_strings.push_back(root->name);
+    }
 
     retrieved.emplace_back((const_cast<klee::ReadExpr *>(&e)));
     return klee::ExprVisitor::Action::doChildren();
@@ -295,6 +299,11 @@ private:
   Context context;
 
 public:
+  static constexpr char CHUNK_LAYER_2[] = "ether_header";
+  static constexpr char CHUNK_LAYER_3[] = "ipv4_header";
+  static constexpr char CHUNK_LAYER_4[] = "tcpudp_header";
+
+  Variable_ptr get_chunk_from_local(unsigned int idx);
   Variable_ptr get_from_local(const std::string& symbol, unsigned int addr);
   Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
   Variable_ptr get_from_local(klee::ref<klee::Expr> expr);
@@ -304,9 +313,9 @@ public:
   Variable_ptr get_from_state(const std::string& symbol);
 
 private:
-  Variable_ptr generate_new_symbol(const std::string& symbol, const std::string& type_name,
+  Variable_ptr generate_new_symbol(const std::string& symbol, Type_ptr type,
                                    unsigned int ptr_lvl, unsigned int counter_begins);
-  Variable_ptr generate_new_symbol(const std::string& symbol, const std::string& type_name);
+  Variable_ptr generate_new_symbol(const std::string& symbol, Type_ptr type);
 
   void push_to_state(Variable_ptr var);
   void push_to_local(Variable_ptr var);

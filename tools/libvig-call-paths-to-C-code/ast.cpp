@@ -3,6 +3,10 @@
 klee::Solver* ast_builder_assistant_t::solver;
 klee::ExprBuilder* ast_builder_assistant_t::exprBuilder;
 
+constexpr char AST::CHUNK_LAYER_2[];
+constexpr char AST::CHUNK_LAYER_3[];
+constexpr char AST::CHUNK_LAYER_4[];
+
 void ast_builder_assistant_t::remove_skip_functions(const AST& ast) {
   auto is_skip_call = [&](const call_t& call) -> bool {
     return ast.is_skip_function(call.function_name);
@@ -17,7 +21,7 @@ void ast_builder_assistant_t::remove_skip_functions(const AST& ast) {
   }
 }
 
-Variable_ptr AST::generate_new_symbol(const std::string& symbol, const std::string& type_name,
+Variable_ptr AST::generate_new_symbol(const std::string& symbol, Type_ptr type,
                                       unsigned int ptr_lvl, unsigned int counter_begins) {
   auto state_partial_name_finder = [&](Variable_ptr v) -> bool {
     std::string local_symbol = v->get_symbol();
@@ -89,8 +93,6 @@ Variable_ptr AST::generate_new_symbol(const std::string& symbol, const std::stri
     new_symbol += "_" + std::to_string(last_id + 1);
   }
 
-  Type_ptr type = PrimitiveType::build(type_name);
-
   while (ptr_lvl != 0) {
     type = Pointer::build(type);
     ptr_lvl--;
@@ -99,8 +101,8 @@ Variable_ptr AST::generate_new_symbol(const std::string& symbol, const std::stri
   return Variable::build(new_symbol, type);
 }
 
-Variable_ptr AST::generate_new_symbol(const std::string& symbol, const std::string& type_name) {
-  return generate_new_symbol(symbol, type_name, 0, 0);
+Variable_ptr AST::generate_new_symbol(const std::string& symbol, Type_ptr type) {
+  return generate_new_symbol(symbol, type, 0, 0);
 }
 
 Variable_ptr AST::get_from_state(const std::string& symbol) {
@@ -115,6 +117,41 @@ Variable_ptr AST::get_from_state(const std::string& symbol) {
   }
 
   return *it;
+}
+
+Variable_ptr AST::get_chunk_from_local(unsigned int idx) {
+
+  auto finder = [&](local_variable_t v) -> bool {
+    Variable_ptr var = v.first;
+    klee::ref<klee::Expr> expr = v.second;
+
+    std::string symbol = var->get_symbol();
+
+    if (symbol != CHUNK_LAYER_2 &&
+        symbol != CHUNK_LAYER_3 &&
+        symbol != CHUNK_LAYER_4) {
+      return false;
+    }
+
+    if (expr->getKind() != klee::Expr::Kind::Concat) {
+      return false;
+    }
+
+    auto start_idx = get_first_concat_idx(expr);
+    auto end_idx = get_last_concat_idx(expr);
+
+    return start_idx <= idx && idx <= end_idx;
+  };
+
+  for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
+    auto stack = *i;
+    auto it = std::find_if(stack.begin(), stack.end(), finder);
+    if (it != stack.end()) {
+      return it->first;
+    }
+  }
+
+  return nullptr;
 }
 
 Variable_ptr AST::get_from_local(const std::string& symbol, bool partial) {
@@ -282,19 +319,21 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
   auto fname = call.function_name;
 
   std::vector<Expr_ptr> args;
-  VariableDecl_ptr ret;
+
+  PrimitiveType_ptr ret_type;
+  std::string ret_symbol;
 
   if (fname == "map_allocate") {
     Expr_ptr capacity = transpile(this, call.args["capacity"].first);
     assert(capacity);
-    Variable_ptr new_map = generate_new_symbol("map", "struct Map", 1, 0);
+    Variable_ptr new_map = generate_new_symbol("map", Struct::build("Map"), 1, 0);
 
     push_to_state(new_map);
 
     args = std::vector<Expr_ptr>{ capacity, AddressOf::build(new_map) };
 
-    Variable_ptr ret_var = generate_new_symbol("map_allocation_succeeded", "int");
-    ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_symbol = "map_allocation_succeeded";
   }
 
   else if (fname == "vector_allocate") {
@@ -302,26 +341,26 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
     assert(capacity);
     Expr_ptr elem_size = transpile(this, call.args["elem_size"].first);
     assert(elem_size);
-    Variable_ptr new_vector = generate_new_symbol("vector", "struct Vector", 1, 0);
+    Variable_ptr new_vector = generate_new_symbol("vector", Struct::build("Vector"), 1, 0);
 
     push_to_state(new_vector);
 
     args = std::vector<Expr_ptr>{ capacity, elem_size, AddressOf::build(new_vector) };
 
-    Variable_ptr ret_var = generate_new_symbol("vector_alloc_success", "int");
-    ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_symbol = "vector_alloc_success";
   }
 
   else if (fname == "dchain_allocate") {
     Expr_ptr index_range = transpile(this, call.args["index_range"].first);
     assert(index_range);
-    Variable_ptr new_dchain  = generate_new_symbol("dchain", "struct DoubleChain", 1, 0);
+    Variable_ptr new_dchain  = generate_new_symbol("dchain", Struct::build("DoubleChain"), 1, 0);
     push_to_state(new_dchain);
 
     args = std::vector<Expr_ptr>{ index_range, AddressOf::build(new_dchain) };
 
-    Variable_ptr ret_var = generate_new_symbol("is_dchain_allocated", "int");
-    ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_symbol = "is_dchain_allocated";
   }
 
   else {
@@ -346,14 +385,22 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
 
   assert(args.size() == call.args.size());
 
-  FunctionCall_ptr fcall = FunctionCall::build(fname, args);
-  Assignment_ptr assignment = Assignment::build(ret, fcall);
+  FunctionCall_ptr fcall = FunctionCall::build(fname, args, ret_type);
 
-  assignment->set_terminate_line(true);
+  if (ret_type->get_primitive_kind() != PrimitiveType::Kind::VOID) {
+    assert(ret_symbol.size());
 
-  push_to_local(Variable::build(ret->get_symbol(), ret->get_type()));
+    Variable_ptr ret_var = generate_new_symbol(ret_symbol, ret_type);
+    push_to_local(ret_var);
 
-  return assignment;
+    VariableDecl_ptr ret = VariableDecl::build(ret_var);
+    Assignment_ptr assignment = Assignment::build(ret, fcall);
+    assignment->set_terminate_line(true);
+
+    return assignment;
+  }
+
+  return fcall;
 }
 
 Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
@@ -361,9 +408,13 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
 
   auto fname = call.function_name;
 
-  std::vector<Expr_ptr> args;
-  VariableDecl_ptr ret;
   std::vector<Node_ptr> exprs;
+  std::vector<Expr_ptr> args;
+
+  PrimitiveType_ptr ret_type;
+  std::string ret_symbol;
+  klee::ref<klee::Expr> ret_expr;
+  unsigned int counter_begins = 0;
 
   if (fname == "current_time") {
     associate_expr_to_local("now", call.ret);
@@ -377,22 +428,63 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     Variable_ptr chunk;
 
     switch (assistant.layer) {
-    case 2:
-      chunk = Variable::build("ether_hdr", Pointer::build(PrimitiveType::build("struct ether_hdr")));
+    case 2: {
+      Array_ptr _uint8_t_6 = Array::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T), 6);
+
+      Struct::field_t addr_bytes("addr_bytes", _uint8_t_6);
+      std::vector<Struct::field_t> ether_addr_fields{ addr_bytes };
+
+      Struct_ptr ether_addr = Struct::build("ether_addr", ether_addr_fields);
+
+      std::vector<Struct::field_t> ether_hdr_fields;
+
+      ether_hdr_fields.emplace_back("d_addr", ether_addr);
+      ether_hdr_fields.emplace_back("s_addr", ether_addr);
+      ether_hdr_fields.emplace_back("ether_type", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
+
+      Struct_ptr ether_hdr = Struct::build("ether_hdr", ether_hdr_fields);
+
+      chunk = Variable::build(AST::CHUNK_LAYER_2, Pointer::build(ether_hdr));
       assistant.layer++;
       break;
-    case 3:
-      chunk = Variable::build("ipv4_hdr", Pointer::build(PrimitiveType::build("struct ipv4_hdr")));
+    }
+    case 3: {
+      std::vector<Struct::field_t> ipv4_hdr_fields;
+
+      ipv4_hdr_fields.emplace_back("version_ihl", PrimitiveType::build(PrimitiveType::Kind::UINT8_T));
+      ipv4_hdr_fields.emplace_back("type_of_service", PrimitiveType::build(PrimitiveType::Kind::UINT8_T));
+      ipv4_hdr_fields.emplace_back("total_length", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
+      ipv4_hdr_fields.emplace_back("packet_id", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
+      ipv4_hdr_fields.emplace_back("fragment_offset", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
+      ipv4_hdr_fields.emplace_back("time_to_live", PrimitiveType::build(PrimitiveType::Kind::UINT8_T));
+      ipv4_hdr_fields.emplace_back("next_proto_id", PrimitiveType::build(PrimitiveType::Kind::UINT8_T));
+      ipv4_hdr_fields.emplace_back("hdr_checksum", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
+      ipv4_hdr_fields.emplace_back("src_addr", PrimitiveType::build(PrimitiveType::Kind::UINT32_T));
+      ipv4_hdr_fields.emplace_back("dst_addr", PrimitiveType::build(PrimitiveType::Kind::UINT32_T));
+
+      Struct_ptr ipv4_hdr = Struct::build("ipv4_hdr", ipv4_hdr_fields);
+
+      chunk = Variable::build(CHUNK_LAYER_3, Pointer::build(ipv4_hdr));
       assistant.layer++;
       break;
-    case 4:
-      if (pkt_len->get_kind() == Node::Kind::UNSIGNED_LITERAL) {
-        chunk = Variable::build("ipv4_options", Pointer::build(PrimitiveType::build("struct uint8_t")));
-      } else {
-        chunk = Variable::build("tcpudp_hdr", Pointer::build(PrimitiveType::build("struct tcpudp_hdr")));
-        assistant.layer++;
+    }
+    case 4: {
+      if (pkt_len->get_kind() == Node::Kind::CONSTANT) {
+        chunk = Variable::build("ip_options", Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T)));
+        break;
       }
+
+      std::vector<Struct::field_t> tcpudp_hdr_fields;
+
+      tcpudp_hdr_fields.emplace_back("src_port", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
+      tcpudp_hdr_fields.emplace_back("dst_port", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
+
+      Struct_ptr tcpudp_hdr = Struct::build("tcpudp_hdr", tcpudp_hdr_fields);
+
+      chunk = Variable::build(CHUNK_LAYER_4, Pointer::build(tcpudp_hdr));
+      assistant.layer++;
       break;
+    }
     default:
       assert(false && "Missing layers implementation");
     }
@@ -404,16 +496,16 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     exprs.push_back(chunk_decl);
 
     args = std::vector<Expr_ptr>{ p, pkt_len, chunk };
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
   }
 
   else if (fname == "packet_get_unread_length") {
     Variable_ptr p = get_from_local("p");
+    assert(p);
+
     args = std::vector<Expr_ptr>{ p };
-
-    Variable_ptr ret_var = generate_new_symbol("unread_len", "uint16_t");
-    push_to_local(ret_var);
-
-    ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::UINT16_T);
+    ret_symbol = "unread_len";
   }
 
   else if (fname == "expire_items_single_map") {
@@ -428,11 +520,9 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     assert(now);
 
     args = std::vector<Expr_ptr>{ chain, vector, map, now };
-
-    Variable_ptr ret_var = generate_new_symbol("unmber_of_freed_flows", "int");
-    push_to_local(ret_var, call.ret);
-
-    ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_symbol = "unmber_of_freed_flows";
+    ret_expr = call.ret;
   }
 
   else if (fname == "map_get") {
@@ -443,7 +533,8 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     assert(key);
     Expr_ptr map = get_from_state("map", map_addr);
 
-    Variable_ptr value_out = generate_new_symbol("value_out", "int");
+    Type_ptr value_out_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    Variable_ptr value_out = generate_new_symbol("value_out", value_out_type);
 
     value_out->set_addr(value_out_addr);
     push_to_local(value_out);
@@ -452,11 +543,9 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     exprs.push_back(value_out_decl);
 
     args = std::vector<Expr_ptr>{ map, key, AddressOf::build(value_out) };
-
-    Variable_ptr ret_var = generate_new_symbol("map_has_this_key", "int");
-    push_to_local(ret_var, call.ret);
-
-    ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_symbol = "map_has_this_key";
+    ret_expr = call.ret;
   }
 
   else if (fname == "dchain_allocate_new_index") {
@@ -465,7 +554,8 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     Expr_ptr chain = get_from_state("chain", chain_addr);
 
     // dchain allocates an index when is allocated, so we start with new_index_1
-    Variable_ptr index_out = generate_new_symbol("new_index", "int", 0, 1);
+    Type_ptr index_out_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    Variable_ptr index_out = generate_new_symbol("new_index", index_out_type, 0, 1);
 
     Expr_ptr now = transpile(this, call.args["time"].first);
     assert(now);
@@ -477,11 +567,10 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     exprs.push_back(index_out_decl);
 
     args = std::vector<Expr_ptr>{ chain, AddressOf::build(index_out), now };
-
-    Variable_ptr ret_var = generate_new_symbol("out_of_space", "int", 0, 1);
-    push_to_local(ret_var, call.ret);
-
-    ret = VariableDecl::build(ret_var->get_symbol(), ret_var->get_type());
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_symbol = "out_of_space";
+    ret_expr = call.ret;
+    counter_begins = 1;
   }
 
   else if (fname == "vector_borrow") {
@@ -491,15 +580,19 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     Expr_ptr index = get_from_local(call.args["index"].first);
     assert(index);
 
-    Variable_ptr val_out = generate_new_symbol("val_out", "struct DynamicValue", 1, 0);
+    // FIXME: track the type going in the vector
+    Type_ptr val_out_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+    Variable_ptr val_out = generate_new_symbol("val_out", val_out_type, 1, 0);
 
     assert(!call.extra_vars["borrowed_cell"].second.isNull());
     push_to_local(val_out, call.extra_vars["borrowed_cell"].second);
 
     VariableDecl_ptr val_out_decl = VariableDecl::build(val_out);
-    exprs.push_back(Assignment::build(val_out_decl, Constant::build(0)));
+    Expr_ptr zero = Constant::build(PrimitiveType::Kind::UINT32_T, 0);
+    exprs.push_back(Assignment::build(val_out_decl, zero));
 
     args = std::vector<Expr_ptr>{ vector, index, AddressOf::build(val_out) };
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
   }
 
   else if (fname == "map_put") {
@@ -512,6 +605,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     assert(key);
 
     args = std::vector<Expr_ptr>{ map, key, value };
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
   }
 
   else if (fname == "vector_return") {
@@ -524,6 +618,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     assert(value);
 
     args = std::vector<Expr_ptr>{ vector, index, value };
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
   }
 
   else {
@@ -547,9 +642,20 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   assert(args.size() == call.args.size());
-  FunctionCall_ptr fcall = FunctionCall::build(fname, args);
+  FunctionCall_ptr fcall = FunctionCall::build(fname, args, ret_type);
 
-  if (ret) {
+  if (ret_type->get_primitive_kind() != PrimitiveType::Kind::VOID) {
+    assert(ret_symbol.size());
+
+    Variable_ptr ret_var = generate_new_symbol(ret_symbol, ret_type, 0, counter_begins);
+
+    if (ret_expr.isNull()) {
+      push_to_local(ret_var, ret_expr);
+    } else {
+      push_to_local(ret_var);
+    }
+
+    VariableDecl_ptr ret = VariableDecl::build(ret_var);
     Assignment_ptr assignment = Assignment::build(ret, fcall);
     assignment->set_terminate_line(true);
 
@@ -568,19 +674,20 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
   Expr_ptr ret_expr;
 
   if (!constraint) {
-    return Return::build(Constant::build(1));
+    Expr_ptr one = Constant::build(PrimitiveType::Kind::INT, 1);
+    return Return::build(one);
   }
 
   switch (constraint->get_kind()) {
   case Node::Kind::EQUALS: {
     Equals* equals = static_cast<Equals*>(constraint.get());
 
-    assert(equals->get_lhs()->get_kind() == Node::Kind::UNSIGNED_LITERAL);
+    assert(equals->get_lhs()->get_kind() == Node::Kind::CONSTANT);
     assert(equals->get_rhs()->get_kind() == Node::Kind::VARIABLE);
 
     Constant* literal = static_cast<Constant*>(equals->get_lhs().get());
 
-    ret_expr = Constant::build(literal->get_value() != 0);
+    ret_expr = Constant::build(PrimitiveType::Kind::INT, literal->get_value() != 0);
     break;
   }
 
@@ -590,12 +697,12 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
 
     Equals* equals = static_cast<Equals*>(_not->get_expr().get());
 
-    assert(equals->get_lhs()->get_kind() == Node::Kind::UNSIGNED_LITERAL);
+    assert(equals->get_lhs()->get_kind() == Node::Kind::CONSTANT);
     assert(equals->get_rhs()->get_kind() == Node::Kind::VARIABLE);
 
     Constant* literal = static_cast<Constant*>(equals->get_lhs().get());
 
-    ret_expr = Constant::build(literal->get_value() == 0);
+    ret_expr = Constant::build(PrimitiveType::Kind::INT, literal->get_value() == 0);
     break;
   }
 
@@ -710,22 +817,14 @@ void AST::context_switch(Context ctx) {
     push();
 
     std::vector<VariableDecl_ptr> args {
-      VariableDecl::build("src_devices", PrimitiveType::build("uint16_t")),
-      VariableDecl::build("p", Pointer::build(PrimitiveType::build("uint8_t"))),
-      VariableDecl::build("pkt_len", PrimitiveType::build("uint16_t")),
-      VariableDecl::build("now", PrimitiveType::build("vigor_time_t"))
+      VariableDecl::build("src_devices", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+      VariableDecl::build("p", Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T))),
+      VariableDecl::build("pkt_len", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+      VariableDecl::build("now", PrimitiveType::build(PrimitiveType::Kind::UINT64_T))
     };
 
     for (const auto& arg : args) {
       push_to_local(Variable::build(arg->get_symbol(), arg->get_type()));
-    }
-
-    std::vector<VariableDecl_ptr> vars {
-      VariableDecl::build("packet_chunks", Pointer::build(PrimitiveType::build("uint8_t")))
-    };
-
-    for (const auto& var : vars) {
-      push_to_local(Variable::build(var->get_symbol(), var->get_type()));
     }
 
     break;
@@ -749,7 +848,7 @@ void AST::commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr c
   case INIT: {
     std::vector<FunctionArgDecl_ptr> _args;
     Block_ptr _body = Block::build(nodes);
-    Type_ptr _return = PrimitiveType::build("bool");
+    Type_ptr _return = PrimitiveType::build(PrimitiveType::Kind::BOOL);
 
     nf_init = Function::build("nf_init", _args, _body, _return);
 
@@ -759,14 +858,14 @@ void AST::commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr c
 
   case PROCESS: {
     std::vector<FunctionArgDecl_ptr> _args{
-      FunctionArgDecl::build("src_devices", PrimitiveType::build("uint16_t")),
-      FunctionArgDecl::build("p", Pointer::build(PrimitiveType::build("uint8_t"))),
-      FunctionArgDecl::build("pkt_len", PrimitiveType::build("uint16_t")),
-      FunctionArgDecl::build("now", PrimitiveType::build("vigor_time_t")),
+      FunctionArgDecl::build("src_devices", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+      FunctionArgDecl::build("p", Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T))),
+      FunctionArgDecl::build("pkt_len", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+      FunctionArgDecl::build("now", PrimitiveType::build(PrimitiveType::Kind::UINT64_T)),
     };
 
     Block_ptr _body = Block::build(nodes);
-    Type_ptr _return = PrimitiveType::build("int");
+    Type_ptr _return = PrimitiveType::build(PrimitiveType::Kind::INT);
 
     nf_process = Function::build("nf_process", _args, _body, _return);
 
