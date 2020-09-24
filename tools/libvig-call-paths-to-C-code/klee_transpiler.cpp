@@ -8,7 +8,7 @@ Expr_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
   klee::ConstantExpr* constant = static_cast<klee::ConstantExpr *>(e.get());
   uint64_t value = constant->getZExtValue();
 
-  return UnsignedLiteral::build(value);
+  return Constant::build(value);
 }
 
 uint64_t const_to_value(const klee::ref<klee::Expr> &e) {
@@ -178,8 +178,8 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::E
 
   assert(ast_expr);
 
-  ShiftRight_ptr shift = ShiftRight::build(ast_expr, UnsignedLiteral::build(offset));
-  And_ptr extract = And::build(shift, UnsignedLiteral::build((1 << size) - 1, true));
+  ShiftRight_ptr shift = ShiftRight::build(ast_expr, Constant::build(offset));
+  And_ptr extract = And::build(shift, Constant::build((1 << size) - 1, true));
 
   save_result(extract);
 
@@ -224,11 +224,11 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSExt(const klee::SExt
     }
   }
 
-  Expr_ptr mask_expr = UnsignedLiteral::build(mask, true);
+  Expr_ptr mask_expr = Constant::build(mask, true);
   Expr_ptr to_be_extended;
 
   if (size > expr_size) {
-    ShiftRight_ptr msb = ShiftRight::build(ast_expr, UnsignedLiteral::build(expr_size - 1));
+    ShiftRight_ptr msb = ShiftRight::build(ast_expr, Constant::build(expr_size - 1));
     Expr_ptr if_msb_one = Or::build(mask_expr, ast_expr);
     to_be_extended = Select::build(msb, if_msb_one, ast_expr);
   } else {
@@ -638,8 +638,8 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitAShr(const klee::AShr
     assert(right != nullptr);
   }
 
-  ShiftRight_ptr msb = ShiftRight::build(left, UnsignedLiteral::build(left_size - 1));
-  ShiftLeft_ptr mask = ShiftLeft::build(msb, UnsignedLiteral::build(left_size - 1));
+  ShiftRight_ptr msb = ShiftRight::build(left, Constant::build(left_size - 1));
+  ShiftLeft_ptr mask = ShiftLeft::build(msb, Constant::build(left_size - 1));
   ShiftRight_ptr shr = ShiftRight::build(left, right);
   Expr_ptr ashr = Or::build(mask, shr);
 
@@ -674,12 +674,12 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitEq(const klee::EqExpr
 
   if (right->get_kind() == Node::Kind::EQUALS &&
       left->get_kind() == Node::Kind::UNSIGNED_LITERAL) {
-    UnsignedLiteral* left_ul = static_cast<UnsignedLiteral*>(left.get());
+    Constant* left_ul = static_cast<Constant*>(left.get());
     Equals* right_eq = static_cast<Equals*>(right.get());
     Expr_ptr right_eq_left = right_eq->get_lhs();
 
     if (right_eq_left->get_kind() == Node::Kind::UNSIGNED_LITERAL) {
-      UnsignedLiteral* right_eq_left_ul = static_cast<UnsignedLiteral*>(right_eq_left.get());
+      Constant* right_eq_left_ul = static_cast<Constant*>(right_eq_left.get());
 
       if (right_eq_left_ul->get_value() == 0 && left_ul->get_value() == 0) {
         save_result(right_eq->get_rhs());

@@ -89,7 +89,7 @@ Variable_ptr AST::generate_new_symbol(const std::string& symbol, const std::stri
     new_symbol += "_" + std::to_string(last_id + 1);
   }
 
-  Type_ptr type = NamedType::build(type_name);
+  Type_ptr type = PrimitiveType::build(type_name);
 
   while (ptr_lvl != 0) {
     type = Pointer::build(type);
@@ -378,18 +378,18 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
 
     switch (assistant.layer) {
     case 2:
-      chunk = Variable::build("ether_hdr", Pointer::build(NamedType::build("struct ether_hdr")));
+      chunk = Variable::build("ether_hdr", Pointer::build(PrimitiveType::build("struct ether_hdr")));
       assistant.layer++;
       break;
     case 3:
-      chunk = Variable::build("ipv4_hdr", Pointer::build(NamedType::build("struct ipv4_hdr")));
+      chunk = Variable::build("ipv4_hdr", Pointer::build(PrimitiveType::build("struct ipv4_hdr")));
       assistant.layer++;
       break;
     case 4:
       if (pkt_len->get_kind() == Node::Kind::UNSIGNED_LITERAL) {
-        chunk = Variable::build("ipv4_options", Pointer::build(NamedType::build("struct uint8_t")));
+        chunk = Variable::build("ipv4_options", Pointer::build(PrimitiveType::build("struct uint8_t")));
       } else {
-        chunk = Variable::build("tcpudp_hdr", Pointer::build(NamedType::build("struct tcpudp_hdr")));
+        chunk = Variable::build("tcpudp_hdr", Pointer::build(PrimitiveType::build("struct tcpudp_hdr")));
         assistant.layer++;
       }
       break;
@@ -497,7 +497,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     push_to_local(val_out, call.extra_vars["borrowed_cell"].second);
 
     VariableDecl_ptr val_out_decl = VariableDecl::build(val_out);
-    exprs.push_back(Assignment::build(val_out_decl, UnsignedLiteral::build(0)));
+    exprs.push_back(Assignment::build(val_out_decl, Constant::build(0)));
 
     args = std::vector<Expr_ptr>{ vector, index, AddressOf::build(val_out) };
   }
@@ -568,7 +568,7 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
   Expr_ptr ret_expr;
 
   if (!constraint) {
-    return Return::build(UnsignedLiteral::build(1));
+    return Return::build(Constant::build(1));
   }
 
   switch (constraint->get_kind()) {
@@ -578,9 +578,9 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
     assert(equals->get_lhs()->get_kind() == Node::Kind::UNSIGNED_LITERAL);
     assert(equals->get_rhs()->get_kind() == Node::Kind::VARIABLE);
 
-    UnsignedLiteral* literal = static_cast<UnsignedLiteral*>(equals->get_lhs().get());
+    Constant* literal = static_cast<Constant*>(equals->get_lhs().get());
 
-    ret_expr = UnsignedLiteral::build(literal->get_value() != 0);
+    ret_expr = Constant::build(literal->get_value() != 0);
     break;
   }
 
@@ -593,15 +593,15 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
     assert(equals->get_lhs()->get_kind() == Node::Kind::UNSIGNED_LITERAL);
     assert(equals->get_rhs()->get_kind() == Node::Kind::VARIABLE);
 
-    UnsignedLiteral* literal = static_cast<UnsignedLiteral*>(equals->get_lhs().get());
+    Constant* literal = static_cast<Constant*>(equals->get_lhs().get());
 
-    ret_expr = UnsignedLiteral::build(literal->get_value() == 0);
+    ret_expr = Constant::build(literal->get_value() == 0);
     break;
   }
 
   default:
     std::cerr << "\n";
-    constraint->debug(0);
+    constraint->debug(std::cerr);
     std::cerr << "\n";
 
     assert(false && "Return from INIT: unexpected node");
@@ -710,10 +710,10 @@ void AST::context_switch(Context ctx) {
     push();
 
     std::vector<VariableDecl_ptr> args {
-      VariableDecl::build("src_devices", NamedType::build("uint16_t")),
-      VariableDecl::build("p", Pointer::build(NamedType::build("uint8_t"))),
-      VariableDecl::build("pkt_len", NamedType::build("uint16_t")),
-      VariableDecl::build("now", NamedType::build("vigor_time_t"))
+      VariableDecl::build("src_devices", PrimitiveType::build("uint16_t")),
+      VariableDecl::build("p", Pointer::build(PrimitiveType::build("uint8_t"))),
+      VariableDecl::build("pkt_len", PrimitiveType::build("uint16_t")),
+      VariableDecl::build("now", PrimitiveType::build("vigor_time_t"))
     };
 
     for (const auto& arg : args) {
@@ -721,7 +721,7 @@ void AST::context_switch(Context ctx) {
     }
 
     std::vector<VariableDecl_ptr> vars {
-      VariableDecl::build("packet_chunks", Pointer::build(NamedType::build("uint8_t")))
+      VariableDecl::build("packet_chunks", Pointer::build(PrimitiveType::build("uint8_t")))
     };
 
     for (const auto& var : vars) {
@@ -749,7 +749,7 @@ void AST::commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr c
   case INIT: {
     std::vector<FunctionArgDecl_ptr> _args;
     Block_ptr _body = Block::build(nodes);
-    Type_ptr _return = NamedType::build("bool");
+    Type_ptr _return = PrimitiveType::build("bool");
 
     nf_init = Function::build("nf_init", _args, _body, _return);
 
@@ -759,14 +759,14 @@ void AST::commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr c
 
   case PROCESS: {
     std::vector<FunctionArgDecl_ptr> _args{
-      FunctionArgDecl::build("src_devices", NamedType::build("uint16_t")),
-      FunctionArgDecl::build("p", Pointer::build(NamedType::build("uint8_t"))),
-      FunctionArgDecl::build("pkt_len", NamedType::build("uint16_t")),
-      FunctionArgDecl::build("now", NamedType::build("vigor_time_t")),
+      FunctionArgDecl::build("src_devices", PrimitiveType::build("uint16_t")),
+      FunctionArgDecl::build("p", Pointer::build(PrimitiveType::build("uint8_t"))),
+      FunctionArgDecl::build("pkt_len", PrimitiveType::build("uint16_t")),
+      FunctionArgDecl::build("now", PrimitiveType::build("vigor_time_t")),
     };
 
     Block_ptr _body = Block::build(nodes);
-    Type_ptr _return = NamedType::build("int");
+    Type_ptr _return = PrimitiveType::build("int");
 
     nf_process = Function::build("nf_process", _args, _body, _return);
 

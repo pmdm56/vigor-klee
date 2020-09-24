@@ -395,7 +395,7 @@ private:
 
     std::cerr << "Global variables" << "\n";
     for (const auto& gv : state) {
-      gv->debug(2);
+      gv->debug(std::cerr, 2);
     }
     std::cerr << "\n";
 
@@ -403,7 +403,7 @@ private:
     for (const auto& stack : local_variables) {
       std::cerr << "  ===================================" << "\n";
       for (const auto var : stack) {
-        var.first->debug(2);
+        var.first->debug(std::cerr, 2);
       }
     }
     std::cerr << "\n";
@@ -414,13 +414,13 @@ private:
 
     if (nf_init) {
       std::cerr << "\n";
-      nf_init->debug();
+      nf_init->debug(std::cerr);
       std::cerr << "\n";
     }
 
     if (nf_process) {
       std::cerr << "\n";
-      nf_process->debug();
+      nf_process->debug(std::cerr);
       std::cerr << "\n";
     }
   }

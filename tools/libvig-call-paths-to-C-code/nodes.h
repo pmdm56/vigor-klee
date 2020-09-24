@@ -1,10 +1,13 @@
 #pragma once
 
+#include <iostream>
+#include <vector>
+
 class Node {
 public:
   enum Kind {
     COMMENT,
-    TYPE,
+    PRIMITIVE,
     POINTER,
     IMPORT,
     BLOCK,
@@ -32,12 +35,12 @@ public:
     AND,
     OR,
     XOR,
+    MOD,
     SHIFT_LEFT,
     SHIFT_RIGHT,
     READ,
     CONCAT,
-    SIGNED_LITERAL,
-    UNSIGNED_LITERAL
+    CONSTANT
   };
 
 protected:
@@ -52,18 +55,11 @@ protected:
     }
   }
 
-  void indent(unsigned int lvl=0) const {
-    while (lvl != 0) {
-      std::cerr << " ";
-      lvl--;
-    }
-  }
-
 public:
   Kind get_kind() const { return kind; }
 
   virtual void synthesize(std::ostream& ofs, unsigned int lvl=0) const = 0;
-  virtual void debug(unsigned int lvl=0) const = 0;
+  virtual void debug(std::ostream& ofs, unsigned int lvl=0) const = 0;
 };
 
 typedef std::shared_ptr<Node> Node_ptr;
@@ -81,9 +77,9 @@ public:
     ofs << "// " << comment;
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<!-- " << comment << " -->" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<!-- " << comment << " -->" << "\n";
   }
 
   static std::shared_ptr<Comment> build(const std::string& _comment) {
@@ -98,9 +94,22 @@ class Expression : public Node {
 protected:
   bool terminate_line;
   bool wrap;
+  Type_ptr type;
 
-  Expression(Kind kind)
-    : Node(kind), terminate_line(false), wrap(true) {}
+  Expression(Kind kind, Expr_ptr _expr1, Expr_ptr _expr2)
+    : Node(kind), terminate_line(false), wrap(true) {
+    Type_ptr type1 = _expr1->get_type();
+    Type_ptr type2 = _expr2->get_type();
+
+    if (type1->get_size() >= type2->get_size()) {
+      type = type1->clone();
+    } else {
+      type = type2->clone();
+    }
+  }
+
+  Expression(Kind kind, Type_ptr _type)
+    : Node(kind), terminate_line(false), wrap(true), type(_type->clone()) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -121,6 +130,10 @@ public:
     }
   }
 
+  Type_ptr get_type() const {
+    return type;
+  }
+
   virtual void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const = 0;
   virtual std::shared_ptr<Expression> clone() const = 0;
 
@@ -137,54 +150,110 @@ typedef std::shared_ptr<Expression> Expr_ptr;
 
 class Type : public Node {
 protected:
-  Type(Kind kind) : Node(kind) {}
+  unsigned int size;
+
+  Type(Kind kind, unsigned int _size)
+    : Node(kind), size(_size) {}
 
 public:
+  unsigned int get_size() const { return size; }
+
   virtual const std::string& get_name() const = 0;
   virtual std::shared_ptr<Type> clone() const = 0;
 };
 
 typedef std::shared_ptr<Type> Type_ptr;
 
-class NamedType : public Type {
-protected:
-  std::string name;
+class PrimitiveType : public Type {
+public:
+  enum Kind {
+    VOID, BOOL, UINT8_T, INT, UINT32_T, UINT64_T
+  };
 
-  NamedType(const std::string& _name)
-    : Type(TYPE), name(_name) {}
+private:
+  PrimitiveType::Kind primitive_kind;
+
+  PrimitiveType(PrimitiveType::Kind _primitive_kind, unsigned int _size)
+    : Type(PRIMITIVE, _size), primitive_kind(_primitive_kind) {}
 
 public:
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << name;
+  PrimitiveType::Kind get_primitive_kind() const {
+    return primitive_kind;
   }
 
-  void debug(unsigned int lvl=0) const override {
-    std::cerr << name;
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << get_name();
+  }
+
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << get_name();
   }
 
   const std::string& get_name() const override {
+    std::string name;
+
+    switch (_kind) {
+    case VOID:
+      name = "void";
+      break;
+    case BOOL:
+      name = "bool";
+      break;
+    case UINT8_T:
+      name = "uint8_t";
+      break;
+    case INT:
+      name = "int";
+      break;
+    case UINT32_T:
+      name = "uint32_t";
+      break;
+    case UINT64_T:
+      name = "uint64_t";
+      break;
+    }
+
     return name;
   }
 
   std::shared_ptr<Type> clone() const override {
-    Type* nt = new NamedType(name);
+    Type* nt = new PrimitiveType(primitive_kind, size);
     return std::shared_ptr<Type>(nt);
   }
 
-  static std::shared_ptr<NamedType> build(const std::string& name) {
-    NamedType* nt = new NamedType(name);
-    return std::shared_ptr<NamedType>(nt);
+  static std::shared_ptr<PrimitiveType> build(PrimitiveType::Kind _kind) {
+    PrimitiveType* nt;
+
+    switch (_kind) {
+    case VOID:
+      nt = new PrimitiveType(_kind, 0);
+      break;
+    case BOOL:
+      nt = new PrimitiveType(_kind, 1);
+    case UINT8_T:
+      nt = new PrimitiveType(_kind, 8);
+      break;
+    case INT:
+    case UINT32_T:
+      nt = new PrimitiveType(_kind, 32);
+      break;
+    case UINT64_T:
+      nt = new PrimitiveType(_kind, 64);
+      break;
+    }
+
+    return std::shared_ptr<PrimitiveType>(nt);
   }
 };
 
-typedef std::shared_ptr<NamedType> NamedType_ptr;
+typedef std::shared_ptr<PrimitiveType> PrimitiveType_ptr;
 
 class Pointer : public Type {
 private:
   Type_ptr type;
 
   Pointer(Type_ptr _type)
-    : Type(POINTER), type(_type->clone()) {}
+    : Type(POINTER, 64 /* we hope */), type(_type->clone()) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -192,9 +261,9 @@ public:
     ofs << "*";
   }
 
-  void debug(unsigned int lvl=0) const override {
-    type->debug(lvl);
-    std::cerr << "*";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    type->debug(ofs, lvl);
+    ofs << "*";
   }
 
   Type_ptr get_type() const { return type; }
@@ -233,11 +302,11 @@ public:
     ofs << (relative ? "\"" : ">");
   }
 
-  void debug(unsigned int lvl=0) const override {
-    std::cerr << "<include";
-    std::cerr << " relative=" << relative;
-    std::cerr << " path=" << path;
-    std::cerr << " />" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "<include";
+    ofs << " relative=" << relative;
+    ofs << " path=" << path;
+    ofs << " />" << "\n";
   }
 
   static std::shared_ptr<Import> build(const std::string& _path, bool _relative) {
@@ -278,16 +347,16 @@ public:
     }
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<block>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<block>" << "\n";
 
     for (const auto& node : nodes) {
-      node->debug(lvl+2);
+      node->debug(ofs, lvl+2);
     }
 
-    indent(lvl);
-    std::cerr << "</block>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</block>" << "\n";
   }
 
   static std::shared_ptr<Block> build(const std::vector<Node_ptr> _nodes) {
@@ -362,23 +431,23 @@ public:
     ofs << "\n";
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<if>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<if>" << "\n";
 
-    condition->debug(lvl+2);
-    on_true->debug(lvl+2);
+    condition->debug(ofs, lvl+2);
+    on_true->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</if>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</if>" << "\n";
 
-    indent(lvl);
-    std::cerr << "<else>" << "\n";
+    indent(ofs, lvl);
+    ofs << "<else>" << "\n";
 
-    on_false->debug(lvl+2);
+    on_false->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</else>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</else>" << "\n";
   }
 
   static std::shared_ptr<Branch> build(Expr_ptr _condition, Node_ptr _on_true, Node_ptr _on_false) {
@@ -406,12 +475,12 @@ public:
     ofs << ";";
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<return>" << "\n";
-    value->debug(lvl+2);
-    indent(lvl);
-    std::cerr << "</return>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<return>" << "\n";
+    value->debug(ofs, lvl+2);
+    indent(ofs, lvl);
+    ofs << "</return>" << "\n";
   }
 
   static std::shared_ptr<Return> build(Expr_ptr _value) {
@@ -427,8 +496,9 @@ private:
   std::string name;
   std::vector<Expr_ptr> args;
 
-  FunctionCall(const std::string& _name, const std::vector<Expr_ptr> _args)
-    : Expression(FUNCTION_CALL), name(_name) {
+  FunctionCall(const std::string& _name, const std::vector<Expr_ptr>& _args, Type_ptr _ret)
+    : Expression(FUNCTION_CALL, _ret), name(_name) {
+
     for (const auto& arg : _args) {
       Expr_ptr cloned = arg->clone();
       cloned->set_wrap(false);
@@ -455,41 +525,73 @@ public:
     ofs << ")";
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<call";
-    std::cerr << " name=" << name;
-    std::cerr << ">" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<call";
+    ofs << " name=" << name;
+    ofs << ">" << "\n";
 
     for (const auto& arg : args) {
-      arg->debug(lvl+2);
+      arg->debug(ofs, lvl+2);
     }
 
-    indent(lvl);
-    std::cerr << "</call>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</call>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new FunctionCall(name, args);
+    Expression* e = new FunctionCall(name, args, ret);
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<FunctionCall> build(const std::string& _name, const std::vector<Expr_ptr> _args) {
-    FunctionCall* function_call = new FunctionCall(_name, _args);
+  static std::shared_ptr<FunctionCall> build(const std::string& _name,
+                                             const std::vector<Expr_ptr>& _args,
+                                             Type_ptr _ret) {
+    FunctionCall* function_call = new FunctionCall(_name, _args, _ret);
     return std::shared_ptr<FunctionCall>(function_call);
   }
 };
 
 typedef std::shared_ptr<FunctionCall> FunctionCall_ptr;
 
-class UnsignedLiteral : public Expression {
+class Constant : public Expression {
 private:
   uint64_t value;
   bool hex;
 
-  UnsignedLiteral(uint64_t _value, bool _hex)
-    : Expression(UNSIGNED_LITERAL), value(_value), hex(_hex) {
+  Constant(PrimitiveType::Kind _kind, uint64_t _value, bool _hex)
+    : Expression(CONSTANT, PrimitiveType::build(_kind)),
+      value(_value), hex(_hex) {
     set_wrap(false);
+  }
+
+  Constant(PrimitiveType::Kind _kind, uint64_t _value)
+    : Constant(_kind, _value, false) {}
+
+  void parse_value(std::ostream& ofs) const {
+    assert(type->get_kind() == Node::Kind::PRIMITIVE);
+    PrimitiveType* primitive = static_cast<PrimitiveType*>(type);
+
+    switch (primitive->get_primitive_kind()) {
+    case PrimitiveType::Kind::BOOL:
+      if (value == 0) ofs << "false";
+      else ofs << "true";
+      break;
+    case PrimitiveType::Kind::UINT8_T:
+      ofs << static_cast<uint8_t>(value);
+      break;
+    case PrimitiveType::Kind::INT:
+      ofs << static_cast<int>(value);
+      break;
+    case PrimitiveType::Kind::UINT32_T:
+      ofs << static_cast<uint32_t>(value);
+      break;
+    case PrimitiveType::Kind::UINT64_T:
+      ofs << static_cast<uint64_t>(value);
+      break;
+    default:
+      assert(false);
+    }
   }
 
 public:
@@ -499,86 +601,42 @@ public:
     if (hex) {
       ofs << "0x";
       ofs << std::hex;
+      ofs << value;
+      ofs << std::dec;
     }
 
-    ofs << value;
-    ofs << std::dec;
+    else {
+      parse_value(ofs);
+    }
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<literal";
-    std::cerr << " signed=false";
-    std::cerr << " value=" << value;
-    std::cerr << " />" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<literal";
+    ofs << " value=";
+    parse_value(ofs);
+    ofs << " />" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new UnsignedLiteral(value, hex);
+    assert(type->get_kind() == Node::Kind::PRIMITIVE);
+    PrimitiveType* primitive = static_cast<PrimitiveType*>(type);
+    Expression* e = new Constant(primitive->get_primitive_kind(), value, hex);
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<UnsignedLiteral> build(uint64_t _value) {
-    UnsignedLiteral* literal = new UnsignedLiteral(_value, false);
-    return std::shared_ptr<UnsignedLiteral>(literal);
+  static std::shared_ptr<Constant> build(PrimitiveType::Kind _kind, uint64_t _value, bool _hex) {
+    Constant* literal = new Constant(_kind, _value, _hex);
+    return std::shared_ptr<Constant>(literal);
   }
 
-  static std::shared_ptr<UnsignedLiteral> build(uint64_t _value, bool _hex) {
-    UnsignedLiteral* literal = new UnsignedLiteral(_value, _hex);
-    return std::shared_ptr<UnsignedLiteral>(literal);
-  }
-};
-
-typedef std::shared_ptr<UnsignedLiteral> UnsignedLiteral_ptr;
-
-class SignedLiteral : public Expression {
-private:
-  int64_t value;
-  bool hex;
-
-  SignedLiteral(int64_t _value, bool _hex)
-    : Expression(SIGNED_LITERAL), value(_value), hex(_hex) {
-    set_wrap(false);
-  }
-
-public:
-  int64_t get_value() const { return value; }
-
-  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    if (hex) {
-      ofs << "0x";
-      ofs << std::hex;
-    }
-
-    ofs << value;
-    ofs << std::dec;
-  }
-
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<literal";
-    std::cerr << " signed=true";
-    std::cerr << " value=" << value;
-    std::cerr << " />" << "\n";
-  }
-
-  std::shared_ptr<Expression> clone() const override {
-    Expression* e = new SignedLiteral(value, hex);
-    return std::shared_ptr<Expression>(e);
-  }
-
-  static std::shared_ptr<SignedLiteral> build(int64_t _value) {
-    SignedLiteral* literal = new SignedLiteral(_value, false);
-    return std::shared_ptr<SignedLiteral>(literal);
-  }
-
-  static std::shared_ptr<SignedLiteral> build(int64_t _value, bool _hex) {
-    SignedLiteral* literal = new SignedLiteral(_value, _hex);
-    return std::shared_ptr<SignedLiteral>(literal);
+  static std::shared_ptr<Constant> build(PrimitiveType::Kind _kind, uint64_t _value) {
+    Constant* literal = new Constant(_kind, _value, false);
+    return std::shared_ptr<Constant>(literal);
   }
 };
 
-typedef std::shared_ptr<SignedLiteral> SignedLiteral_ptr;
+typedef std::shared_ptr<Constant> Constant_ptr;
 
 class Equals : public Expression {
 private:
@@ -586,7 +644,10 @@ private:
   Expr_ptr rhs;
 
   Equals(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(EQUALS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+      lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -598,15 +659,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<equals>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<equals>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</equals>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</equals>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -628,7 +689,10 @@ private:
   Expr_ptr rhs;
 
   NotEquals(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(NOT_EQUALS), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(NOT_EQUALS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+      lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -640,15 +704,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<not-equals>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<not-equals>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</not-equals>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</not-equals>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -670,7 +734,10 @@ private:
   Expr_ptr rhs;
 
   Greater(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(GREATER), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(GREATER, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+      lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -682,15 +749,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<greater-than>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<greater-than>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</greater-than>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</greater-than>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -712,7 +779,10 @@ private:
   Expr_ptr rhs;
 
   GreaterEq(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(GREATER_EQ), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(GREATER_EQ, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+      lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -724,15 +794,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<greater-eq>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<greater-eq>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</greater-eq>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</greater-eq>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -754,7 +824,10 @@ private:
   Expr_ptr rhs;
 
   Less(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(LESS), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(LESS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+      lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -766,15 +839,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<less>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<less>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</less>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</less>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -796,7 +869,10 @@ private:
   Expr_ptr rhs;
 
   LessEq(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(LESS_EQ), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(LESS_EQ, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+      lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -808,15 +884,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<less-eq>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<less-eq>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</less-eq>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</less-eq>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -838,7 +914,7 @@ private:
   Expr_ptr rhs;
 
   Add(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(ADD), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(ADD, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -850,15 +926,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<add>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<add>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</add>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</add>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -880,7 +956,7 @@ private:
   Expr_ptr rhs;
 
   Sub(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(SUB), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(SUB, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -892,15 +968,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<sub>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<sub>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</sub>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</sub>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -922,7 +998,7 @@ private:
   Expr_ptr rhs;
 
   Mul(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(MUL), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(MUL, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -934,15 +1010,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<mul>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<mul>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</mul>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</mul>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -964,7 +1040,7 @@ private:
   Expr_ptr rhs;
 
   Div(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(DIV), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(DIV, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -976,15 +1052,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<div>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<div>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</div>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</div>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1006,7 +1082,7 @@ private:
   Expr_ptr rhs;
 
   And(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(AND), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(AND, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1018,15 +1094,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<bitwise-and>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<bitwise-and>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</bitwise-and>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</bitwise-and>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1048,7 +1124,7 @@ private:
   Expr_ptr rhs;
 
   Or(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(OR), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(OR, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1062,15 +1138,15 @@ public:
     ofs << ")";
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<bitwise-or>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<bitwise-or>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</bitwise-or>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</bitwise-or>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1092,7 +1168,7 @@ private:
   Expr_ptr rhs;
 
   Xor(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(XOR), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(XOR, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1104,15 +1180,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<xor>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<xor>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</xor>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</xor>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1134,7 +1210,7 @@ private:
   Expr_ptr rhs;
 
   Mod(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(XOR), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(MOD, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1146,15 +1222,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<mod>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<mod>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</mod>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</mod>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1176,7 +1252,7 @@ private:
   Expr_ptr rhs;
 
   ShiftLeft(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(SHIFT_LEFT), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(SHIFT_LEFT, _lhs->get_type()), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1188,15 +1264,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<shift-left>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<shift-left>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</shift-left>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</shift-left>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1218,7 +1294,7 @@ private:
   Expr_ptr rhs;
 
   ShiftRight(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(SHIFT_RIGHT), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(SHIFT_RIGHT, _lhs->get_type()), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1230,15 +1306,15 @@ public:
     rhs->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<shift-right>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<shift-right>" << "\n";
 
-    lhs->debug(lvl+2);
-    rhs->debug(lvl+2);
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</shift-right>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</shift-right>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1259,7 +1335,7 @@ private:
   Expr_ptr expr;
 
   Not(Expr_ptr _expr)
-    : Expression(NOT), expr(_expr->clone()) {}
+    : Expression(NOT, _expr->get_type()), expr(_expr->clone()) {}
 
 public:
   Expr_ptr get_expr() const { return expr; }
@@ -1270,14 +1346,14 @@ public:
     ofs << "";
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<not>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<not>" << "\n";
 
-    expr->debug(lvl+2);
+    expr->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</not>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</not>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1296,16 +1372,15 @@ typedef std::shared_ptr<Not> Not_ptr;
 class Variable : public Expression {
 private:
   std::string symbol;
-  Type_ptr type;
   unsigned int addr;
 
   Variable(std::string _symbol , Type_ptr _type)
-    : Expression(VARIABLE), symbol(_symbol), type(_type->clone()), addr(0) {
+    : Expression(VARIABLE, _type), symbol(_symbol), addr(0) {
     set_wrap(false);
   }
 
   Variable(std::string _symbol , Type_ptr _type, unsigned int _addr)
-    : Expression(VARIABLE), symbol(_symbol), type(_type->clone()), addr(_addr) {
+    : Expression(VARIABLE, _type), symbol(_symbol), addr(_addr) {
     set_wrap(false);
   }
 
@@ -1314,21 +1389,20 @@ public:
     ofs << symbol;
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
 
-    std::cerr << "<var";
-    std::cerr << " symbol=";
-    std::cerr << symbol;
-    std::cerr << " type=";
-    type->debug();
-    std::cerr << " addr=";
-    std::cerr << addr;
-    std::cerr << " />" << "\n";
+    ofs << "<var";
+    ofs << " symbol=";
+    ofs << symbol;
+    ofs << " type=";
+    type->debug(ofs);
+    ofs << " addr=";
+    ofs << addr;
+    ofs << " />" << "\n";
   }
 
   const std::string& get_symbol() const { return symbol; }
-  Type_ptr get_type() const { return type; }
   unsigned int get_addr() const { return addr; }
 
   void set_addr(unsigned int _addr) {
@@ -1354,8 +1428,9 @@ class AddressOf : public Expression {
 private:
   Expr_ptr expr;
 
-  AddressOf(Expr_ptr _expr) : Expression(ADDRESSOF) {
-    assert(_expr->get_kind() == Node::Kind::VARIABLE);
+  AddressOf(Expr_ptr _expr)
+    : Expression(ADDRESSOF, PrimitiveType::build(PrimitiveType::Kind::UINT32_T)) {
+    assert(_expr->get_kind() == Node::Kind::VARIABLE);    
     expr = _expr->clone();
     expr->set_wrap(false);
   }
@@ -1368,14 +1443,14 @@ public:
     expr->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<address_of>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<address_of>" << "\n";
 
-    expr->debug(lvl+2);
+    expr->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</address_of>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</address_of>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1395,21 +1470,20 @@ typedef std::shared_ptr<AddressOf> AddressOf_ptr;
 class Read : public Expression {
 private:
   Expr_ptr expr;
-  unsigned int idx;
-  unsigned int size;
+  Expr_ptr idx;
 
-  Read(Expr_ptr _expr, unsigned int _idx, unsigned int _size)
-    : Expression(READ), expr(_expr->clone()), idx(_idx), size(_size) {
+  Read(Expr_ptr _expr, Type_ptr _type, Expr_ptr _idx)
+    : Expression(READ, _type), expr(_expr->clone()), idx(_idx) {
     assert(expr->get_kind() == VARIABLE);
 
     expr->set_wrap(false);
+    idx->set_wrap(false);
     set_wrap(false);
   }
 
 public:
   Expr_ptr get_expr() const { return expr; }
-  unsigned int get_idx() const { return idx; }
-  unsigned int get_size() const { return size; }
+  Expr_ptr get_idx() const { return idx; }
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     Variable* var = static_cast<Variable*>(expr.get());
@@ -1417,15 +1491,18 @@ public:
     if (var->get_type()->get_kind() == POINTER) {
       expr->synthesize(ofs);
       ofs << "[";
-      ofs << idx;
+      idx->synthesize(ofs);
       ofs << "]";
     }
 
     else {
+      unsigned int size = type->get_size();
+      Expr_ptr offset = Mul::build(idx, Constant::build(PrimitiveType::Kind::INT, size));
+
       ofs << "(";
       expr->synthesize(ofs);
-      ofs << " << ";
-      ofs << idx * size;
+      ofs << " >> ";
+      offset->synthesize(ofs);
       ofs << ") & 0x";
       ofs << std::hex;
       ofs << ((1 << size) - 1);
@@ -1433,27 +1510,28 @@ public:
     }
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    unsigned int size = type->get_size();
 
-    std::cerr << "<read";
-    std::cerr << " size=" << size;
-    std::cerr << " idx=" << idx;
-    std::cerr << " >" << "\n";
+    indent(ofs, lvl);
+    ofs << "<read";
+    ofs << " size=" << size;
+    ofs << " >" << "\n";
 
-    expr->debug(lvl+2);
+    idx->debug(ofs, lvl+2);
+    expr->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</read>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</read>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new Read(expr, idx, size);
+    Expression* e = new Read(expr, type, idx);
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<Read> build(Expr_ptr _expr, unsigned int _idx, unsigned int _size) {
-    Read* read = new Read(_expr, _idx, _size);
+  static std::shared_ptr<Read> build(Expr_ptr _expr, Type_ptr _type, Expr_ptr _idx) {
+    Read* read = new Read(_expr, _type, _idx);
     return std::shared_ptr<Read>(read);
   }
 };
@@ -1465,10 +1543,12 @@ private:
   Expr_ptr left;
   Expr_ptr right;
 
-  Concat(Expr_ptr _left, Expr_ptr _right)
-    : Expression(CONCAT), left(_left->clone()), right(_right->clone()) {
-    assert(left->get_kind() == READ || left->get_kind() == CONCAT);
-    assert(right->get_kind() == READ || right->get_kind() == CONCAT);
+  Concat(Expr_ptr _left, Expr_ptr _right, Type_ptr _type)
+    : Expression(CONCAT, _type), left(_left->clone()), right(_right->clone()) {
+    Type_ptr lt = left->get_type();
+    Type_ptr rt = right->get_type();
+
+    assert(_type->get_size() == (lt->get_size() + rt->get_size()));
   }
 
 public:
@@ -1478,73 +1558,6 @@ public:
   bool is_concat_of_reads_or_concats() const {
     return (left->get_kind() == READ || left->get_kind() == CONCAT) &&
            (right->get_kind() == READ || right->get_kind() == CONCAT);
-  }
-
-  unsigned int get_elem_size() const {
-    assert(is_concat_of_reads_or_concats());
-    unsigned int elem_size = 0;
-
-    if (left->get_kind() == READ) {
-      Read* left_read = static_cast<Read*>(left.get());
-      elem_size = left_read->get_size();
-    }
-
-    else if (right->get_kind() == READ) {
-      Read* right_read = static_cast<Read*>(right.get());
-      elem_size = right_read->get_size();
-    }
-
-    else {
-      Concat* left_concat = static_cast<Concat*>(left.get());
-      elem_size = left_concat->get_elem_size();
-    }
-
-    return elem_size;
-  }
-
-  std::vector<unsigned int> get_idxs() const {
-    assert(is_concat_of_reads_or_concats());
-    std::vector<unsigned int> idxs;
-
-    if (left->get_kind() == READ) {
-      Read* read = static_cast<Read*>(left.get());
-      auto idx = read->get_idx();
-
-      auto found_it = std::find(idxs.begin(), idxs.end(), idx);
-      assert(found_it == idxs.end());
-
-      idxs.push_back(idx);
-    } else {
-      Concat* concat = static_cast<Concat*>(left.get());
-      auto sub_idxs = concat->get_idxs();
-
-      for (auto idx : sub_idxs) {
-        auto found_it = std::find(idxs.begin(), idxs.end(), idx);
-        assert(found_it == idxs.end());
-        idxs.push_back(idx);
-      }
-    }
-
-    if (right->get_kind() == READ) {
-      Read* read = static_cast<Read*>(right.get());
-      auto idx = read->get_idx();
-
-      auto found_it = std::find(idxs.begin(), idxs.end(), idx);
-      assert(found_it == idxs.end());
-
-      idxs.push_back(idx);
-    } else {
-      Concat* concat = static_cast<Concat*>(right.get());
-      auto sub_idxs = concat->get_idxs();
-
-      for (auto idx : sub_idxs) {
-        auto found_it = std::find(idxs.begin(), idxs.end(), idx);
-        assert(found_it == idxs.end());
-        idxs.push_back(idx);
-      }
-    }
-
-    return idxs;
   }
 
   Expr_ptr get_var() const {
@@ -1570,32 +1583,36 @@ public:
   }
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    unsigned int offset = right->get_type()->get_size();
+
     ofs << "(";
     left->synthesize(ofs);
-    ofs << " << ";
-    ofs << get_elem_size();
+    ofs << " << 0x";
+    ofs << std::hex;
+    ofs << offset;
+    ofs << std::dec;
     ofs << ") | ";
     right->synthesize(ofs);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<concat>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<concat>" << "\n";
 
-    left->debug(lvl+2);
-    right->debug(lvl+2);
+    left->debug(ofs, lvl+2);
+    right->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</concat>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</concat>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new Concat(left, right);
+    Expression* e = new Concat(left, right, type);
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<Concat> build(Expr_ptr _left, Expr_ptr _right) {
-    Concat* concat = new Concat(_left, _right);
+  static std::shared_ptr<Concat> build(Expr_ptr _left, Expr_ptr _right, Type_ptr _type) {
+    Concat* concat = new Concat(_left, _right, _type);
     return std::shared_ptr<Concat>(concat);
   }
 };
@@ -1605,16 +1622,14 @@ typedef std::shared_ptr<Concat> Concat_ptr;
 class VariableDecl : public Expression {
 private:
   std::string symbol;
-  Type_ptr type;
 
   VariableDecl(const std::string& _symbol, Type_ptr _type)
-    : Expression(VARIABLE_DECL), symbol(_symbol), type(_type->clone()) {
+    : Expression(VARIABLE_DECL, _type), symbol(_symbol) {
     set_wrap(false);
   }
 
 public:
   const std::string& get_symbol() const { return symbol; }
-  Type_ptr get_type() const { return type; }
 
   void synthesize_expr(std::ostream &ofs, unsigned int lvl=0) const override {
     type->synthesize(ofs, lvl);
@@ -1622,14 +1637,14 @@ public:
     ofs << symbol;
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
 
-    std::cerr << "<varDecl";
-    std::cerr << " symbol=" << symbol;
-    std::cerr << " type=";
-    type->debug(0);
-    std::cerr << " />" << "\n";
+    ofs << "<varDecl";
+    ofs << " symbol=" << symbol;
+    ofs << " type=";
+    type->debug(ofs);
+    ofs << " />" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1659,7 +1674,6 @@ private:
     : Node(FUNCTION_ARG_DECL), symbol(_symbol), type(_type) {}
 
 public:
-
   void synthesize(std::ostream &ofs, unsigned int lvl=0) const override {
     indent(ofs, lvl);
 
@@ -1668,13 +1682,13 @@ public:
     ofs << symbol;
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<functionArgDecl";
-    std::cerr << " symbol=" << symbol;
-    std::cerr << " type=";
-    type->debug(lvl);
-    std::cerr << " />";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<functionArgDecl";
+    ofs << " symbol=" << symbol;
+    ofs << " type=";
+    type->debug(ofs, lvl);
+    ofs << " />";
   }
 
   static std::shared_ptr<FunctionArgDecl> build(const std::string& _symbol, Type_ptr _type) {
@@ -1699,7 +1713,6 @@ private:
     : Node(FUNCTION), name(_name), args(_args), body(_body), return_type(_return_type) {}
 
 public:
-
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
     indent(ofs, lvl);
 
@@ -1723,25 +1736,25 @@ public:
     body->synthesize(ofs, lvl);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
 
-    std::cerr << "<function";
-    std::cerr << " name=" << name;
+    ofs << "<function";
+    ofs << " name=" << name;
 
-    std::cerr << " return=";
-    return_type->debug(lvl);
+    ofs << " return=";
+    return_type->debug(ofs, lvl);
 
-    std::cerr << ">" << "\n";
+    ofs << ">" << "\n";
 
     for (const auto& arg : args) {
-      arg->debug(lvl+2);
+      arg->debug(ofs, lvl+2);
     }
 
-    body->debug(lvl+2);
+    body->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</function>";
+    indent(ofs, lvl);
+    ofs << "</function>";
   }
 
   static std::shared_ptr<Function> build(const std::string& _name, const std::vector<FunctionArgDecl_ptr>& _args,
@@ -1760,8 +1773,10 @@ private:
   Expr_ptr second;
 
   Select(Expr_ptr _cond, Expr_ptr _first, Expr_ptr _second)
-    : Expression(SELECT),
-      cond(_cond->clone()), first(_first->clone()), second(_second->clone()) {}
+    : Expression(SELECT, _first->get_type() /* should be careful with this... */),
+      cond(_cond->clone()), first(_first->clone()), second(_second->clone()) {
+    assert(first->get_type()->get_size() == second->get_type()->get_size());
+  }
 
 public:
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -1772,16 +1787,16 @@ public:
     second->synthesize(ofs);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<select>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<select>" << "\n";
 
-    cond->debug(lvl+2);
-    first->debug(lvl+2);
-    second->debug(lvl+2);
+    cond->debug(ofs, lvl+2);
+    first->debug(ofs, lvl+2);
+    second->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</select>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</select>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1803,7 +1818,7 @@ private:
   Expr_ptr value;
 
   Assignment(Expr_ptr _variable, Expr_ptr _value)
-    : Expression(ASSIGNMENT),
+    : Expression(ASSIGNMENT, variable->get_type()),
       variable(_variable->clone()), value(_value->clone()) {
     set_wrap(false);
   }
@@ -1815,15 +1830,15 @@ public:
     value->synthesize(ofs);
   }
 
-  void debug(unsigned int lvl=0) const override {
-    indent(lvl);
-    std::cerr << "<assignment>" << "\n";
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<assignment>" << "\n";
 
-    variable->debug(lvl+2);
-    value->debug(lvl+2);
+    variable->debug(ofs, lvl+2);
+    value->debug(ofs, lvl+2);
 
-    indent(lvl);
-    std::cerr << "</assignment>" << "\n";
+    indent(ofs, lvl);
+    ofs << "</assignment>" << "\n";
   }
 
   std::shared_ptr<Expression> clone() const override {
