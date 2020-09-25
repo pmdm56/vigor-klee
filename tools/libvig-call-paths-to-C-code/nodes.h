@@ -265,70 +265,6 @@ public:
 
 typedef std::shared_ptr<PrimitiveType> PrimitiveType_ptr;
 
-class Struct : public Type {
-public:
-  struct field_t {
-    std::string name;
-    Type_ptr type;
-
-    field_t(const std::string& _name, Type_ptr _type)
-      : name(_name), type(_type->clone()) {}
-  };
-
-private:
-  std::string name;
-  std::vector<field_t> fields;
-
-  Struct(const std::string& _name, const std::vector<field_t>& _fields)
-    : Type(STRUCT,
-           std::accumulate(_fields.begin(), _fields.end(), 0,
-                           [&](int sum, field_t curr) { return sum + curr.type->get_size(); })
-           ),
-      name(_name), fields(_fields) {}
-
-  Struct(const std::string& _name)
-    : Type(STRUCT, 0), name(_name) {}
-
-public:
-  const std::string& get_name() const override { return name; }
-  const std::vector<field_t>& get_fields() const { return fields; }
-
-  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << "struct ";
-    ofs << get_name();
-  }
-
-  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << "struct ";
-    ofs << get_name();
-  }
-
-  std::shared_ptr<Type> clone() const override {
-    Type* t;
-
-    if (fields.size()) {
-      t = new Struct(name, fields);
-    } else {
-      t = new Struct(name);
-    }
-
-    return std::shared_ptr<Type>(t);
-  }
-
-  static std::shared_ptr<Struct> build(const std::string& _name,
-                                       const std::vector<field_t>& _fields) {
-    Struct* s = new Struct(_name, _fields);
-    return std::shared_ptr<Struct>(s);
-  }
-
-  static std::shared_ptr<Struct> build(const std::string& _name) {
-    Struct* s = new Struct(_name);
-    return std::shared_ptr<Struct>(s);
-  }
-};
-
-typedef std::shared_ptr<Struct> Struct_ptr;
-
 class Array : public Type {
 private:
   unsigned int n;
@@ -421,8 +357,11 @@ public:
   }
 
   void debug(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << "<cast>" << "\n";
+    ofs << "<cast";
+    ofs << " type=";
     type->debug(ofs, lvl+2);
+    ofs << ">" << "\n";
+
     expr->debug(ofs, lvl+2);
     ofs << "</cast>" << "\n";
   }
@@ -990,6 +929,10 @@ private:
   Less(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(LESS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    std::cerr << "\n\n";
+    _lhs->debug(std::cerr);
+    std::cerr << "\n";
+    _rhs->debug(std::cerr);
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
   }
 
@@ -1621,6 +1564,66 @@ public:
 
 typedef std::shared_ptr<Variable> Variable_ptr;
 
+class Struct : public Type {
+public:
+
+private:
+  std::string name;
+  std::vector<Variable_ptr> fields;
+
+  Struct(const std::string& _name, const std::vector<Variable_ptr>& _fields)
+    : Type(STRUCT,
+           std::accumulate(_fields.begin(), _fields.end(), 0,
+                           [&](int sum, Variable_ptr curr) { return sum + curr->get_type()->get_size(); })
+           ),
+      name(_name), fields(_fields) {
+    for (auto field : fields) {
+      field->set_wrap(false);
+    }
+  }
+
+  Struct(const std::string& _name) : Type(STRUCT, 0), name(_name) {}
+
+public:
+  const std::string& get_name() const override { return name; }
+  const std::vector<Variable_ptr>& get_fields() const { return fields; }
+
+  void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "struct ";
+    ofs << get_name();
+  }
+
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "struct ";
+    ofs << get_name();
+  }
+
+  std::shared_ptr<Type> clone() const override {
+    Type* t;
+
+    if (fields.size()) {
+      t = new Struct(name, fields);
+    } else {
+      t = new Struct(name);
+    }
+
+    return std::shared_ptr<Type>(t);
+  }
+
+  static std::shared_ptr<Struct> build(const std::string& _name,
+                                       const std::vector<Variable_ptr>& _fields) {
+    Struct* s = new Struct(_name, _fields);
+    return std::shared_ptr<Struct>(s);
+  }
+
+  static std::shared_ptr<Struct> build(const std::string& _name) {
+    Struct* s = new Struct(_name);
+    return std::shared_ptr<Struct>(s);
+  }
+};
+
+typedef std::shared_ptr<Struct> Struct_ptr;
+
 class AddressOf : public Expression {
 private:
   Expr_ptr expr;
@@ -1678,43 +1681,152 @@ private:
     set_wrap(false);
   }
 
+  void synthesize_array(std::ostream& ofs, unsigned int lvl) const {
+    Variable* var = static_cast<Variable*>(expr.get());
+    Type_ptr t = var->get_type();
+
+    assert(t->get_kind() == ARRAY);
+
+    expr->synthesize(ofs);
+    ofs << "[";
+    idx->synthesize(ofs);
+    ofs << "]";
+  }
+
+  void synthesize_struct(std::ostream& ofs, unsigned int lvl) const {
+    Variable* var = static_cast<Variable*>(expr.get());
+    Type_ptr t = var->get_type();
+    bool is_ptr = false;
+
+    if (t->get_kind() == POINTER) {
+      is_ptr = true;
+      Pointer* ptr = static_cast<Pointer*>(var->get_type().get());
+      t = ptr->get_type();
+    }
+
+    assert(t->get_kind() == STRUCT);
+    assert(idx->get_kind() == CONSTANT);
+
+    Constant *idx_const = static_cast<Constant*>(idx.get());
+    Struct* s = static_cast<Struct*>(t.get());
+
+    unsigned int idx_val = idx_const->get_value();
+    unsigned int size = type->get_size();
+
+    for (Variable_ptr field : s->get_fields()) {
+      unsigned int field_size = field->get_type()->get_size();
+
+      if (idx_val >= field_size / 8) {
+        idx_val -= field_size / 8;
+        continue;
+      }
+
+      PrimitiveType* idx_primitive_type = static_cast<PrimitiveType*>(idx_const->get_type().get());
+      Expr_ptr new_idx_expr = Constant::build(idx_primitive_type->get_primitive_kind(), idx_val);
+
+      std::shared_ptr<Read> field_read = Read::build(field, type, new_idx_expr);
+      field_read->set_wrap(false);
+
+      if (idx_val != 0) {
+        ofs << "(";
+      }
+      ofs << var->get_symbol();
+      ofs << (is_ptr ? "->" : ".");
+
+      field_read->synthesize_helper(ofs, 0, false);
+
+      if (idx_val != 0) {
+        ofs << " >> ";
+        ofs << (idx_val * size);
+        ofs << ")";
+      }
+
+      if (size != field_size) {
+        ofs << " & 0x";
+        ofs << std::hex;
+        ofs << ((1 << size) - 1);
+        ofs << std::dec;
+      }
+
+      return;
+    }
+
+    assert(false);
+  }
+
+  void synthesize_helper(std::ostream& ofs, unsigned int lvl, bool offset) const {
+    Variable* var = static_cast<Variable*>(expr.get());
+    bool is_ptr = false;
+
+    Type_ptr t = var->get_type();
+
+    if (t->get_kind() == POINTER) {
+      is_ptr = true;
+      Pointer* ptr = static_cast<Pointer*>(var->get_type().get());
+      t = ptr->get_type();
+    }
+
+    if (t->get_kind() == ARRAY) {
+      synthesize_array(ofs, lvl);
+      return;
+    }
+
+    if (t->get_kind() == STRUCT) {
+      synthesize_struct(ofs, lvl);
+      return;
+    }
+
+    assert(!is_ptr);
+    unsigned int size = type->get_size();
+
+    if (idx->get_kind() == CONSTANT) {
+      Constant *idx_const = static_cast<Constant*>(idx.get());
+      unsigned int idx_val = idx_const->get_value();
+
+      if (idx_val == size || !offset) {
+        expr->synthesize(ofs);
+        return;
+      }
+    }
+
+    assert(offset);
+
+    if (idx->get_kind() == CONSTANT) {
+      Constant* constant = static_cast<Constant*>(idx.get());
+
+      if (constant->get_value() != 0) {
+        ofs << "(";
+      }
+
+      expr->synthesize(ofs);
+
+      if (constant->get_value() != 0) {
+        ofs << " >> ";
+        ofs << (constant->get_value() * size);
+        ofs << ")";
+      }
+    } else {
+      Expr_ptr offset = Mul::build(idx, Constant::build(PrimitiveType::Kind::INT, size));
+
+      ofs << "(";
+      expr->synthesize(ofs);
+      ofs << " >> ";
+      offset->synthesize(ofs);
+      ofs << ")";
+    }
+
+    ofs << " & 0x";
+    ofs << std::hex;
+    ofs << ((1 << size) - 1);
+    ofs << std::dec;
+  }
+
 public:
   Expr_ptr get_expr() const { return expr; }
   Expr_ptr get_idx() const { return idx; }
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    // < Take structures into consideration: field access
-    // Dont forget Concat must also do this
-
-    Variable* var = static_cast<Variable*>(expr.get());
-
-    if (var->get_type()->get_kind() == POINTER) {
-      expr->synthesize(ofs);
-      ofs << "[";
-      idx->synthesize(ofs);
-      ofs << "]";
-    }
-
-    else {
-      unsigned int size = type->get_size();
-
-      ofs << "(";
-      expr->synthesize(ofs);
-      ofs << " >> ";
-
-      if (idx->get_kind() == CONSTANT) {
-        Constant* constant = static_cast<Constant*>(idx.get());
-        ofs << (constant->get_value() * size);
-      } else {
-        Expr_ptr offset = Mul::build(idx, Constant::build(PrimitiveType::Kind::INT, size));
-        offset->synthesize(ofs);
-      }
-
-      ofs << ") & 0x";
-      ofs << std::hex;
-      ofs << ((1 << size) - 1);
-      ofs << std::dec;
-    }
+    synthesize_helper(ofs, lvl, true);
   }
 
   void debug(std::ostream& ofs, unsigned int lvl=0) const override {

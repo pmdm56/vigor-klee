@@ -303,7 +303,12 @@ public:
   static constexpr char CHUNK_LAYER_3[] = "ipv4_header";
   static constexpr char CHUNK_LAYER_4[] = "tcpudp_header";
 
-  Variable_ptr get_chunk_from_local(unsigned int idx);
+  struct chunk_t {
+    Variable_ptr var;
+    unsigned int start_index;
+  };
+
+  chunk_t get_chunk_from_local(unsigned int idx);
   Variable_ptr get_from_local(const std::string& symbol, unsigned int addr);
   Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
   Variable_ptr get_from_local(klee::ref<klee::Expr> expr);

@@ -119,7 +119,11 @@ Variable_ptr AST::get_from_state(const std::string& symbol) {
   return *it;
 }
 
-Variable_ptr AST::get_chunk_from_local(unsigned int idx) {
+AST::chunk_t AST::get_chunk_from_local(unsigned int idx) {
+  chunk_t result;
+
+  result.var = nullptr;
+  result.start_index = 0;
 
   auto finder = [&](local_variable_t v) -> bool {
     Variable_ptr var = v.first;
@@ -147,11 +151,13 @@ Variable_ptr AST::get_chunk_from_local(unsigned int idx) {
     auto stack = *i;
     auto it = std::find_if(stack.begin(), stack.end(), finder);
     if (it != stack.end()) {
-      return it->first;
+      result.var = it->first;
+      result.start_index = get_first_concat_idx(it->second);
+      break;
     }
   }
 
-  return nullptr;
+  return result;
 }
 
 Variable_ptr AST::get_from_local(const std::string& symbol, bool partial) {
@@ -431,16 +437,17 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     case 2: {
       Array_ptr _uint8_t_6 = Array::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T), 6);
 
-      Struct::field_t addr_bytes("addr_bytes", _uint8_t_6);
-      std::vector<Struct::field_t> ether_addr_fields{ addr_bytes };
+      std::vector<Variable_ptr> ether_addr_fields{
+        Variable::build("addr_bytes", _uint8_t_6)
+      };
 
       Struct_ptr ether_addr = Struct::build("ether_addr", ether_addr_fields);
 
-      std::vector<Struct::field_t> ether_hdr_fields;
-
-      ether_hdr_fields.emplace_back("d_addr", ether_addr);
-      ether_hdr_fields.emplace_back("s_addr", ether_addr);
-      ether_hdr_fields.emplace_back("ether_type", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
+      std::vector<Variable_ptr> ether_hdr_fields {
+        Variable::build("d_addr", ether_addr),
+        Variable::build("s_addr", ether_addr),
+        Variable::build("ether_type", PrimitiveType::build(PrimitiveType::Kind::UINT16_T))
+      };
 
       Struct_ptr ether_hdr = Struct::build("ether_hdr", ether_hdr_fields);
 
@@ -449,18 +456,18 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
       break;
     }
     case 3: {
-      std::vector<Struct::field_t> ipv4_hdr_fields;
-
-      ipv4_hdr_fields.emplace_back("version_ihl", PrimitiveType::build(PrimitiveType::Kind::UINT8_T));
-      ipv4_hdr_fields.emplace_back("type_of_service", PrimitiveType::build(PrimitiveType::Kind::UINT8_T));
-      ipv4_hdr_fields.emplace_back("total_length", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
-      ipv4_hdr_fields.emplace_back("packet_id", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
-      ipv4_hdr_fields.emplace_back("fragment_offset", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
-      ipv4_hdr_fields.emplace_back("time_to_live", PrimitiveType::build(PrimitiveType::Kind::UINT8_T));
-      ipv4_hdr_fields.emplace_back("next_proto_id", PrimitiveType::build(PrimitiveType::Kind::UINT8_T));
-      ipv4_hdr_fields.emplace_back("hdr_checksum", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
-      ipv4_hdr_fields.emplace_back("src_addr", PrimitiveType::build(PrimitiveType::Kind::UINT32_T));
-      ipv4_hdr_fields.emplace_back("dst_addr", PrimitiveType::build(PrimitiveType::Kind::UINT32_T));
+      std::vector<Variable_ptr> ipv4_hdr_fields {
+        Variable::build("version_ihl", PrimitiveType::build(PrimitiveType::Kind::UINT8_T)),
+        Variable::build("type_of_service", PrimitiveType::build(PrimitiveType::Kind::UINT8_T)),
+        Variable::build("total_length", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+        Variable::build("packet_id", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+        Variable::build("fragment_offset", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+        Variable::build("time_to_live", PrimitiveType::build(PrimitiveType::Kind::UINT8_T)),
+        Variable::build("next_proto_id", PrimitiveType::build(PrimitiveType::Kind::UINT8_T)),
+        Variable::build("hdr_checksum", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+        Variable::build("src_addr", PrimitiveType::build(PrimitiveType::Kind::UINT32_T)),
+        Variable::build("dst_addr", PrimitiveType::build(PrimitiveType::Kind::UINT32_T))
+      };
 
       Struct_ptr ipv4_hdr = Struct::build("ipv4_hdr", ipv4_hdr_fields);
 
@@ -474,10 +481,10 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
         break;
       }
 
-      std::vector<Struct::field_t> tcpudp_hdr_fields;
-
-      tcpudp_hdr_fields.emplace_back("src_port", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
-      tcpudp_hdr_fields.emplace_back("dst_port", PrimitiveType::build(PrimitiveType::Kind::UINT16_T));
+      std::vector<Variable_ptr> tcpudp_hdr_fields {
+        Variable::build("src_port", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+        Variable::build("dst_port", PrimitiveType::build(PrimitiveType::Kind::UINT16_T))
+      };
 
       Struct_ptr tcpudp_hdr = Struct::build("tcpudp_hdr", tcpudp_hdr_fields);
 
