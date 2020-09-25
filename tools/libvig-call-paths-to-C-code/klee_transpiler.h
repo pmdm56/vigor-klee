@@ -42,22 +42,6 @@ private:
     result = _result->clone();
   }
 
-  unsigned int evaluate_width(klee::Expr::Width w) {
-    unsigned int size = 0;
-
-    switch (w) {
-    case klee::Expr::InvalidWidth:
-    case klee::Expr::Fl80: assert(false);
-    case klee::Expr::Bool: size = 1; break;
-    case klee::Expr::Int8: size = 8; break;
-    case klee::Expr::Int16: size = 16; break;
-    case klee::Expr::Int32: size = 32; break;
-    case klee::Expr::Int64: size = 64; break;
-    }
-
-    return size;
-  }
-
 public:
   KleeExprToASTNodeConverter(AST* _ast)
     : ExprVisitor(false), ast(_ast) {}
@@ -100,5 +84,4 @@ public:
   klee::ExprVisitor::Action visitSle(const klee::SleExpr& e);
   klee::ExprVisitor::Action visitSgt(const klee::SgtExpr& e);
   klee::ExprVisitor::Action visitSge(const klee::SgeExpr& e);
-  klee::ExprVisitor::Action visitExpr(const klee::ConstantExpr& e);
 };

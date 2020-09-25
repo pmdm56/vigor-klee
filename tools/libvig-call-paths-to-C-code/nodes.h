@@ -173,11 +173,10 @@ public:
   enum Kind {
     VOID,
     BOOL,
-    UINT8_T,
-    UINT16_T,
-    INT,
-    UINT32_T,
-    UINT64_T
+    UINT8_T, INT8_T,
+    UINT16_T, INT16_T,
+    INT, UINT32_T, INT32_T,
+    UINT64_T, INT64_T
   };
 
 private:
@@ -197,8 +196,14 @@ private:
     case UINT8_T:
       name = "uint8_t";
       break;
+    case INT8_T:
+      name = "int8_t";
+      break;
     case UINT16_T:
       name = "uint16_t";
+      break;
+    case INT16_T:
+      name = "int16_t";
       break;
     case INT:
       name = "int";
@@ -206,8 +211,14 @@ private:
     case UINT32_T:
       name = "uint32_t";
       break;
+    case INT32_T:
+      name = "int32_t";
+      break;
     case UINT64_T:
       name = "uint64_t";
+      break;
+    case INT64_T:
+      name = "int64_t";
       break;
     }
   }
@@ -245,16 +256,20 @@ public:
       nt = new PrimitiveType(_kind, 1);
       break;
     case UINT8_T:
+    case INT8_T:
       nt = new PrimitiveType(_kind, 8);
       break;
     case UINT16_T:
+    case INT16_T:
       nt = new PrimitiveType(_kind, 16);
       break;
     case INT:
     case UINT32_T:
+    case INT32_T:
       nt = new PrimitiveType(_kind, 32);
       break;
     case UINT64_T:
+    case INT64_T:
       nt = new PrimitiveType(_kind, 64);
       break;
     }
@@ -357,12 +372,16 @@ public:
   }
 
   void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+
     ofs << "<cast";
     ofs << " type=";
-    type->debug(ofs, lvl+2);
+    type->debug(ofs);
     ofs << ">" << "\n";
 
     expr->debug(ofs, lvl+2);
+
+    indent(ofs, lvl);
     ofs << "</cast>" << "\n";
   }
 
@@ -375,6 +394,61 @@ public:
 
   static std::shared_ptr<Cast> build(Expr_ptr _expr, Type_ptr _type) {
     Cast* cast = new Cast(_expr, _type);
+    return std::shared_ptr<Cast>(cast);
+  }
+
+  static std::shared_ptr<Cast> build(Expr_ptr _expr, bool _signed) {
+    Type_ptr _type = _expr->get_type();
+    Type_ptr _new_type;
+
+    switch (_type->get_kind()) {
+    case PRIMITIVE: {
+      PrimitiveType* primitive = static_cast<PrimitiveType*>(_type.get());
+
+      switch (primitive->get_primitive_kind()) {
+      case PrimitiveType::Kind::VOID:
+        assert(false && "Flipping sign of a void type");
+        break;
+      case PrimitiveType::Kind::BOOL:
+        assert(false && "Flipping sign of a bool type");
+        break;
+      case PrimitiveType::Kind::UINT8_T:
+        _new_type = PrimitiveType::build(PrimitiveType::Kind::INT8_T);
+        break;
+      case PrimitiveType::Kind::UINT16_T:
+        _new_type = PrimitiveType::build(PrimitiveType::Kind::INT16_T);
+        break;
+      case PrimitiveType::Kind::UINT32_T:
+        _new_type = PrimitiveType::build(PrimitiveType::Kind::INT32_T);
+        break;
+      case PrimitiveType::Kind::UINT64_T:
+        _new_type = PrimitiveType::build(PrimitiveType::Kind::INT64_T);
+        break;
+      case PrimitiveType::Kind::INT:
+      case PrimitiveType::Kind::INT8_T:
+      case PrimitiveType::Kind::INT16_T:
+      case PrimitiveType::Kind::INT32_T:
+      case PrimitiveType::Kind::INT64_T:
+        _new_type = _type;
+        break;
+      }
+    }
+
+    break;
+    case STRUCT:
+    case POINTER:
+    case ARRAY:
+      _expr->debug(std::cerr);
+      std::cerr << "\n";
+      assert(false && "Not implemented");
+      break;
+
+    default:
+      assert(false && "Not a type kind");
+      break;
+    }
+
+    Cast* cast = new Cast(_expr, _new_type);
     return std::shared_ptr<Cast>(cast);
   }
 };
@@ -929,10 +1003,6 @@ private:
   Less(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(LESS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    std::cerr << "\n\n";
-    _lhs->debug(std::cerr);
-    std::cerr << "\n";
-    _rhs->debug(std::cerr);
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
   }
 
@@ -2146,9 +2216,7 @@ private:
 
   Select(Expr_ptr _cond, Expr_ptr _first, Expr_ptr _second)
     : Expression(SELECT, _first->get_type() /* should be careful with this... */),
-      cond(_cond->clone()), first(_first->clone()), second(_second->clone()) {
-    assert(first->get_type()->get_size() == second->get_type()->get_size());
-  }
+      cond(_cond->clone()), first(_first->clone()), second(_second->clone()) {}
 
 public:
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {

@@ -22,7 +22,6 @@ Type_ptr klee_width_to_type(klee::Expr::Width width) {
     type = PrimitiveType::build(PrimitiveType::Kind::UINT64_T);
     break;
   case klee::Expr::Fl80:
-    assert(false && "Don't know what to do with Fl80 constants");
   default:
     if (width % 8 != 0) {
       assert(false && "Width not a byte multiple");
@@ -135,16 +134,6 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::Read
     Variable_ptr var = chunk_info.var;
     assert(var != nullptr);
 
-    e.dump();
-    std::cerr << "\n";
-    std::cerr << "\n";
-
-    var->debug(std::cerr);
-    std::cerr << "\n";
-
-    var->synthesize(std::cerr);
-    std::cerr << "\n";
-
     unsigned new_idx_value = idx_const->get_value() - chunk_info.start_index;
 
     PrimitiveType* p = static_cast<PrimitiveType*>(idx_const->get_type().get());
@@ -152,18 +141,6 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::Read
 
     Read_ptr read = Read::build(var, type, new_idx);
     assert(read);
-
-    std::cerr << "\n";
-
-    std::cerr << "read:" << "\n";
-    read->debug(std::cerr);
-    std::cerr << "\n";
-
-    read->synthesize(std::cerr);
-    std::cerr << "\n";
-
-    char c;
-    std::cin >> c;
 
     save_result(read);
 
@@ -186,31 +163,16 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::Read
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSelect(const klee::SelectExpr& e) {
   assert(e.getNumKids() == 3);
 
-  auto cond = e.getKid(0);
-  auto first = e.getKid(1);
-  auto second = e.getKid(2);
+  Expr_ptr cond = transpile(ast, e.getKid(0));
+  assert(cond);
 
-  Expr_ptr cond_expr;
-  Expr_ptr first_expr;
-  Expr_ptr second_expr;
+  Expr_ptr first = transpile(ast, e.getKid(1));
+  assert(first);
 
-  KleeExprToASTNodeConverter cond_converter(ast);
-  KleeExprToASTNodeConverter first_converter(ast);
-  KleeExprToASTNodeConverter second_converter(ast);
+  Expr_ptr second = transpile(ast, e.getKid(2));
+  assert(second);
 
-  cond_converter.visit(cond);
-  cond_expr = cond_converter.get_result();
-  assert(cond_expr);
-
-  first_converter.visit(first);
-  first_expr = first_converter.get_result();
-  assert(first_expr);
-
-  second_converter.visit(second);
-  second_expr = second_converter.get_result();
-  assert(second_expr);
-
-  Select_ptr select = Select::build(cond_expr, first_expr, second_expr);
+  Select_ptr select = Select::build(cond, first, second);
 
   save_result(select);
 
@@ -285,7 +247,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::Co
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::ExtractExpr& e) {
   auto expr = e.expr;
   auto offset_value = e.offset;
-  auto size = evaluate_width(e.width);
+  auto size = e.width;
 
   Type_ptr type = klee_width_to_type(e.getWidth());
 
@@ -331,17 +293,12 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitZExt(const klee::ZExt
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSExt(const klee::SExtExpr& e) {
   assert(e.getNumKids() == 1);
 
-  auto size = evaluate_width(e.getWidth());
+  auto size = e.getWidth();
+  auto expr_size = e.getKid(0)->getWidth();
+
   Type_ptr type = klee_width_to_type(e.getWidth());
-
-  auto expr = e.getKid(0);
-  auto expr_size = evaluate_width(expr->getWidth());
-
-  KleeExprToASTNodeConverter expr_converter(ast);
-
-  expr_converter.visit(expr);
-  Expr_ptr ast_expr = expr_converter.get_result();
-  assert(ast_expr);
+  Expr_ptr expr = transpile(ast, e.getKid(0));
+  assert(expr);
 
   unsigned int mask = 0;
   for (unsigned int i = 0; i < size; i++) {
@@ -352,20 +309,29 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSExt(const klee::SExt
     }
   }
 
-  Expr_ptr mask_expr = Constant::build(PrimitiveType::Kind::UINT64_T, mask, true);
-  Expr_ptr to_be_extended;
+  Expr_ptr result;
 
   if (size > expr_size) {
-    Expr_ptr shift_value = Constant::build(PrimitiveType::Kind::UINT64_T, size - 1);
-    ShiftRight_ptr msb = ShiftRight::build(ast_expr, shift_value);
-    Expr_ptr if_msb_one = Or::build(mask_expr, ast_expr);
-    to_be_extended = Select::build(msb, if_msb_one, ast_expr);
+    assert(type->get_kind() == Node::Kind::PRIMITIVE);
+
+    PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
+    Expr_ptr mask_expr = Constant::build(primitive->get_primitive_kind(), mask, true);
+
+    Expr_ptr shift_value = Constant::build(primitive->get_primitive_kind(), size - 1);
+    ShiftRight_ptr msb = ShiftRight::build(expr, shift_value);
+
+    Expr_ptr if_msb_one = Or::build(mask_expr, expr);
+    Expr_ptr if_msb_not_one = Cast::build(expr, type);
+
+    result = Select::build(msb, if_msb_one, if_msb_not_one);
+  } else if (size == expr_size) {
+    result = expr;
   } else {
-    to_be_extended = ast_expr;
+    result = Cast::build(expr, type);
+
   }
 
-  Cast_ptr cast = Cast::build(to_be_extended, type);
-  save_result(cast);
+  save_result(result);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -373,29 +339,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSExt(const klee::SExt
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitAdd(const klee::AddExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Add_ptr add = Add::build(left, right);
-  save_result(add);
+  Add_ptr a = Add::build(left, right);
+  save_result(a);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -403,29 +354,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitAdd(const klee::AddEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSub(const klee::SubExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Sub_ptr sub = Sub::build(left, right);
-  save_result(sub);
+  Sub_ptr s = Sub::build(left, right);
+  save_result(s);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -433,29 +369,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSub(const klee::SubEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitMul(const klee::MulExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Mul_ptr mul = Mul::build(left, right);
-  save_result(mul);
+  Mul_ptr m = Mul::build(left, right);
+  save_result(m);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -463,29 +384,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitMul(const klee::MulEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUDiv(const klee::UDivExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Div_ptr div = Div::build(left, right);
-  save_result(div);
+  Div_ptr d = Div::build(left, right);
+  save_result(d);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -493,29 +399,15 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUDiv(const klee::UDiv
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSDiv(const klee::SDivExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Div_ptr div = Div::build(left, right);
-  save_result(div);
+  Cast_ptr cast = Cast::build(left, true);
+  Div_ptr d = Div::build(cast, right);
+  save_result(d);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -523,29 +415,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSDiv(const klee::SDiv
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitURem(const klee::URemExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Mod_ptr mod = Mod::build(left, right);
-  save_result(mod);
+  Mod_ptr m = Mod::build(left, right);
+  save_result(m);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -553,41 +430,26 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitURem(const klee::URem
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSRem(const klee::SRemExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
+  Cast_ptr cast = Cast::build(left, true);
+  Mod_ptr m = Mod::build(cast, right);
 
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Mod_ptr mod = Mod::build(left, right);
-  save_result(mod);
+  save_result(m);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
 
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitNot(const klee::NotExpr& e) {
-  klee::ref<klee::Expr> klee_expr = e.getKid(0);
+  assert(e.getNumKids() == 1);
 
-  KleeExprToASTNodeConverter expr_converter(ast);
-  expr_converter.visit(klee_expr);
-  Expr_ptr expr = expr_converter.get_result();
+  Expr_ptr arg = transpile(ast, e.getKid(0));
 
-  save_result(Not::build(expr));
+  save_result(Not::build(arg));
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -595,29 +457,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitNot(const klee::NotEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitAnd(const klee::AndExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  And_ptr div = And::build(left, right);
-  save_result(div);
+  And_ptr a = And::build(left, right);
+  save_result(a);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -625,29 +472,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitAnd(const klee::AndEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitOr(const klee::OrExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Or_ptr div = Or::build(left, right);
-  save_result(div);
+  Or_ptr o = Or::build(left, right);
+  save_result(o);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -655,29 +487,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitOr(const klee::OrExpr
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitXor(const klee::XorExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Xor_ptr div = Xor::build(left, right);
-  save_result(div);
+  Xor_ptr x = Xor::build(left, right);
+  save_result(x);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -685,29 +502,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitXor(const klee::XorEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitShl(const klee::ShlExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  ShiftLeft_ptr div = ShiftLeft::build(left, right);
-  save_result(div);
+  ShiftLeft_ptr sl = ShiftLeft::build(left, right);
+  save_result(sl);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -715,62 +517,43 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitShl(const klee::ShlEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitLShr(const klee::LShrExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  ShiftRight_ptr div = ShiftRight::build(left, right);
-  save_result(div);
+  ShiftRight_ptr sr = ShiftRight::build(left, right);
+  save_result(sr);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
 
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitAShr(const klee::AShrExpr& e) {
   assert(e.getNumKids() == 2);
-  assert(false && "Not implemented");
+
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
+
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
+
+  Cast_ptr cast = Cast::build(left, true);
+  ShiftRight_ptr sr = ShiftRight::build(cast, right);
+
+  save_result(sr);
+
   return klee::ExprVisitor::Action::skipChildren();
 }
 
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitEq(const klee::EqExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
-
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
   if (right->get_kind() == Node::Kind::EQUALS &&
       left->get_kind() == Node::Kind::CONSTANT) {
@@ -798,29 +581,15 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitEq(const klee::EqExpr
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitNe(const klee::NeExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
+  NotEquals_ptr ne = NotEquals::build(left, right);
 
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  NotEquals_ptr nequals = NotEquals::build(left, right);
-  save_result(nequals);
+  save_result(ne);
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -828,28 +597,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitNe(const klee::NeExpr
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUlt(const klee::UltExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
-
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
   Less_ptr lt = Less::build(left, right);
+
   save_result(lt);
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -858,28 +613,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUlt(const klee::UltEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUle(const klee::UleExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
-
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
   LessEq_ptr le = LessEq::build(left, right);
+
   save_result(le);
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -888,28 +629,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUle(const klee::UleEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUgt(const klee::UgtExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
-
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
   Greater_ptr gt = Greater::build(left, right);
+
   save_result(gt);
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -918,28 +645,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUgt(const klee::UgtEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUge(const klee::UgeExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
-
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
-
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
-
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
   GreaterEq_ptr ge = GreaterEq::build(left, right);
+
   save_result(ge);
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -948,28 +661,17 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitUge(const klee::UgeEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSlt(const klee::SltExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
+  Cast_ptr lc = Cast::build(left, true);
+  Cast_ptr rc = Cast::build(right, true);
 
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
+  Less_ptr lt = Less::build(lc, rc);
 
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Less_ptr lt = Less::build(left, right);
   save_result(lt);
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -978,28 +680,17 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSlt(const klee::SltEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSle(const klee::SleExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
+  Cast_ptr lc = Cast::build(left, true);
+  Cast_ptr rc = Cast::build(right, true);
 
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
+  LessEq_ptr le = LessEq::build(lc, rc);
 
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  LessEq_ptr le = LessEq::build(left, right);
   save_result(le);
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -1008,28 +699,17 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSle(const klee::SleEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSgt(const klee::SgtExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
+  Cast_ptr lc = Cast::build(left, true);
+  Cast_ptr rc = Cast::build(right, true);
 
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
+  Greater_ptr gt = Greater::build(lc, rc);
 
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  Greater_ptr gt = Greater::build(left, right);
   save_result(gt);
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -1038,34 +718,18 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSgt(const klee::SgtEx
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSge(const klee::SgeExpr& e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left, right;
+  Expr_ptr left = transpile(ast, e.getKid(0));
+  assert(left);
 
-  KleeExprToASTNodeConverter left_converter(ast);
-  KleeExprToASTNodeConverter right_converter(ast);
+  Expr_ptr right = transpile(ast, e.getKid(1));
+  assert(right);
 
-  left_converter.visit(e.getKid(0));
-  left = left_converter.get_result();
+  Cast_ptr lc = Cast::build(left, true);
+  Cast_ptr rc = Cast::build(right, true);
 
-  if (left == nullptr) {
-    left = const_to_ast_expr(e.getKid(0));
-    assert(left != nullptr);
-  }
+  GreaterEq_ptr ge = GreaterEq::build(lc, rc);
 
-  right_converter.visit(e.getKid(1));
-  right = right_converter.get_result();
-
-  if (right == nullptr) {
-    right = const_to_ast_expr(e.getKid(1));
-    assert(right != nullptr);
-  }
-
-  GreaterEq_ptr ge = GreaterEq::build(left, right);
   save_result(ge);
 
-  return klee::ExprVisitor::Action::skipChildren();
-}
-
-klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExpr(const klee::ConstantExpr& e) {
-  assert(false && "Not implemented");
   return klee::ExprVisitor::Action::skipChildren();
 }
