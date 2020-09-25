@@ -1621,7 +1621,7 @@ public:
   }
 
   std::shared_ptr<Expression> clone() const override {
-    Expression* e = new Variable(symbol, type);
+    Expression* e = new Variable(symbol, type, addr);
     return std::shared_ptr<Expression>(e);
   }
 

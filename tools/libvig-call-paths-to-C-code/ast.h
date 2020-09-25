@@ -343,12 +343,12 @@ public:
   };
 
   chunk_t get_chunk_from_local(unsigned int idx);
-  Variable_ptr get_from_local(const std::string& symbol, unsigned int addr);
+  Variable_ptr get_from_local_by_addr(const std::string& symbol, unsigned int addr);
   Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
   Variable_ptr get_from_local(klee::ref<klee::Expr> expr);
   void associate_expr_to_local(const std::string& symbol, klee::ref<klee::Expr> expr);
 
-  Variable_ptr get_from_state(const std::string& symbol, unsigned int addr);
+  Variable_ptr get_from_state(unsigned int addr);
   Variable_ptr get_from_state(const std::string& symbol);
 
 private:
@@ -360,7 +360,7 @@ private:
   void push_to_local(Variable_ptr var);
   void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);
 
-  Node_ptr init_state_node_from_call(ast_builder_assistant_t& assistant);
+  Node_ptr init_state_node_from_call(ast_builder_assistant_t& assistant, bool greb_ret_success=false);
   Node_ptr process_state_node_from_call(ast_builder_assistant_t& assistant, bool greb_ret_success=false);
   Node_ptr get_return_from_init(Node_ptr constraint);
   Node_ptr get_return_from_process(call_path_t *call_path, Node_ptr constraint);

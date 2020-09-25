@@ -182,7 +182,7 @@ Variable_ptr AST::get_from_local(const std::string& symbol, bool partial) {
   return nullptr;
 }
 
-Variable_ptr AST::get_from_local(const std::string& symbol, unsigned int addr) {
+Variable_ptr AST::get_from_local_by_addr(const std::string& symbol, unsigned int addr) {
   assert(addr != 0);
 
   auto partial_name_finder = [&](local_variable_t v) -> bool {
@@ -225,13 +225,8 @@ Variable_ptr AST::get_from_local(const std::string& symbol, unsigned int addr) {
   assert(false && "All pointers are allocated, or symbol not found");
 }
 
-Variable_ptr AST::get_from_state(const std::string& symbol, unsigned int addr) {
+Variable_ptr AST::get_from_state(unsigned int addr) {
   assert(addr != 0);
-
-  auto partial_name_finder = [&](Variable_ptr v) -> bool {
-    std::string local_symbol = v->get_symbol();
-    return local_symbol.find(symbol) != std::string::npos;
-  };
 
   auto addr_finder = [&](Variable_ptr v) -> bool {
     return v->get_addr() == addr;
@@ -242,21 +237,7 @@ Variable_ptr AST::get_from_state(const std::string& symbol, unsigned int addr) {
     return *addr_finder_it;
   }
 
-  // allocating)
-  for (Variable_ptr v : state) {
-    if (!partial_name_finder(v)) {
-      continue;
-    }
-
-    if (v->get_addr() != 0) {
-      continue;
-    }
-
-    v->set_addr(addr);
-    return v;
-  }
-
-  assert(false && "All pointers are allocated, or symbol not found");
+  assert(false && "No variable allocated in this address");
 }
 
 Variable_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
@@ -364,8 +345,8 @@ void AST::push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr) {
   local_variables.back().push_back(std::make_pair(var, expr));
 }
 
-Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
-  call_t call = assistant.get_call();
+Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success) {
+  call_t call = assistant.get_call(grab_ret_success);
 
   auto fname = call.function_name;
 
@@ -375,37 +356,53 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
   std::string ret_symbol;
 
   if (fname == "map_allocate") {
+    uint64_t map_addr = const_to_value(call.args["map_out"].out);
+
+    Expr_ptr keq = transpile(this, call.args["keq"].expr);
+    assert(keq);
+    Expr_ptr khash = transpile(this, call.args["khash"].expr);
+    assert(khash);
     Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
     assert(capacity);
     Variable_ptr new_map = generate_new_symbol("map", Struct::build("Map"), 1, 0);
+    new_map->set_addr(map_addr);
 
     push_to_state(new_map);
 
-    args = std::vector<Expr_ptr>{ capacity, AddressOf::build(new_map) };
+    args = std::vector<Expr_ptr>{ keq, khash, capacity, AddressOf::build(new_map) };
 
     ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
     ret_symbol = "map_allocation_succeeded";
   }
 
   else if (fname == "vector_allocate") {
-    Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
-    assert(capacity);
+    uint64_t vector_addr = const_to_value(call.args["vector_out"].out);
+
     Expr_ptr elem_size = transpile(this, call.args["elem_size"].expr);
     assert(elem_size);
+    Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
+    assert(capacity);
+    Expr_ptr init_elem = transpile(this, call.args["init_elem"].expr);
+    assert(init_elem);
     Variable_ptr new_vector = generate_new_symbol("vector", Struct::build("Vector"), 1, 0);
+    new_vector->set_addr(vector_addr);
 
     push_to_state(new_vector);
 
-    args = std::vector<Expr_ptr>{ capacity, elem_size, AddressOf::build(new_vector) };
+    args = std::vector<Expr_ptr>{ elem_size, capacity, init_elem, AddressOf::build(new_vector) };
 
     ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
     ret_symbol = "vector_alloc_success";
   }
 
   else if (fname == "dchain_allocate") {
+    uint64_t dchain_addr = const_to_value(call.args["chain_out"].out);
+
     Expr_ptr index_range = transpile(this, call.args["index_range"].expr);
     assert(index_range);
-    Variable_ptr new_dchain  = generate_new_symbol("dchain", Struct::build("DoubleChain"), 1, 0);
+    Variable_ptr new_dchain = generate_new_symbol("dchain", Struct::build("DoubleChain"), 1, 0);
+    new_dchain->set_addr(dchain_addr);
+
     push_to_state(new_dchain);
 
     args = std::vector<Expr_ptr>{ index_range, AddressOf::build(new_dchain) };
@@ -565,14 +562,14 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     ret_symbol = "unread_len";
   }
 
-  else if (fname == "expire_items_single_map") {
+  else if (fname == "expire_items_single_map") {    
     uint64_t chain_addr = const_to_value(call.args["chain"].expr);
     uint64_t vector_addr = const_to_value(call.args["vector"].expr);
     uint64_t map_addr = const_to_value(call.args["map"].expr);
 
-    Variable_ptr chain = get_from_state("chain", chain_addr);
-    Variable_ptr vector = get_from_state("vector", vector_addr);
-    Variable_ptr map = get_from_state("map", map_addr);
+    Variable_ptr chain = get_from_state(chain_addr);
+    Variable_ptr vector = get_from_state(vector_addr);
+    Variable_ptr map = get_from_state(map_addr);
     Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
 
@@ -587,7 +584,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
     Expr_ptr key = transpile(this, call.args["key"].expr);
     assert(key);
-    Expr_ptr map = get_from_state("map", map_addr);
+    Expr_ptr map = get_from_state(map_addr);
 
     Type_ptr value_out_type = PrimitiveType::build(PrimitiveType::Kind::INT);
     Variable_ptr value_out = generate_new_symbol("value_out", value_out_type);
@@ -607,7 +604,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   else if (fname == "dchain_allocate_new_index") {
     uint64_t chain_addr = const_to_value(call.args["chain"].expr);
 
-    Expr_ptr chain = get_from_state("chain", chain_addr);
+    Expr_ptr chain = get_from_state(chain_addr);
 
     // dchain allocates an index when is allocated, so we start with new_index_1
     Type_ptr index_out_type = PrimitiveType::build(PrimitiveType::Kind::INT);
@@ -630,15 +627,19 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   }
 
   else if (fname == "vector_borrow") {
-    uint64_t vector_addr = const_to_value(call.args["vector"].expr);
+    assert(!call.args["val_out"].out.isNull());
 
-    Expr_ptr vector = get_from_state("vector", vector_addr);
+    uint64_t vector_addr = const_to_value(call.args["vector"].expr);
+    uint64_t val_out_addr = const_to_value(call.args["val_out"].out);
+
+    Expr_ptr vector = get_from_state(vector_addr);
     Expr_ptr index = get_from_local(call.args["index"].expr);
     assert(index);
 
     // FIXME: track the type going in the vector
     Type_ptr val_out_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
     Variable_ptr val_out = generate_new_symbol("val_out", val_out_type, 1, 0);
+    val_out->set_addr(val_out_addr);
 
     assert(!call.extra_vars["borrowed_cell"].second.isNull());
     push_to_local(val_out, call.extra_vars["borrowed_cell"].second);
@@ -654,7 +655,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   else if (fname == "map_put") {
     uint64_t map_addr = const_to_value(call.args["map"].expr);
 
-    Expr_ptr map = get_from_state("map", map_addr);
+    Expr_ptr map = get_from_state(map_addr);
     Expr_ptr key = transpile(this, call.args["key"].expr);
     assert(key);
     Expr_ptr value = transpile(this, call.args["value"].expr);
@@ -668,10 +669,10 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     uint64_t vector_addr = const_to_value(call.args["vector"].expr);
     uint64_t value_addr = const_to_value(call.args["value"].expr);
 
-    Expr_ptr vector = get_from_state("vector", vector_addr);
+    Expr_ptr vector = get_from_state(vector_addr);
     Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
-    Expr_ptr value = get_from_local("val_out", value_addr);
+    Expr_ptr value = get_from_local_by_addr("val_out", value_addr);
     assert(value);
 
     args = std::vector<Expr_ptr>{ vector, index, value };
@@ -681,7 +682,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   else if (fname == "dchain_rejuvenate_index") {
     uint64_t chain_addr = const_to_value(call.args["chain"].expr);
 
-    Expr_ptr chain = get_from_state("chain", chain_addr);
+    Expr_ptr chain = get_from_state(chain_addr);
     assert(chain);
     Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
@@ -879,7 +880,7 @@ Node_ptr AST::get_return(call_path_t *call_path, Node_ptr constraint) {
 
 Node_ptr AST::node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success) {
   switch (context) {
-  case INIT: return init_state_node_from_call(assistant);
+  case INIT: return init_state_node_from_call(assistant, grab_ret_success);
   case PROCESS: return process_state_node_from_call(assistant, grab_ret_success);
   case DONE: assert(false);
   }

@@ -93,6 +93,62 @@ struct call_paths_group_t {
         }
       }
     }
+
+    remove_dup_groups();
+  }
+
+  void remove_dup_groups() {
+    auto group_comparator = [](group_t g1, group_t g2) -> bool {
+      auto contains_call_path = [](std::vector<call_path_t*> cps,
+                                   call_path_t* cp) -> bool {
+        for (auto stored_cp : cps) {
+          if (cp->file_name == stored_cp->file_name) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      if (g1.first.size() != g2.first.size()) {
+        return false;
+      }
+
+      if (g1.second.size() != g2.second.size()) {
+        return false;
+      }
+
+      for (auto cp : g1.first) {
+        if (!contains_call_path(g2.first, cp)) {
+          return false;
+        }
+      }
+
+      for (auto cp : g1.second) {
+        if (!contains_call_path(g2.second, cp)) {
+          return false;
+        }
+      }
+
+      return true;
+    };
+
+    std::vector<group_t> filtered_groups;
+
+    for (auto group : groups) {
+      bool save = true;
+      for (auto filtered_group : filtered_groups) {
+        if (group_comparator(filtered_group, group)) {
+          save = false;
+          break;
+        }
+      }
+
+      if (save) {
+        filtered_groups.push_back(group);
+      }
+    }
+
+    groups = filtered_groups;
   }
 
   void dump_call(call_t call) {
@@ -153,10 +209,6 @@ struct call_paths_group_t {
 
       auto c1_arg = arg_name_value_pair.second;
       auto c2_arg = c2.args[arg_name];
-
-      if (c1_arg.expr.isNull() != c2_arg.expr.isNull()) {
-        return false;
-      }
 
       if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
         return false;
