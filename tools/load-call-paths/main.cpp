@@ -51,13 +51,15 @@ int main(int argc, char **argv, char **envp) {
         std::cout << "      With Args:" << std::endl;
         for (auto arg : call.args) {
           std::cout << "        " << arg.first << ":" << std::endl;
-          if (!arg.second.first.isNull()) {
+          std::cout << "          Expr:" << std::endl;
+          arg.second.expr->dump();
+          if (!arg.second.in.isNull()) {
             std::cout << "          Before:" << std::endl;
-            arg.second.first->dump();
+            arg.second.in->dump();
           }
-          if (!arg.second.second.isNull()) {
+          if (!arg.second.out.isNull()) {
             std::cout << "          After:" << std::endl;
-            arg.second.second->dump();
+            arg.second.out->dump();
           }
         }
       }

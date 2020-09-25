@@ -101,13 +101,15 @@ struct call_paths_group_t {
       std::cout << "      With Args:" << std::endl;
       for (auto arg : call.args) {
         std::cout << "        " << arg.first << ":" << std::endl;
-        if (!arg.second.first.isNull()) {
+        std::cout << "          Expr:" << std::endl;
+        arg.second.expr->dump();
+        if (!arg.second.in.isNull()) {
           std::cout << "          Before:" << std::endl;
-          arg.second.first->dump();
+          arg.second.in->dump();
         }
-        if (!arg.second.second.isNull()) {
+        if (!arg.second.out.isNull()) {
           std::cout << "          After:" << std::endl;
-          arg.second.second->dump();
+          arg.second.out->dump();
         }
       }
     }
@@ -152,15 +154,11 @@ struct call_paths_group_t {
       auto c1_arg = arg_name_value_pair.second;
       auto c2_arg = c2.args[arg_name];
 
-      if (c1_arg.second.isNull() != c2_arg.second.isNull()) {
+      if (c1_arg.expr.isNull() != c2_arg.expr.isNull()) {
         return false;
       }
 
-      if (!c1_arg.second.isNull()) {
-        continue;
-      }
-
-      if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.first, c2_arg.first)) {
+      if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
         return false;
       }
     }
@@ -177,6 +175,20 @@ struct call_paths_group_t {
       }
     }
 
+    for (auto group : groups) {
+      std::cerr << "\n";
+      std::cerr << "========================================" << "\n";
+      std::cerr << "In:" << "\n";
+      for (auto cp : group.first) {
+        std::cerr << "  " << cp->file_name << "\n";
+      }
+
+      std::cerr << "Out:" << "\n";
+      for (auto cp : group.second) {
+        std::cerr << "  " << cp->file_name << "\n";
+      }
+      std::cerr << "========================================" << "\n";
+    }
     assert(false && "Unable to find discriminating constraint");
   }
 
@@ -265,7 +277,7 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     }
 
     if (group.equal_calls || group.ret_diff) {
-      Node_ptr node = ast.node_from_call(assistant);
+      Node_ptr node = ast.node_from_call(assistant, group.ret_diff);
       if (node) {
         nodes.push_back(node);
         std::cerr << "**** NODE FROM CALL ****" << "\n";

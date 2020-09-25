@@ -963,6 +963,8 @@ void KleeHandler::dumpCallPath(const ExecutionState &state, llvm::raw_ostream *f
 
   for (auto ci : state.callPath) {
     for (auto a : ci.args) {
+      evalExprs.push_back(a.expr);
+
       if (a.isPtr) {
         if (a.pointee.doTraceValueIn) {
           evalExprs.push_back(a.pointee.inVal);
@@ -971,8 +973,6 @@ void KleeHandler::dumpCallPath(const ExecutionState &state, llvm::raw_ostream *f
         if (a.pointee.doTraceValueOut) {
           evalExprs.push_back(a.pointee.outVal);
         }
-      } else {
-        evalExprs.push_back(a.expr);
       }
     }
 

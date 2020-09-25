@@ -172,6 +172,7 @@ Variable_ptr AST::get_from_local(const std::string& symbol, bool partial) {
 
   for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
     auto stack = *i;
+
     auto it = std::find_if(stack.begin(), stack.end(), finder);
     if (it != stack.end()) {
       return it->first;
@@ -273,11 +274,54 @@ Variable_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
     return ast_builder_assistant_t::are_exprs_always_equal(v.second, expr);
   };
 
+  auto symbol_finder = [&](local_variable_t v) -> bool {
+    if (v.second.isNull()) {
+      return false;
+    }
+
+    RetrieveSymbols retriever;
+    retriever.visit(expr);
+    auto symbols = retriever.get_retrieved_strings();
+    assert(symbols.size() == 1);
+
+    std::string symbol = symbols[0];
+
+    klee::ref<klee::Expr> local_expr = v.second;
+    RetrieveSymbols retriever2;
+    retriever2.visit(local_expr);
+    auto local_symbols = retriever2.get_retrieved_strings();
+
+    if (local_symbols.size() != 1 || local_symbols[0] != symbol) {
+      return false;
+    }
+
+    if (local_expr->getKind() == klee::Expr::Kind::Concat &&
+        get_first_concat_idx(local_expr) != 0) {
+      return false;
+    }
+
+    else if (local_expr->getKind() == klee::Expr::Kind::Read) {
+      assert(false && "Not implemented");
+    }
+
+    return true;
+  };
+
   for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
     auto stack = *i;
+
     auto it = std::find_if(stack.begin(), stack.end(), finder);
     if (it != stack.end()) {
       return it->first;
+    }
+
+    for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
+      auto stack = *i;
+
+      auto symbol_it = std::find_if(stack.begin(), stack.end(), symbol_finder);
+      if (symbol_it != stack.end()) {
+        return symbol_it->first;
+      }
     }
   }
 
@@ -291,9 +335,10 @@ void AST::associate_expr_to_local(const std::string& symbol, klee::ref<klee::Exp
 
   for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
     auto stack = *i;
-    auto it = std::find_if(stack.begin(), stack.end(), name_finder);
-    if (it != stack.end()) {
-      auto association = std::make_pair(it->first, expr);
+
+    auto name_it = std::find_if(stack.begin(), stack.end(), name_finder);
+    if (name_it != stack.end()) {
+      auto association = std::make_pair(name_it->first, expr);
       std::replace_if(stack.begin(), stack.end(), name_finder, association);
       return;
     }
@@ -330,7 +375,7 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
   std::string ret_symbol;
 
   if (fname == "map_allocate") {
-    Expr_ptr capacity = transpile(this, call.args["capacity"].first);
+    Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
     assert(capacity);
     Variable_ptr new_map = generate_new_symbol("map", Struct::build("Map"), 1, 0);
 
@@ -343,9 +388,9 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "vector_allocate") {
-    Expr_ptr capacity = transpile(this, call.args["capacity"].first);
+    Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
     assert(capacity);
-    Expr_ptr elem_size = transpile(this, call.args["elem_size"].first);
+    Expr_ptr elem_size = transpile(this, call.args["elem_size"].expr);
     assert(elem_size);
     Variable_ptr new_vector = generate_new_symbol("vector", Struct::build("Vector"), 1, 0);
 
@@ -358,7 +403,7 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "dchain_allocate") {
-    Expr_ptr index_range = transpile(this, call.args["index_range"].first);
+    Expr_ptr index_range = transpile(this, call.args["index_range"].expr);
     assert(index_range);
     Variable_ptr new_dchain  = generate_new_symbol("dchain", Struct::build("DoubleChain"), 1, 0);
     push_to_state(new_dchain);
@@ -374,8 +419,13 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
 
     for (const auto& arg : call.args) {
       std::cerr << arg.first << " : "
-                << expr_to_string(arg.second.first) << " | "
-                << expr_to_string(arg.second.second) << "\n";
+                << expr_to_string(arg.second.expr) << "\n";
+      if (!arg.second.in.isNull()) {
+        std::cerr << "  in:  " << expr_to_string(arg.second.in) << "\n";
+      }
+      if (!arg.second.out.isNull()) {
+        std::cerr << "  out: " << expr_to_string(arg.second.out) << "\n";
+      }
     }
 
     for (const auto& ev : call.extra_vars) {
@@ -409,8 +459,8 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
   return fcall;
 }
 
-Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
-  call_t call = assistant.get_call();
+Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success) {
+  call_t call = assistant.get_call(grab_ret_success);
 
   auto fname = call.function_name;
 
@@ -430,7 +480,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   else if (fname == "packet_borrow_next_chunk") {
     Variable_ptr p = get_from_local("p");
     assert(p != nullptr);
-    Expr_ptr pkt_len = transpile(this, call.args["length"].first);
+    Expr_ptr pkt_len = transpile(this, call.args["length"].expr);
     Variable_ptr chunk;
 
     switch (assistant.layer) {
@@ -516,14 +566,14 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "expire_items_single_map") {
-    uint64_t chain_addr = const_to_value(call.args["chain"].first);
-    uint64_t vector_addr = const_to_value(call.args["vector"].first);
-    uint64_t map_addr = const_to_value(call.args["map"].first);
+    uint64_t chain_addr = const_to_value(call.args["chain"].expr);
+    uint64_t vector_addr = const_to_value(call.args["vector"].expr);
+    uint64_t map_addr = const_to_value(call.args["map"].expr);
 
     Variable_ptr chain = get_from_state("chain", chain_addr);
     Variable_ptr vector = get_from_state("vector", vector_addr);
     Variable_ptr map = get_from_state("map", map_addr);
-    Expr_ptr now = transpile(this, call.args["time"].first);
+    Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
 
     args = std::vector<Expr_ptr>{ chain, vector, map, now };
@@ -533,18 +583,17 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "map_get") {
-    uint64_t map_addr = const_to_value(call.args["map"].first);
-    uint64_t value_out_addr = const_to_value(call.args["value_out"].first);
+    uint64_t map_addr = const_to_value(call.args["map"].expr);
 
-    Expr_ptr key = transpile(this, call.args["key"].first);
+    Expr_ptr key = transpile(this, call.args["key"].expr);
     assert(key);
     Expr_ptr map = get_from_state("map", map_addr);
 
     Type_ptr value_out_type = PrimitiveType::build(PrimitiveType::Kind::INT);
     Variable_ptr value_out = generate_new_symbol("value_out", value_out_type);
 
-    value_out->set_addr(value_out_addr);
-    push_to_local(value_out);
+    assert(!call.args["value_out"].out.isNull());
+    push_to_local(value_out, call.args["value_out"].out);
 
     VariableDecl_ptr value_out_decl = VariableDecl::build(value_out);
     exprs.push_back(value_out_decl);
@@ -556,7 +605,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "dchain_allocate_new_index") {
-    uint64_t chain_addr = const_to_value(call.args["chain"].first);
+    uint64_t chain_addr = const_to_value(call.args["chain"].expr);
 
     Expr_ptr chain = get_from_state("chain", chain_addr);
 
@@ -564,11 +613,11 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
     Type_ptr index_out_type = PrimitiveType::build(PrimitiveType::Kind::INT);
     Variable_ptr index_out = generate_new_symbol("new_index", index_out_type, 0, 1);
 
-    Expr_ptr now = transpile(this, call.args["time"].first);
+    Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
 
-    assert(!call.args["index_out"].second.isNull());
-    push_to_local(index_out, call.args["index_out"].second);
+    assert(!call.args["index_out"].out.isNull());
+    push_to_local(index_out, call.args["index_out"].out);
 
     VariableDecl_ptr index_out_decl = VariableDecl::build(index_out);
     exprs.push_back(index_out_decl);
@@ -581,10 +630,10 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "vector_borrow") {
-    uint64_t vector_addr = const_to_value(call.args["vector"].first);
+    uint64_t vector_addr = const_to_value(call.args["vector"].expr);
 
     Expr_ptr vector = get_from_state("vector", vector_addr);
-    Expr_ptr index = get_from_local(call.args["index"].first);
+    Expr_ptr index = get_from_local(call.args["index"].expr);
     assert(index);
 
     // FIXME: track the type going in the vector
@@ -603,12 +652,12 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "map_put") {
-    uint64_t map_addr = const_to_value(call.args["map"].first);
+    uint64_t map_addr = const_to_value(call.args["map"].expr);
 
     Expr_ptr map = get_from_state("map", map_addr);
-    Expr_ptr key = transpile(this, call.args["key"].first);
+    Expr_ptr key = transpile(this, call.args["key"].expr);
     assert(key);
-    Expr_ptr value = transpile(this, call.args["value"].first);
+    Expr_ptr value = transpile(this, call.args["value"].expr);
     assert(key);
 
     args = std::vector<Expr_ptr>{ map, key, value };
@@ -616,36 +665,58 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
   }
 
   else if (fname == "vector_return") {
-    uint64_t vector_addr = const_to_value(call.args["vector"].first);
+    uint64_t vector_addr = const_to_value(call.args["vector"].expr);
+    uint64_t value_addr = const_to_value(call.args["value"].expr);
 
     Expr_ptr vector = get_from_state("vector", vector_addr);
-    Expr_ptr index = transpile(this, call.args["index"].first);
+    Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
-    Expr_ptr value = transpile(this, call.args["value"].first);
+    Expr_ptr value = get_from_local("val_out", value_addr);
     assert(value);
 
     args = std::vector<Expr_ptr>{ vector, index, value };
     ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
   }
 
+  else if (fname == "dchain_rejuvenate_index") {
+    uint64_t chain_addr = const_to_value(call.args["chain"].expr);
+
+    Expr_ptr chain = get_from_state("chain", chain_addr);
+    assert(chain);
+    Expr_ptr index = transpile(this, call.args["index"].expr);
+    assert(index);
+    Expr_ptr now = transpile(this, call.args["time"].expr);
+    assert(now);
+
+    args = std::vector<Expr_ptr>{ chain, index, now };
+
+    // actually this is an int, but we never use it in any call path...
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+  }
+
   else {
-    std::cerr << call.function_name << "\n";
+      std::cerr << call.function_name << "\n";
 
-    for (const auto& arg : call.args) {
-      std::cerr << arg.first << " : "
-                << expr_to_string(arg.second.first) << " | "
-                << expr_to_string(arg.second.second) << "\n";
-    }
+      for (const auto& arg : call.args) {
+        std::cerr << arg.first << " : "
+                  << expr_to_string(arg.second.expr) << "\n";
+        if (!arg.second.in.isNull()) {
+          std::cerr << "  in:  " << expr_to_string(arg.second.in) << "\n";
+        }
+        if (!arg.second.out.isNull()) {
+          std::cerr << "  out: " << expr_to_string(arg.second.out) << "\n";
+        }
+      }
 
-    for (const auto& ev : call.extra_vars) {
-      std::cerr << ev.first << " : "
-                << expr_to_string(ev.second.first) << " | "
-                << expr_to_string(ev.second.second) << " [extra var]" << "\n";
-    }
+      for (const auto& ev : call.extra_vars) {
+        std::cerr << ev.first << " : "
+                  << expr_to_string(ev.second.first) << " | "
+                  << expr_to_string(ev.second.second) << "\n";
+      }
 
-    std::cerr << expr_to_string(call.ret) << "\n";
+      std::cerr << expr_to_string(call.ret) << "\n";
 
-    assert(false && "Not implemented");
+      assert(false && "Not implemented");
   }
 
   assert(args.size() == call.args.size());
@@ -744,7 +815,7 @@ Node_ptr AST::get_return_from_process(call_path_t *call_path, Node_ptr constrain
 
   call_t packet_send = *packet_send_it;
 
-  klee::ref<klee::Expr> dst_device_expr = packet_send.args["dst_device"].first;
+  klee::ref<klee::Expr> dst_device_expr = packet_send.args["dst_device"].expr;
   Expr_ptr dst_device = transpile(this, dst_device_expr);
 
   if (dst_device != nullptr) {
@@ -757,14 +828,19 @@ Node_ptr AST::get_return_from_process(call_path_t *call_path, Node_ptr constrain
 
   for (const auto& arg : call.args) {
     std::cerr << arg.first << " : "
-              << expr_to_string(arg.second.first) << " | "
-              << expr_to_string(arg.second.second) << "\n";
+              << expr_to_string(arg.second.expr) << "\n";
+    if (!arg.second.in.isNull()) {
+      std::cerr << "  in:  " << expr_to_string(arg.second.in) << "\n";
+    }
+    if (!arg.second.out.isNull()) {
+      std::cerr << "  out: " << expr_to_string(arg.second.out) << "\n";
+    }
   }
 
   for (const auto& ev : call.extra_vars) {
     std::cerr << ev.first << " : "
               << expr_to_string(ev.second.first) << " | "
-              << expr_to_string(ev.second.second) << " [extra var]" << "\n";
+              << expr_to_string(ev.second.second) << "\n";
   }
 
   std::cerr << expr_to_string(call.ret) << "\n";
@@ -801,10 +877,10 @@ Node_ptr AST::get_return(call_path_t *call_path, Node_ptr constraint) {
   return nullptr;
 }
 
-Node_ptr AST::node_from_call(ast_builder_assistant_t& assistant) {
+Node_ptr AST::node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success) {
   switch (context) {
   case INIT: return init_state_node_from_call(assistant);
-  case PROCESS: return process_state_node_from_call(assistant);
+  case PROCESS: return process_state_node_from_call(assistant, grab_ret_success);
   case DONE: assert(false);
   }
 

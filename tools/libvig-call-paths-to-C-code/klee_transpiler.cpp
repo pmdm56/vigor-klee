@@ -101,12 +101,6 @@ uint64_t get_last_concat_idx(const klee::ref<klee::Expr> &e) {
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::ReadExpr &e) {
   klee::ref<klee::Expr> eref = const_cast<klee::ReadExpr *>(&e);
 
-  Expr_ptr local = ast->get_from_local(eref);
-  if (local != nullptr) {
-    save_result(local);
-    return klee::ExprVisitor::Action::skipChildren();
-  }
-
   Type_ptr type = klee_width_to_type(e.getWidth());
   Expr_ptr idx = transpile(ast, e.index);
 
@@ -150,7 +144,21 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::Read
   symbol_width = std::make_pair(true, root->getSize() * 8);
 
   Variable_ptr var = ast->get_from_local(symbol);
-  assert(var != nullptr);
+
+  if (var == nullptr) {
+    var = ast->get_from_local(eref);
+
+    if (var == nullptr) {
+      ast->dump_stack();
+
+      std::cerr << "\n";
+      std::cerr << "Variable with symbol '" << symbol << "' not found:" << "\n";
+      std::cerr << expr_to_string(eref) << "\n";
+      std::cerr << "\n";
+
+      assert(var != nullptr);
+    }
+  }
 
   Read_ptr read = Read::build(var, type, idx);
   assert(read);

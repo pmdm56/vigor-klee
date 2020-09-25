@@ -229,9 +229,12 @@ call_path_t *load_call_path(std::string file_name,
               delim = current_arg.find("&");
               if (delim == std::string::npos) {
                 assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
-                call_path->calls.back().args[current_arg_name].first = exprs[0];
+                call_path->calls.back().args[current_arg_name].expr = exprs[0];
                 exprs.erase(exprs.begin(), exprs.begin() + 1);
               } else {
+                call_path->calls.back().args[current_arg_name].expr = exprs[0];
+                exprs.erase(exprs.begin(), exprs.begin() + 1);
+
                 if (current_arg.substr(delim + 1) == "[...]" ||
                     current_arg.substr(delim + 1)[0] != '[')
                   continue;
@@ -249,16 +252,14 @@ call_path_t *load_call_path(std::string file_name,
                 if (current_arg.substr(0, delim).size()) {
                   assert(exprs.size() >= 1 &&
                          "Not enough expression in kQuery.");
-                  call_path->calls.back().args[current_arg_name].first =
-                      exprs[0];
+                  call_path->calls.back().args[current_arg_name].in = exprs[0];
                   exprs.erase(exprs.begin(), exprs.begin() + 1);
                 }
 
                 if (current_arg.substr(delim + 2).size()) {
                   assert(exprs.size() >= 1 &&
                          "Not enough expression in kQuery.");
-                  call_path->calls.back().args[current_arg_name].second =
-                      exprs[0];
+                  call_path->calls.back().args[current_arg_name].out = exprs[0];
                   exprs.erase(exprs.begin(), exprs.begin() + 1);
                 }
               }
@@ -350,9 +351,12 @@ call_path_t *load_call_path(std::string file_name,
             delim = current_arg.find("&");
             if (delim == std::string::npos) {
               assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
-              call_path->calls.back().args[current_arg_name].first = exprs[0];
+              call_path->calls.back().args[current_arg_name].expr = exprs[0];
               exprs.erase(exprs.begin(), exprs.begin() + 1);
             } else {
+              call_path->calls.back().args[current_arg_name].expr = exprs[0];
+              exprs.erase(exprs.begin(), exprs.begin() + 1);
+
               if (current_arg.substr(delim + 1) == "[...]" ||
                   current_arg.substr(delim + 1)[0] != '[')
                 continue;
@@ -369,14 +373,13 @@ call_path_t *load_call_path(std::string file_name,
 
               if (current_arg.substr(0, delim).size()) {
                 assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
-                call_path->calls.back().args[current_arg_name].first = exprs[0];
+                call_path->calls.back().args[current_arg_name].in = exprs[0];
                 exprs.erase(exprs.begin(), exprs.begin() + 1);
               }
 
               if (current_arg.substr(delim + 2).size()) {
                 assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
-                call_path->calls.back().args[current_arg_name].second =
-                    exprs[0];
+                call_path->calls.back().args[current_arg_name].out = exprs[0];
                 exprs.erase(exprs.begin(), exprs.begin() + 1);
               }
             }

@@ -197,6 +197,11 @@ struct ast_builder_assistant_t {
     return is_expr_always_true(no_constraints, expr);
   }
 
+  static bool is_expr_always_false(klee::ref<klee::Expr> expr) {
+    klee::ConstraintManager no_constraints;
+    return is_expr_always_false(no_constraints, expr);
+  }
+
   static bool is_expr_always_false(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr) {
     klee::Query sat_query(constraints, expr);
 
@@ -235,6 +240,35 @@ struct ast_builder_assistant_t {
     klee::ref<klee::Expr> replaced = symbol_replacer.visit(expr2);
 
     return is_expr_always_true(exprBuilder->Eq(expr1, replaced));
+  }
+
+  call_t get_call(bool grab_ret_success) {
+    if (!grab_ret_success) {
+      return get_call();
+    }
+
+    for (call_path_t* call_path : call_paths) {
+      if (call_idx < call_path->calls.size()) {
+        assert(!call_path->calls[call_idx].ret.isNull());
+
+        auto width = call_path->calls[call_idx].ret->getWidth();
+
+        auto ret_zero_expr = ast_builder_assistant_t::exprBuilder->Eq(
+              ast_builder_assistant_t::exprBuilder->Constant(0, width),
+              call_path->calls[call_idx].ret
+              );
+
+        auto success = ast_builder_assistant_t::is_expr_always_false(ret_zero_expr);
+
+        if (!success) {
+          continue;
+        }
+
+        return call_path->calls[call_idx];
+      }
+    }
+
+    assert(false);
   }
 
   call_t get_call() {
@@ -327,7 +361,7 @@ private:
   void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);
 
   Node_ptr init_state_node_from_call(ast_builder_assistant_t& assistant);
-  Node_ptr process_state_node_from_call(ast_builder_assistant_t& assistant);
+  Node_ptr process_state_node_from_call(ast_builder_assistant_t& assistant, bool greb_ret_success=false);
   Node_ptr get_return_from_init(Node_ptr constraint);
   Node_ptr get_return_from_process(call_path_t *call_path, Node_ptr constraint);
 
@@ -365,11 +399,30 @@ public:
   void pop();
 
   Node_ptr get_return(call_path_t *call_path, Node_ptr constraint);
-  Node_ptr node_from_call(ast_builder_assistant_t& assistant);
+  Node_ptr node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success=false);
 
   void dump() const {
     debug();
     print();
+  }
+
+  void dump_stack() const {
+    std::cerr << "\n";
+
+    std::cerr << "Global variables" << "\n";
+    for (const auto& gv : state) {
+      gv->debug(std::cerr, 2);
+    }
+    std::cerr << "\n";
+
+    std::cerr << "Stack variables" << "\n";
+    for (const auto& stack : local_variables) {
+      std::cerr << "  ===================================" << "\n";
+      for (const auto var : stack) {
+        var.first->debug(std::cerr, 2);
+      }
+    }
+    std::cerr << "\n";
   }
 
 private:
@@ -404,27 +457,8 @@ private:
     }
   }
 
-  void stack_dump() const {
-    std::cerr << "\n";
-
-    std::cerr << "Global variables" << "\n";
-    for (const auto& gv : state) {
-      gv->debug(std::cerr, 2);
-    }
-    std::cerr << "\n";
-
-    std::cerr << "Stack variables" << "\n";
-    for (const auto& stack : local_variables) {
-      std::cerr << "  ===================================" << "\n";
-      for (const auto var : stack) {
-        var.first->debug(std::cerr, 2);
-      }
-    }
-    std::cerr << "\n";
-  }
-
   void debug() const {
-    stack_dump();
+    dump_stack();
 
     if (nf_init) {
       std::cerr << "\n";
