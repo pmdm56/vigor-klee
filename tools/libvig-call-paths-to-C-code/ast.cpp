@@ -255,54 +255,12 @@ Variable_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
     return ast_builder_assistant_t::are_exprs_always_equal(v.second, expr);
   };
 
-  auto symbol_finder = [&](local_variable_t v) -> bool {
-    if (v.second.isNull()) {
-      return false;
-    }
-
-    RetrieveSymbols retriever;
-    retriever.visit(expr);
-    auto symbols = retriever.get_retrieved_strings();
-    assert(symbols.size() == 1);
-
-    std::string symbol = symbols[0];
-
-    klee::ref<klee::Expr> local_expr = v.second;
-    RetrieveSymbols retriever2;
-    retriever2.visit(local_expr);
-    auto local_symbols = retriever2.get_retrieved_strings();
-
-    if (local_symbols.size() != 1 || local_symbols[0] != symbol) {
-      return false;
-    }
-
-    if (local_expr->getKind() == klee::Expr::Kind::Concat &&
-        get_first_concat_idx(local_expr) != 0) {
-      return false;
-    }
-
-    else if (local_expr->getKind() == klee::Expr::Kind::Read) {
-      assert(false && "Not implemented");
-    }
-
-    return true;
-  };
-
   for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
     auto stack = *i;
 
     auto it = std::find_if(stack.begin(), stack.end(), finder);
     if (it != stack.end()) {
       return it->first;
-    }
-
-    for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
-      auto stack = *i;
-
-      auto symbol_it = std::find_if(stack.begin(), stack.end(), symbol_finder);
-      if (symbol_it != stack.end()) {
-        return symbol_it->first;
-      }
     }
   }
 
@@ -559,6 +517,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     args = std::vector<Expr_ptr>{ p };
     ret_type = PrimitiveType::build(PrimitiveType::Kind::UINT16_T);
     ret_symbol = "unread_len";
+    ret_expr = call.ret;
   }
 
   else if (fname == "expire_items_single_map") {    
@@ -699,28 +658,28 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   }
 
   else {
-      std::cerr << call.function_name << "\n";
+    std::cerr << call.function_name << "\n";
 
-      for (const auto& arg : call.args) {
-        std::cerr << arg.first << " : "
-                  << expr_to_string(arg.second.expr) << "\n";
-        if (!arg.second.in.isNull()) {
-          std::cerr << "  in:  " << expr_to_string(arg.second.in) << "\n";
-        }
-        if (!arg.second.out.isNull()) {
-          std::cerr << "  out: " << expr_to_string(arg.second.out) << "\n";
-        }
+    for (const auto& arg : call.args) {
+      std::cerr << arg.first << " : "
+                << expr_to_string(arg.second.expr) << "\n";
+      if (!arg.second.in.isNull()) {
+        std::cerr << "  in:  " << expr_to_string(arg.second.in) << "\n";
       }
-
-      for (const auto& ev : call.extra_vars) {
-        std::cerr << ev.first << " : "
-                  << expr_to_string(ev.second.first) << " | "
-                  << expr_to_string(ev.second.second) << "\n";
+      if (!arg.second.out.isNull()) {
+        std::cerr << "  out: " << expr_to_string(arg.second.out) << "\n";
       }
+    }
 
-      std::cerr << expr_to_string(call.ret) << "\n";
+    for (const auto& ev : call.extra_vars) {
+      std::cerr << ev.first << " : "
+                << expr_to_string(ev.second.first) << " | "
+                << expr_to_string(ev.second.second) << "\n";
+    }
 
-      assert(false && "Not implemented");
+    std::cerr << expr_to_string(call.ret) << "\n";
+
+    assert(false && "Not implemented");
   }
 
   assert(args.size() == call.args.size());
@@ -731,7 +690,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
     Variable_ptr ret_var = generate_new_symbol(ret_symbol, ret_type, 0, counter_begins);
 
-    if (ret_expr.isNull()) {
+    if (!ret_expr.isNull()) {
       push_to_local(ret_var, ret_expr);
     } else {
       push_to_local(ret_var);

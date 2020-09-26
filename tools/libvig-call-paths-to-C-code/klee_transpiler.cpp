@@ -62,7 +62,13 @@ uint64_t const_to_value(const klee::ref<klee::Expr> &e) {
 Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e) {
   Expr_ptr result = const_to_ast_expr(e);
 
-  if (result != nullptr) {
+  if (result) {
+    return result;
+  }
+
+  result = ast->get_from_local(e);
+
+  if (result) {
     return result;
   }
 

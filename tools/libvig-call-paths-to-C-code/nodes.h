@@ -883,9 +883,7 @@ private:
 
   Equals(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(EQUALS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
-      lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
-  }
+      lhs(_lhs->clone()), rhs(_rhs->clone()) {}
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -2117,9 +2115,6 @@ public:
 
   Expr_ptr simplify(AST* ast) const {
     assert(ast);
-
-    std::cerr << "concat of reads and concats " << is_concat_of_reads_and_concats() << "\n";
-    std::cerr << "sequential " << is_sequential() << "\n";
 
     if (!is_sequential()) {
       return clone();
