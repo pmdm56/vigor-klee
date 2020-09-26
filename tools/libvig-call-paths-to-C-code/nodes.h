@@ -567,6 +567,48 @@ public:
 
 typedef std::shared_ptr<Block> Block_ptr;
 
+class Not : public Expression {
+private:
+  Expr_ptr expr;
+
+  Not(Expr_ptr _expr)
+    : Expression(NOT, _expr->get_type()), expr(_expr->clone()) {}
+
+public:
+  Expr_ptr get_expr() const { return expr; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    ofs << "!";
+    expr->synthesize(ofs);
+    ofs << "";
+  }
+
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<not";
+    ofs << " type=";
+    type->debug(ofs);
+    ofs << ">" << "\n";
+
+    expr->debug(ofs, lvl+2);
+
+    indent(ofs, lvl);
+    ofs << "</not>" << "\n";
+  }
+
+  std::shared_ptr<Expression> clone() const override {
+    Expression* e = new Not(expr);
+    return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Not> build(Expr_ptr _expr) {
+    Not* n = new Not(_expr);
+    return std::shared_ptr<Not>(n);
+  }
+};
+
+typedef std::shared_ptr<Not> Not_ptr;
+
 class Branch : public Node {
 private:
   Expr_ptr condition;
@@ -583,8 +625,11 @@ private:
     condition->set_terminate_line(false);
     condition->set_wrap(false);
 
+    Expr_ptr not_condition = Not::build(condition);
+    not_condition->set_wrap(false);
+
     std::stringstream msg_stream;
-    condition->synthesize(msg_stream);
+    not_condition->synthesize(msg_stream);
     on_false_comment = Comment::build(msg_stream.str());
   }
 
@@ -1597,48 +1642,6 @@ public:
 };
 
 typedef std::shared_ptr<ShiftRight> ShiftRight_ptr;
-
-class Not : public Expression {
-private:
-  Expr_ptr expr;
-
-  Not(Expr_ptr _expr)
-    : Expression(NOT, _expr->get_type()), expr(_expr->clone()) {}
-
-public:
-  Expr_ptr get_expr() const { return expr; }
-
-  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << "!";
-    expr->synthesize(ofs);
-    ofs << "";
-  }
-
-  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
-    indent(ofs, lvl);
-    ofs << "<not";
-    ofs << " type=";
-    type->debug(ofs);
-    ofs << ">" << "\n";
-
-    expr->debug(ofs, lvl+2);
-
-    indent(ofs, lvl);
-    ofs << "</not>" << "\n";
-  }
-
-  std::shared_ptr<Expression> clone() const override {
-    Expression* e = new Not(expr);
-    return std::shared_ptr<Expression>(e);
-  }
-
-  static std::shared_ptr<Not> build(Expr_ptr _expr) {
-    Not* n = new Not(_expr);
-    return std::shared_ptr<Not>(n);
-  }
-};
-
-typedef std::shared_ptr<Not> Not_ptr;
 
 class Variable : public Expression {
 private:
