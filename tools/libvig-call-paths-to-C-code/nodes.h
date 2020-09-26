@@ -493,7 +493,18 @@ private:
   bool enclose;
 
   Block(const std::vector<Node_ptr>& _nodes, bool _enclose)
-    : Node(BLOCK), nodes(_nodes), enclose(_enclose) {}
+    : Node(BLOCK), enclose(_enclose) {
+    for (auto node : _nodes) {
+      nodes.push_back(node);
+    }
+  }
+
+  Block(const std::vector<Expr_ptr>& _exprs, bool _enclose)
+    : Node(BLOCK), enclose(_enclose) {
+    for (auto expr : _exprs) {
+      nodes.push_back(expr);
+    }
+  }
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -536,6 +547,11 @@ public:
 
   static std::shared_ptr<Block> build(const std::vector<Node_ptr> _nodes, bool _enclose) {
     Block* block = new Block(_nodes, _enclose);
+    return std::shared_ptr<Block>(block);
+  }
+
+  static std::shared_ptr<Block> build(const std::vector<Expr_ptr> _exprs, bool _enclose) {
+    Block* block = new Block(_exprs, _enclose);
     return std::shared_ptr<Block>(block);
   }
 };

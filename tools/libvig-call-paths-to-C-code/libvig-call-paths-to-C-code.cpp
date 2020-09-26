@@ -61,30 +61,19 @@ struct call_paths_group_t {
     ret_diff = false;
     equal_calls = false;
 
-    std::cerr << "call paths: " << assistant.call_paths.size() << "\n";
-
     for (unsigned int i = 0; i < assistant.call_paths.size(); i++) {
       group.first.clear();
       group.second.clear();
 
       call_t call = assistant.get_call(i);
 
-      //std::cerr << "Base " << assistant.call_paths[i]->file_name << "\n";
       for (auto call_path : assistant.call_paths) {
         if (are_calls_equal(call_path->calls[assistant.call_idx], call)) {
-          //std::cerr << "    " << call_path->file_name << "\n";
           group.first.push_back(call_path);
           continue;
         }
 
         group.second.push_back(call_path);
-      }
-
-      std::cerr << "in:  " << group.first.size() << "\n";
-      std::cerr << "out: " << group.second.size() << "\n";
-      std::cerr << "\n";
-      if (group.first.size() == 1) {
-        std::cerr << "in alone: " << group.first[0]->file_name << "\n";
       }
 
       if (group.first.size() == assistant.call_paths.size()) {
@@ -142,7 +131,6 @@ struct call_paths_group_t {
 
   bool are_calls_equal(call_t c1, call_t c2) {
     if (c1.function_name != c2.function_name) {
-      std::cerr << "name " << c1.function_name << " VS " << c2.function_name << "\n";
       return false;
     }
 
@@ -227,18 +215,10 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     assistant.remove_skip_functions(ast);
   }
 
-  std::cerr << "\n"
-            << "********* CALL BUILD AST *********" << "\n"
-            << "  call_idx   " << assistant.call_idx << "\n"
-            << "  call paths " << assistant.call_paths.size() << "\n"
-            << "**********************************" << "\n"
-            << "\n";
-
   std::vector<Node_ptr> nodes;
 
   while (!assistant.are_call_paths_finished()) {
     std::string fname = assistant.get_call().function_name;
-    std::cerr << "Current function: " << fname << "\n";
 
     call_paths_group_t group(assistant);
     fcall = false;

@@ -461,7 +461,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
   auto fname = call.function_name;
 
-  std::vector<Node_ptr> exprs;
+  std::vector<Expr_ptr> exprs;
   std::vector<Expr_ptr> args;
 
   PrimitiveType_ptr ret_type;
@@ -609,12 +609,11 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     // dchain allocates an index when is allocated, so we start with new_index_1
     Type_ptr index_out_type = PrimitiveType::build(PrimitiveType::Kind::INT);
     Variable_ptr index_out = generate_new_symbol("new_index", index_out_type, 0, 1);
+    assert(!call.args["index_out"].out.isNull());
+    push_to_local(index_out, call.args["index_out"].out);
 
     Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
-
-    assert(!call.args["index_out"].out.isNull());
-    push_to_local(index_out, call.args["index_out"].out);
 
     VariableDecl_ptr index_out_decl = VariableDecl::build(index_out);
     exprs.push_back(index_out_decl);
@@ -736,14 +735,16 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
     VariableDecl_ptr ret = VariableDecl::build(ret_var);
     Assignment_ptr assignment = Assignment::build(ret, fcall);
-    assignment->set_terminate_line(true);
 
     exprs.push_back(assignment);
   }
 
   else {
-    fcall->set_terminate_line(true);
     exprs.push_back(fcall);
+  }
+
+  for (auto expr : exprs) {
+    expr->set_terminate_line(true);
   }
 
   return Block::build(exprs, false);
