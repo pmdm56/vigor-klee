@@ -785,6 +785,11 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
     break;
   }
 
+  case Node::Kind::VARIABLE: {
+    ret_expr = Constant::build(PrimitiveType::Kind::INT, 1);
+    break;
+  }
+
   default:
     std::cerr << "\n";
     constraint->debug(std::cerr);

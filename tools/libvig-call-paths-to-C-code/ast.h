@@ -384,9 +384,11 @@ public:
       "loop_invariant_produce",
       "packet_receive",
       "packet_state_total_length",
+      "packet_free",
+      "packet_return_chunk"
     };
 
-    commit_functions = std::vector<std::string> { "start_time", "packet_return_chunk" };
+    commit_functions = std::vector<std::string> { "start_time", "packet_send" };
   }
 
   void context_switch(Context ctx);

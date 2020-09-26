@@ -48,7 +48,9 @@ llvm::cl::opt<std::string> OutputDir(
 
 struct call_paths_group_t {
   typedef std::pair<std::vector<call_path_t*>, std::vector<call_path_t*>> group_t;
-  std::vector<group_t> groups;
+
+  group_t group;
+  klee::ref<klee::Expr> discriminating_constraint;
 
   bool ret_diff;
   bool equal_calls;
@@ -59,98 +61,46 @@ struct call_paths_group_t {
     ret_diff = false;
     equal_calls = false;
 
+    std::cerr << "call paths: " << assistant.call_paths.size() << "\n";
+
     for (unsigned int i = 0; i < assistant.call_paths.size(); i++) {
-      groups.emplace_back();
+      group.first.clear();
+      group.second.clear();
 
       call_t call = assistant.get_call(i);
+
+      //std::cerr << "Base " << assistant.call_paths[i]->file_name << "\n";
       for (auto call_path : assistant.call_paths) {
         if (are_calls_equal(call_path->calls[assistant.call_idx], call)) {
-          groups.back().first.push_back(call_path);
+          //std::cerr << "    " << call_path->file_name << "\n";
+          group.first.push_back(call_path);
+          continue;
         }
 
-        else {
-          groups.back().second.push_back(call_path);
-        }
+        group.second.push_back(call_path);
       }
 
-      if (groups.back().first.size() == assistant.call_paths.size()) {
+      std::cerr << "in:  " << group.first.size() << "\n";
+      std::cerr << "out: " << group.second.size() << "\n";
+      std::cerr << "\n";
+      if (group.first.size() == 1) {
+        std::cerr << "in alone: " << group.first[0]->file_name << "\n";
+      }
+
+      if (group.first.size() == assistant.call_paths.size()) {
         equal_calls = true;
         break;
       }
 
-      if (groups.size() == 1) {
-        bool can_exit = true;
-        call_t out_call = groups[0].second[0]->calls[assistant.call_idx];
-        for (auto call_path : groups[0].second) {
-          if (!are_calls_equal(call_path->calls[assistant.call_idx], out_call)) {
-            can_exit = false;
-            break;
-          }
-        }
+      discriminating_constraint = find_discriminating_constraint();
 
-        if (can_exit) {
-          break;
-        }
+      if (!discriminating_constraint.isNull()) {
+        break;
       }
     }
 
-    remove_dup_groups();
+    assert(equal_calls || !discriminating_constraint.isNull());
   }
-
-  void remove_dup_groups() {
-    auto group_comparator = [](group_t g1, group_t g2) -> bool {
-      auto contains_call_path = [](std::vector<call_path_t*> cps,
-                                   call_path_t* cp) -> bool {
-        for (auto stored_cp : cps) {
-          if (cp->file_name == stored_cp->file_name) {
-            return true;
-          }
-        }
-        return false;
-      };
-
-      if (g1.first.size() != g2.first.size()) {
-        return false;
-      }
-
-      if (g1.second.size() != g2.second.size()) {
-        return false;
-      }
-
-      for (auto cp : g1.first) {
-        if (!contains_call_path(g2.first, cp)) {
-          return false;
-        }
-      }
-
-      for (auto cp : g1.second) {
-        if (!contains_call_path(g2.second, cp)) {
-          return false;
-        }
-      }
-
-      return true;
-    };
-
-    std::vector<group_t> filtered_groups;
-
-    for (auto group : groups) {
-      bool save = true;
-      for (auto filtered_group : filtered_groups) {
-        if (group_comparator(filtered_group, group)) {
-          save = false;
-          break;
-        }
-      }
-
-      if (save) {
-        filtered_groups.push_back(group);
-      }
-    }
-
-    groups = filtered_groups;
-  }
-
   void dump_call(call_t call) {
     std::cout << "    Function: " << call.function_name << std::endl;
     if (!call.args.empty()) {
@@ -192,6 +142,7 @@ struct call_paths_group_t {
 
   bool are_calls_equal(call_t c1, call_t c2) {
     if (c1.function_name != c2.function_name) {
+      std::cerr << "name " << c1.function_name << " VS " << c2.function_name << "\n";
       return false;
     }
 
@@ -203,11 +154,7 @@ struct call_paths_group_t {
     for (auto arg_name_value_pair : c1.args) {
       auto arg_name = arg_name_value_pair.first;
 
-      if (c2.args.find(arg_name) == c2.args.end()) {
-        return false;
-      }
-
-      auto c1_arg = arg_name_value_pair.second;
+      auto c1_arg = c1.args[arg_name];
       auto c2_arg = c2.args[arg_name];
 
       if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
@@ -218,30 +165,20 @@ struct call_paths_group_t {
     return true;
   }
 
-  std::pair<group_t, klee::ref<klee::Expr>> find_discriminating_constraint() {
-    for (auto group : groups) {
-      for (auto constraint : group.first[0]->constraints) {
-        if (check_discriminating_constraint(constraint, group)) {
-          return std::make_pair(group, constraint);
-        }
+  klee::ref<klee::Expr> find_discriminating_constraint() {
+    klee::ref<klee::Expr> chosen_constraint;
+
+    if (group.first.size() == 0) {
+      return chosen_constraint;
+    }
+
+    for (auto constraint : group.first[0]->constraints) {
+      if (check_discriminating_constraint(constraint, group)) {
+        chosen_constraint = constraint;
       }
     }
 
-    for (auto group : groups) {
-      std::cerr << "\n";
-      std::cerr << "========================================" << "\n";
-      std::cerr << "In:" << "\n";
-      for (auto cp : group.first) {
-        std::cerr << "  " << cp->file_name << "\n";
-      }
-
-      std::cerr << "Out:" << "\n";
-      for (auto cp : group.second) {
-        std::cerr << "  " << cp->file_name << "\n";
-      }
-      std::cerr << "========================================" << "\n";
-    }
-    assert(false && "Unable to find discriminating constraint");
+    return chosen_constraint;
   }
 
   bool check_discriminating_constraint(klee::ref<klee::Expr> constraint, group_t group) {
@@ -284,6 +221,7 @@ struct ast_builder_ret_t {
 ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   assert(assistant.call_paths.size());
   bool bifurcates = false;
+  bool fcall;
 
   if (assistant.root) {
     assistant.remove_skip_functions(ast);
@@ -299,19 +237,19 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   std::vector<Node_ptr> nodes;
 
   while (!assistant.are_call_paths_finished()) {
-    call_paths_group_t group(assistant);
-
     std::string fname = assistant.get_call().function_name;
+    std::cerr << "Current function: " << fname << "\n";
+
+    call_paths_group_t group(assistant);
+    fcall = false;
+
     bool should_commit = ast.is_commit_function(fname);
 
     std::cerr << "\n";
     std::cerr << "===================================" << "\n";
     std::cerr << "fname         " << fname << "\n";
     std::cerr << "nodes         " << nodes.size() << "\n";
-    std::cerr << "groups        ";
-    for (auto g : group.groups)
-    std::cerr << "(" << g.first.size() << "," << g.second.size() << ") ";
-    std::cerr << "\n";
+    std::cerr << "group         " << "(" << group.group.first.size() << "," << group.group.second.size() << ")\n";
     std::cerr << "ret diff      " << group.ret_diff << "\n";
     std::cerr << "root          " << assistant.root << "\n";
     std::cerr << "should commit " << should_commit << "\n";
@@ -330,11 +268,10 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
     if (group.equal_calls || group.ret_diff) {
       Node_ptr node = ast.node_from_call(assistant, group.ret_diff);
+      fcall = true;
+
       if (node) {
         nodes.push_back(node);
-        std::cerr << "**** NODE FROM CALL ****" << "\n";
-        node->synthesize(std::cerr);
-        std::cerr << "\n";
       }
     }
 
@@ -344,35 +281,36 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     }
 
     bifurcates = true;
-    auto group_constraint_pair = group.find_discriminating_constraint();
 
-    call_paths_group_t::group_t chosen_group = group_constraint_pair.first;
-    klee::ref<klee::Expr> constraint = group_constraint_pair.second;
+    std::vector<call_path_t*> in = group.group.first;
+    std::vector<call_path_t*> out = group.group.second;
+
+    klee::ref<klee::Expr> constraint = group.discriminating_constraint;
     klee::ref<klee::Expr> not_constraint = ast_builder_assistant_t::exprBuilder->Not(constraint);
 
     Expr_ptr cond = transpile(&ast, constraint);
     Expr_ptr not_cond = transpile(&ast, not_constraint);
+
+    unsigned int next_call_idx = (fcall ? assistant.call_idx + 1 : assistant.call_idx);
 
     std::cerr << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << "\n";
     std::cerr << "Condition: ";
     cond->synthesize(std::cerr);
     std::cerr << "\n";
 
-    if (chosen_group.first[0]->calls.size() > assistant.call_idx + 1)
-      std::cerr << "Then function: " << chosen_group.first[0]->calls[assistant.call_idx].function_name << "\n";
+    if (in[0]->calls.size() > next_call_idx)
+      std::cerr << "Then function: " << in[0]->calls[next_call_idx].function_name << "\n";
     else
       std::cerr << "Then function: none" << "\n";
 
-    if (chosen_group.second[0]->calls.size() > assistant.call_idx + 1)
-      std::cerr << "Else function: " << chosen_group.second[0]->calls[assistant.call_idx].function_name << "\n";
+    if (out[0]->calls.size() > next_call_idx)
+      std::cerr << "Else function: " << out[0]->calls[next_call_idx].function_name << "\n";
     else
       std::cerr << "Else function: none" << "\n";
     std::cerr << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << "\n";
 
-    unsigned int next_call_idx = group.ret_diff ? assistant.call_idx + 1 : assistant.call_idx;
-
-    ast_builder_assistant_t then_assistant(chosen_group.first, next_call_idx, cond, assistant.layer);
-    ast_builder_assistant_t else_assistant(chosen_group.second, next_call_idx, not_cond, assistant.layer);
+    ast_builder_assistant_t then_assistant(in, next_call_idx, cond, assistant.layer);
+    ast_builder_assistant_t else_assistant(out, next_call_idx, not_cond, assistant.layer);
 
     ast.push();
     ast_builder_ret_t _then_ret = build_ast(ast, then_assistant);
@@ -385,7 +323,12 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     Node_ptr branch = Branch::build(cond, _then_ret.node, _else_ret.node);
 
     nodes.push_back(branch);
-    assistant.jump_to_call_idx(_else_ret.last_call_idx);
+
+    next_call_idx = (_then_ret.last_call_idx > _else_ret.last_call_idx)
+        ? _then_ret.last_call_idx
+        : _else_ret.last_call_idx;
+
+    assistant.jump_to_call_idx(next_call_idx);
 
     if (!assistant.root) {
       break;
