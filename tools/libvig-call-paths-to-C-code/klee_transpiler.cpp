@@ -187,36 +187,6 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSelect(const klee::Se
   return klee::ExprVisitor::Action::skipChildren();
 }
 
-Expr_ptr simplify_concat(Expr_ptr var, Concat_ptr concat) {
-  auto var_size = var->get_type()->get_size();
-  auto concat_size = concat->get_type()->get_size();
-
-  bool sequential_of_reads = concat->is_concat_of_reads_and_concats() &&
-                             concat->is_sequential();
-
-  if (!sequential_of_reads) {
-    return concat;
-  }
-
-  if (var->get_kind() == Node::Kind::STRUCT) {
-    std::cerr << "\n======================================================================\n";
-    std::cerr << "concat:" << "\n";
-    concat->debug(std::cerr);
-    std::cerr << "\n";
-    std::cerr << "concat of reads and concats: " << concat->is_concat_of_reads_and_concats() << "\n";
-    std::cerr << "sequential: " << concat->is_sequential() << "\n";
-    std::cerr << "\n======================================================================\n";
-
-    assert(false && "Not implemented");
-  }
-
-  if (var_size == concat_size) {
-    return var;
-  }
-
-  return concat;
-}
-
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::ConcatExpr& e) {
   Expr_ptr left = transpile(ast, e.getKid(0));
   Expr_ptr right = transpile(ast, e.getKid(1));
@@ -233,22 +203,9 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::Co
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  std::string symbol = symbols[0];
-  Expr_ptr var;
+  Expr_ptr simplified = concat->simplify(ast);
 
-  var = ast->get_from_state(symbol);
-
-  if (var == nullptr) {
-    var = ast->get_from_local(symbol);
-  }
-
-  if (var == nullptr) {
-    save_result(concat);
-    return klee::ExprVisitor::Action::skipChildren();
-  }
-
-  save_result(simplify_concat(var, concat));
-
+  save_result(simplified);
   return klee::ExprVisitor::Action::skipChildren();
 }
 

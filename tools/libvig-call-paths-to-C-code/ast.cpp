@@ -695,12 +695,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
   else if (fname == "packet_return_chunk") {
     // TODO
-    Variable_ptr p = get_from_local("p");
-    assert(p);
-
-    args = std::vector<Expr_ptr>{ p, p };
-
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+    return nullptr;
   }
 
   else {

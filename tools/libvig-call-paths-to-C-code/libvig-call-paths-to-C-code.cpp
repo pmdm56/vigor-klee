@@ -142,6 +142,10 @@ struct call_paths_group_t {
     for (auto arg_name_value_pair : c1.args) {
       auto arg_name = arg_name_value_pair.first;
 
+      if (arg_name == "p" || arg_name == "chunk") {
+        continue;
+      }
+
       auto c1_arg = c1.args[arg_name];
       auto c2_arg = c2.args[arg_name];
 

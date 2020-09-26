@@ -4,7 +4,10 @@
 #include <vector>
 #include <numeric>
 
+#include "ast.h"
 #include "load-call-paths.h"
+
+class AST;
 
 class Node {
 public:
@@ -2019,7 +2022,11 @@ public:
   }
 
   bool is_sequential() const {
-    assert(is_concat_of_reads_and_concats());
+    if (!is_concat_of_reads_and_concats()) {
+      return false;
+    }
+
+    assert(left->get_kind() == READ);
 
     Read* left_read = static_cast<Read*>(left.get());
     Expr_ptr left_idx = left_read->get_idx();
@@ -2033,6 +2040,7 @@ public:
     if (right->get_kind() == READ) {
       Read* right_read = static_cast<Read*>(right.get());
       Expr_ptr right_idx = right_read->get_idx();
+      auto right_read_size = right_read->get_type()->get_size();
 
       if (right_idx->get_kind() != CONSTANT) {
         return false;
@@ -2040,16 +2048,17 @@ public:
 
       Constant* right_idx_const = static_cast<Constant*>(right_idx.get());
 
-      return left_idx_const->get_value() == right_idx_const->get_value() + 1;
+      return left_idx_const->get_value() == right_idx_const->get_value() + right_read_size / 8;
     }
 
     Concat* right_concat = static_cast<Concat*>(right.get());
+    auto right_concat_size = right_concat->get_type()->get_size();
 
     if (!right_concat->is_sequential()) {
       return false;
     }
 
-    return left_idx_const->get_value() == right_concat->get_last_idx() + 1;
+    return left_idx_const->get_value() == right_concat->get_last_idx() + right_concat_size / 8;
   }
 
   bool is_concat_of_reads_and_concats() const {
@@ -2104,6 +2113,37 @@ public:
 
     indent(ofs, lvl);
     ofs << "</concat>" << "\n";
+  }
+
+  Expr_ptr simplify(AST* ast) const {
+    assert(ast);
+
+    std::cerr << "concat of reads and concats " << is_concat_of_reads_and_concats() << "\n";
+    std::cerr << "sequential " << is_sequential() << "\n";
+
+    if (!is_sequential()) {
+      return clone();
+    }
+
+    auto concat_size = type->get_size();
+
+    if (left->get_kind() == READ && right->get_kind() == READ) {
+      Read* rread = static_cast<Read*>(right.get());
+
+      if (rread->get_expr()->get_kind() == VARIABLE) {
+        Variable* var = static_cast<Variable*>(rread->get_expr().get());
+
+        auto var_size = var->get_type()->get_size();
+
+        if (var_size == concat_size) {
+          return var->clone();
+        }
+      }
+
+      return Read::build(rread->get_expr(), type, rread->get_idx());
+    }
+
+    return clone();
   }
 
   std::shared_ptr<Expression> clone() const override {
