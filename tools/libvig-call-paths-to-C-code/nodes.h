@@ -523,9 +523,11 @@ public:
     }
 
     else {
-      for (const auto& node : nodes) {
-        node->synthesize(ofs, lvl);
-        ofs << "\n";
+      for (unsigned int i  = 0; i < nodes.size(); i++) {
+        nodes[i]->synthesize(ofs, lvl);
+
+        if (i < nodes.size() - 1)
+          ofs << "\n";
       }
     }
   }
@@ -598,13 +600,13 @@ private:
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << "\n";
-
     for (auto c : on_true_cps) {
+      ofs << "\n";
       indent(ofs, lvl);
       c->synthesize(ofs);
-      ofs << "\n";
     }
+
+    ofs << "\n";
 
     indent(ofs, lvl);
 

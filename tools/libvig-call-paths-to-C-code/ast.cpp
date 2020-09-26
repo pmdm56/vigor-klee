@@ -476,7 +476,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
   else if (fname == "packet_borrow_next_chunk") {
     Variable_ptr p = get_from_local("p");
-    assert(p != nullptr);
+    assert(p);
     Expr_ptr pkt_len = transpile(this, call.args["length"].expr);
     Variable_ptr chunk;
 
@@ -546,7 +546,6 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     push_to_local(chunk, call.extra_vars["the_chunk"].second);
 
     VariableDecl_ptr chunk_decl = VariableDecl::build(chunk);
-    chunk_decl->set_terminate_line(true);
     exprs.push_back(chunk_decl);
 
     args = std::vector<Expr_ptr>{ p, pkt_len, chunk };
@@ -691,6 +690,16 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     args = std::vector<Expr_ptr>{ chain, index, now };
 
     // actually this is an int, but we never use it in any call path...
+    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+  }
+
+  else if (fname == "packet_return_chunk") {
+    // TODO
+    Variable_ptr p = get_from_local("p");
+    assert(p);
+
+    args = std::vector<Expr_ptr>{ p, p };
+
     ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
   }
 
