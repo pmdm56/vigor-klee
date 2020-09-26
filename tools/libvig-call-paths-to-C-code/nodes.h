@@ -4,6 +4,8 @@
 #include <vector>
 #include <numeric>
 
+#include "load-call-paths.h"
+
 class Node {
 public:
   enum Kind {
@@ -564,6 +566,9 @@ private:
   Node_ptr on_true;
   Node_ptr on_false;
 
+  std::vector<Comment_ptr> on_true_cps;
+  std::vector<Comment_ptr> on_false_cps;
+
   Comment_ptr on_false_comment;
 
   Branch(Expr_ptr _condition, Node_ptr _on_true, Node_ptr _on_false)
@@ -576,9 +581,30 @@ private:
     on_false_comment = Comment::build(msg_stream.str());
   }
 
+  Branch(Expr_ptr _condition,
+         Node_ptr _on_true, Node_ptr _on_false,
+         std::vector<call_path_t*> _on_true_cps,
+         std::vector<call_path_t*> _on_false_cps)
+    : Branch(_condition, _on_true, _on_false) {
+
+    for (auto cp : _on_true_cps) {
+      on_true_cps.push_back(Comment::build(cp->file_name));
+    }
+
+    for (auto cp : _on_false_cps) {
+      on_false_cps.push_back(Comment::build(cp->file_name));
+    }
+  }
+
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
     ofs << "\n";
+
+    for (auto c : on_true_cps) {
+      indent(ofs, lvl);
+      c->synthesize(ofs);
+      ofs << "\n";
+    }
 
     indent(ofs, lvl);
 
@@ -598,6 +624,12 @@ public:
 
     ofs << "\n";
     ofs << "\n";
+
+    for (auto c : on_false_cps) {
+      indent(ofs, lvl);
+      c->synthesize(ofs);
+      ofs << "\n";
+    }
 
     indent(ofs, lvl);
     ofs << "else ";
@@ -638,6 +670,14 @@ public:
 
   static std::shared_ptr<Branch> build(Expr_ptr _condition, Node_ptr _on_true, Node_ptr _on_false) {
     Branch* branch = new Branch(_condition, _on_true, _on_false);
+    return std::shared_ptr<Branch>(branch);
+  }
+
+  static std::shared_ptr<Branch> build(Expr_ptr _condition,
+                                       Node_ptr _on_true, Node_ptr _on_false,
+                                       std::vector<call_path_t*> _on_true_cps,
+                                       std::vector<call_path_t*> _on_false_cps) {
+    Branch* branch = new Branch(_condition, _on_true, _on_false, _on_true_cps, _on_false_cps);
     return std::shared_ptr<Branch>(branch);
   }
 };

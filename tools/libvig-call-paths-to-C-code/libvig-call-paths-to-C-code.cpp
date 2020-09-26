@@ -293,20 +293,20 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     ast_builder_assistant_t else_assistant(out, next_call_idx, not_cond, assistant.layer);
 
     ast.push();
-    ast_builder_ret_t _then_ret = build_ast(ast, then_assistant);
+    ast_builder_ret_t then_ret = build_ast(ast, then_assistant);
     ast.pop();
 
     ast.push();
-    ast_builder_ret_t _else_ret = build_ast(ast, else_assistant);
+    ast_builder_ret_t else_ret = build_ast(ast, else_assistant);
     ast.pop();
 
-    Node_ptr branch = Branch::build(cond, _then_ret.node, _else_ret.node);
+    Node_ptr branch = Branch::build(cond, then_ret.node, else_ret.node, in, out);
 
     nodes.push_back(branch);
 
-    next_call_idx = (_then_ret.last_call_idx > _else_ret.last_call_idx)
-        ? _then_ret.last_call_idx
-        : _else_ret.last_call_idx;
+    next_call_idx = (then_ret.last_call_idx > else_ret.last_call_idx)
+        ? then_ret.last_call_idx
+        : else_ret.last_call_idx;
 
     assistant.jump_to_call_idx(next_call_idx);
 
