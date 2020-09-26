@@ -366,13 +366,15 @@ private:
   Expr_ptr expr;
 
   Cast(Expr_ptr _expr, Type_ptr _type)
-    : Expression(CAST, _type), expr(_expr) {}
+    : Expression(CAST, _type), expr(_expr) {
+    expr->set_wrap(false);
+  }
 
 public:
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << "(";
-    type->synthesize(ofs, lvl);
-    ofs << ")";
+    ///ofs << "(";
+    ///type->synthesize(ofs, lvl);
+    ///ofs << ")";
     expr->synthesize(ofs, lvl);
   }
 
