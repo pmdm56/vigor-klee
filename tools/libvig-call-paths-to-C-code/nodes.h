@@ -123,7 +123,7 @@ protected:
   Type_ptr type;
 
   Expression(Kind kind, std::shared_ptr<Expression> _expr1, std::shared_ptr<Expression> _expr2)
-    : Node(kind), terminate_line(false) {
+    : Node(kind), terminate_line(false), wrap(false) {
     Type_ptr type1 = _expr1->get_type();
     Type_ptr type2 = _expr2->get_type();
 
@@ -132,22 +132,11 @@ protected:
     } else {
       type = type2->clone();
     }
-
-    wrap = (kind != CONSTANT && kind != VARIABLE &&
-            kind != RETURN && kind != STRUCT &&
-            kind != ARRAY && kind != VARIABLE_DECL &&
-            kind != FUNCTION_CALL && kind != ADDRESSOF);
   }
 
   Expression(Kind kind, Type_ptr _type)
-    : Node(kind), terminate_line(false),
-      type(_type->clone()) {
-
-    wrap = (kind != CONSTANT && kind != VARIABLE &&
-            kind != RETURN && kind != STRUCT &&
-            kind != ARRAY && kind != VARIABLE_DECL &&
-            kind != FUNCTION_CALL && kind != ADDRESSOF);
-  }
+    : Node(kind), terminate_line(false), wrap(false),
+      type(_type->clone()) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -180,7 +169,7 @@ public:
     terminate_line = terminate;
   }
 
-  void set_wrap(bool _wrap) {
+  virtual void set_wrap(bool _wrap) {
     wrap = _wrap;
   }
 };
@@ -380,15 +369,10 @@ private:
   Expr_ptr expr;
 
   Cast(Expr_ptr _expr, Type_ptr _type)
-    : Expression(CAST, _type), expr(_expr) {
-    expr->set_wrap(false);
-  }
+    : Expression(CAST, _type), expr(_expr) {}
 
 public:
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    ///ofs << "(";
-    ///type->synthesize(ofs, lvl);
-    ///ofs << ")";
     expr->synthesize(ofs, lvl);
   }
 
@@ -411,6 +395,10 @@ public:
   std::shared_ptr<Expression> simplify(AST* ast) const override {
     Expr_ptr expr_simplified = expr->simplify(ast);
     return Cast::build(expr_simplified, type);
+  }
+
+  void set_wrap(bool _wrap) override {
+    expr->set_wrap(_wrap);
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -527,8 +515,8 @@ private:
 
   Block(const std::vector<Expr_ptr>& _exprs, bool _enclose)
     : Node(BLOCK), enclose(_enclose) {
+
     for (auto expr : _exprs) {
-      expr->set_wrap(false);
       nodes.push_back(expr);
     }
   }
@@ -654,6 +642,10 @@ public:
     ofs << " />" << "\n";
   }
 
+  void set_wrap(bool _wrap) override {
+    // ignore
+  }
+
   std::shared_ptr<Expression> simplify(AST* ast) const override {
     return clone();
   }
@@ -687,6 +679,8 @@ private:
     : Expression(NOT_EQUALS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
   }
 
 public:
@@ -736,7 +730,10 @@ private:
 
   Equals(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(EQUALS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
-      lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+      lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -806,7 +803,9 @@ private:
   Expr_ptr expr;
 
   Not(Expr_ptr _expr)
-    : Expression(NOT, _expr->get_type()), expr(_expr->clone()) {}
+    : Expression(NOT, _expr->get_type()), expr(_expr->clone()) {
+    expr->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_expr() const { return expr; }
@@ -1104,6 +1103,10 @@ public:
     ofs << "</call>" << "\n";
   }
 
+  void set_wrap(bool _wrap) override {
+    // ignore
+  }
+
   std::shared_ptr<Expression> simplify(AST* ast) const override {
     std::vector<Expr_ptr> args_simplified;
 
@@ -1138,6 +1141,8 @@ private:
     : Expression(GREATER, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
   }
 
 public:
@@ -1189,6 +1194,8 @@ private:
     : Expression(GREATER_EQ, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
   }
 
 public:
@@ -1240,6 +1247,8 @@ private:
     : Expression(LESS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
   }
 
 public:
@@ -1291,6 +1300,8 @@ private:
     : Expression(LESS_EQ, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
   }
 
 public:
@@ -1339,7 +1350,10 @@ private:
   Expr_ptr rhs;
 
   Add(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(ADD, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(ADD, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1390,7 +1404,10 @@ private:
   Expr_ptr rhs;
 
   Sub(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(SUB, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(SUB, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1441,7 +1458,10 @@ private:
   Expr_ptr rhs;
 
   Mul(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(MUL, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(MUL, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1492,7 +1512,10 @@ private:
   Expr_ptr rhs;
 
   Div(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(DIV, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(DIV, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1543,7 +1566,10 @@ private:
   Expr_ptr rhs;
 
   And(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(AND, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(AND, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1594,18 +1620,19 @@ private:
   Expr_ptr rhs;
 
   Or(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(OR, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(OR, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
   Expr_ptr get_rhs() const { return rhs; }
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    ofs << "(";
     lhs->synthesize(ofs, lvl);
     ofs << " | ";
     rhs->synthesize(ofs, lvl);
-    ofs << ")";
   }
 
   void debug(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -1647,7 +1674,10 @@ private:
   Expr_ptr rhs;
 
   Xor(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(XOR, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(XOR, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1698,7 +1728,10 @@ private:
   Expr_ptr rhs;
 
   Mod(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(MOD, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(MOD, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1749,7 +1782,10 @@ private:
   Expr_ptr rhs;
 
   ShiftLeft(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(SHIFT_LEFT, _lhs->get_type()), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(SHIFT_LEFT, _lhs->get_type()), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1800,7 +1836,10 @@ private:
   Expr_ptr rhs;
 
   ShiftRight(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(SHIFT_RIGHT, _lhs->get_type()), lhs(_lhs->clone()), rhs(_rhs->clone()) {}
+    : Expression(SHIFT_RIGHT, _lhs->get_type()), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
 
 public:
   Expr_ptr get_lhs() const { return lhs; }
@@ -1884,6 +1923,10 @@ public:
 
   std::shared_ptr<Expression> simplify(AST* ast) const override {
     return clone();
+  }
+
+  void set_wrap(bool _wrap) override {
+    // ignore
   }
 
   std::shared_ptr<Expression> clone() const override {
@@ -1989,6 +2032,10 @@ public:
     return AddressOf::build(expr_simplified);
   }
 
+  void set_wrap(bool _wrap) override {
+    // ignore
+  }
+
   std::shared_ptr<Expression> clone() const override {
     Expression* e = new AddressOf(expr);
     return std::shared_ptr<Expression>(e);
@@ -2011,10 +2058,6 @@ private:
   Read(Expr_ptr _expr, Type_ptr _type, Expr_ptr _idx)
     : Expression(READ, _type), expr(_expr->clone()), idx(_idx) {
     assert(expr->get_kind() == VARIABLE);
-
-    expr->set_wrap(false);
-    idx->set_wrap(false);
-    set_wrap(false);
   }
 
   void synthesize_array(std::ostream& ofs, unsigned int lvl) const {
@@ -2188,6 +2231,10 @@ public:
     return Read::build(expr_simplified, type, idx_simplified);
   }
 
+  void set_wrap(bool _wrap) override {
+    // ignore
+  }
+
   std::shared_ptr<Expression> clone() const override {
     Expression* e = new Read(expr, type, idx);
     return std::shared_ptr<Expression>(e);
@@ -2212,6 +2259,8 @@ private:
     Type_ptr rt = right->get_type();
 
     assert(_type->get_size() == (lt->get_size() + rt->get_size()));
+    left->set_wrap(true);
+    right->set_wrap(true);
   }
 
 public:
@@ -2406,6 +2455,10 @@ public:
     return std::shared_ptr<Expression>(e);
   }
 
+  void set_wrap(bool _wrap) override {
+    // ignore
+  }
+
   static std::shared_ptr<VariableDecl> build(const std::string& _symbol, Type_ptr _type) {
     VariableDecl* variable_decl = new VariableDecl(_symbol, _type);
     return std::shared_ptr<VariableDecl>(variable_decl);
@@ -2582,7 +2635,9 @@ private:
 
   Assignment(Expr_ptr _variable, Expr_ptr _value)
     : Expression(ASSIGNMENT, _variable->get_type()),
-      variable(_variable->clone()), value(_value->clone()) {}
+      variable(_variable->clone()), value(_value->clone()) {
+    value->set_wrap(true);
+  }
 
 public:
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {

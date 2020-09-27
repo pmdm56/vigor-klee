@@ -402,6 +402,7 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
     assert(ret_symbol.size());
 
     Variable_ptr ret_var = generate_new_symbol(ret_symbol, ret_type);
+    ret_var->set_wrap(false);
     push_to_local(ret_var);
 
     VariableDecl_ptr ret = VariableDecl::build(ret_var);
@@ -708,6 +709,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
   for (auto expr : exprs) {
     expr->set_terminate_line(true);
+    expr->set_wrap(false);
   }
 
   return Block::build(exprs, false);
