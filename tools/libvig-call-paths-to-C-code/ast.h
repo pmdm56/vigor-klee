@@ -322,6 +322,7 @@ private:
 
   std::vector<std::string> skip_functions;
   std::vector<std::string> commit_functions;
+  std::map<std::string, std::string> callpath_var_translation;
 
   std::vector<Import_ptr> imports;
   std::vector<Variable_ptr> state;
@@ -350,6 +351,9 @@ public:
 
   Variable_ptr get_from_state(unsigned int addr);
   Variable_ptr get_from_state(const std::string& symbol);
+
+  std::string from_callpath_symbol(std::string name);
+  std::string to_callpath_symbol(std::string name);
 
 private:
   Variable_ptr generate_new_symbol(const std::string& symbol, Type_ptr type,
@@ -388,6 +392,10 @@ public:
     };
 
     commit_functions = std::vector<std::string> { "start_time", "packet_send" };
+
+    callpath_var_translation = {
+      { "src_devices", "device" }
+    };
   }
 
   void context_switch(Context ctx);

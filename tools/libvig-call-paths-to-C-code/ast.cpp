@@ -119,6 +119,14 @@ Variable_ptr AST::get_from_state(const std::string& symbol) {
   return *it;
 }
 
+std::string AST::from_callpath_symbol(std::string name) {
+
+}
+
+std::string AST::to_callpath_symbol(std::string name) {
+
+}
+
 AST::chunk_t AST::get_chunk_from_local(unsigned int idx) {
   chunk_t result;
 
