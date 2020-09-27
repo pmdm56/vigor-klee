@@ -74,9 +74,12 @@ Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e) {
 
   KleeExprToASTNodeConverter converter(ast);
   converter.visit(e);
-  assert(converter.get_result());
 
-  return converter.get_result();
+  result = converter.get_result();
+  assert(result);
+
+
+  return result->simplify(ast);
 }
 
 uint64_t get_first_concat_idx(const klee::ref<klee::Expr> &e) {
