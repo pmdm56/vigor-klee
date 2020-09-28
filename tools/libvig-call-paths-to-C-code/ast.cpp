@@ -197,6 +197,27 @@ Variable_ptr AST::get_from_local(const std::string& symbol, bool partial) {
   return nullptr;
 }
 
+klee::ref<klee::Expr> AST::get_expr_from_local_by_addr(unsigned int addr) {
+  klee::ref<klee::Expr> found;
+
+  assert(addr != 0);
+  auto addr_finder = [&](local_variable_t v) -> bool {
+    unsigned int local_addr = v.first->get_addr();
+    return local_addr == addr;
+  };
+
+  for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
+    auto stack = *i;
+    auto it = std::find_if(stack.begin(), stack.end(), addr_finder);
+    if (it != stack.end()) {
+      found = it->second;
+      break;
+    }
+  }
+
+  return found;
+}
+
 Variable_ptr AST::get_from_local_by_addr(const std::string& symbol, unsigned int addr) {
   assert(addr != 0);
   auto translated = from_cp_symbol(symbol);
@@ -331,7 +352,9 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
   std::string ret_symbol;
 
   if (fname == "map_allocate") {
-    uint64_t map_addr = const_to_value(call.args["map_out"].out);
+    Expr_ptr map_out_expr = transpile(this, call.args["map_out"].out);
+    assert(map_out_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t map_addr = (static_cast<Constant*>(map_out_expr.get()))->get_value();
 
     Expr_ptr keq = transpile(this, call.args["keq"].expr);
     assert(keq);
@@ -346,12 +369,14 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
 
     args = std::vector<Expr_ptr>{ keq, khash, capacity, AddressOf::build(new_map) };
 
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "map_allocation_succeeded";
   }
 
   else if (fname == "vector_allocate") {
-    uint64_t vector_addr = const_to_value(call.args["vector_out"].out);
+    Expr_ptr vector_out_expr = transpile(this, call.args["vector_out"].out);
+    assert(vector_out_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t vector_addr = (static_cast<Constant*>(vector_out_expr.get()))->get_value();
 
     Expr_ptr elem_size = transpile(this, call.args["elem_size"].expr);
     assert(elem_size);
@@ -366,12 +391,14 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
 
     args = std::vector<Expr_ptr>{ elem_size, capacity, init_elem, AddressOf::build(new_vector) };
 
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "vector_alloc_success";
   }
 
   else if (fname == "dchain_allocate") {
-    uint64_t dchain_addr = const_to_value(call.args["chain_out"].out);
+    Expr_ptr chain_out_expr = transpile(this, call.args["chain_out"].out);
+    assert(chain_out_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t dchain_addr = (static_cast<Constant*>(chain_out_expr.get()))->get_value();
 
     Expr_ptr index_range = transpile(this, call.args["index_range"].expr);
     assert(index_range);
@@ -382,7 +409,7 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
 
     args = std::vector<Expr_ptr>{ index_range, AddressOf::build(new_dchain) };
 
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "is_dchain_allocated";
   }
 
@@ -415,7 +442,7 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
 
   FunctionCall_ptr fcall = FunctionCall::build(fname, args, ret_type);
 
-  if (ret_type->get_primitive_kind() != PrimitiveType::Kind::VOID) {
+  if (ret_type->get_primitive_kind() != PrimitiveType::PrimitiveKind::VOID) {
     assert(ret_symbol.size());
 
     Variable_ptr ret_var = generate_new_symbol(ret_symbol, ret_type);
@@ -451,6 +478,10 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   }
 
   else if (fname == "packet_borrow_next_chunk") {
+    Expr_ptr chunk_expr = transpile(this, call.args["chunk"].out);
+    assert(chunk_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chunk_addr = (static_cast<Constant*>(chunk_expr.get()))->get_value();
+
     Variable_ptr p = get_from_local("p");
     assert(p);
     Expr_ptr pkt_len = transpile(this, call.args["length"].expr);
@@ -458,7 +489,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
     switch (assistant.layer) {
     case 2: {
-      Array_ptr _uint8_t_6 = Array::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T), 6);
+      Array_ptr _uint8_t_6 = Array::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T), 6);
 
       std::vector<Variable_ptr> ether_addr_fields{
         Variable::build("addr_bytes", _uint8_t_6)
@@ -469,7 +500,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
       std::vector<Variable_ptr> ether_hdr_fields {
         Variable::build("d_addr", ether_addr),
         Variable::build("s_addr", ether_addr),
-        Variable::build("ether_type", PrimitiveType::build(PrimitiveType::Kind::UINT16_T))
+        Variable::build("ether_type", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T))
       };
 
       Struct_ptr ether_hdr = Struct::build("ether_hdr", ether_hdr_fields);
@@ -480,16 +511,16 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     }
     case 3: {
       std::vector<Variable_ptr> ipv4_hdr_fields {
-        Variable::build("version_ihl", PrimitiveType::build(PrimitiveType::Kind::UINT8_T)),
-        Variable::build("type_of_service", PrimitiveType::build(PrimitiveType::Kind::UINT8_T)),
-        Variable::build("total_length", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-        Variable::build("packet_id", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-        Variable::build("fragment_offset", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-        Variable::build("time_to_live", PrimitiveType::build(PrimitiveType::Kind::UINT8_T)),
-        Variable::build("next_proto_id", PrimitiveType::build(PrimitiveType::Kind::UINT8_T)),
-        Variable::build("hdr_checksum", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-        Variable::build("src_addr", PrimitiveType::build(PrimitiveType::Kind::UINT32_T)),
-        Variable::build("dst_addr", PrimitiveType::build(PrimitiveType::Kind::UINT32_T))
+        Variable::build("version_ihl", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T)),
+        Variable::build("type_of_service", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T)),
+        Variable::build("total_length", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
+        Variable::build("packet_id", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
+        Variable::build("fragment_offset", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
+        Variable::build("time_to_live", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T)),
+        Variable::build("next_proto_id", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T)),
+        Variable::build("hdr_checksum", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
+        Variable::build("src_addr", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T)),
+        Variable::build("dst_addr", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T))
       };
 
       Struct_ptr ipv4_hdr = Struct::build("ipv4_hdr", ipv4_hdr_fields);
@@ -499,14 +530,14 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
       break;
     }
     case 4: {
-      if (pkt_len->get_kind() == Node::Kind::CONSTANT) {
-        chunk = Variable::build("ip_options", Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T)));
+      if (pkt_len->get_kind() == Node::NodeKind::CONSTANT) {
+        chunk = Variable::build("ip_options", Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T)));
         break;
       }
 
       std::vector<Variable_ptr> tcpudp_hdr_fields {
-        Variable::build("src_port", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-        Variable::build("dst_port", PrimitiveType::build(PrimitiveType::Kind::UINT16_T))
+        Variable::build("src_port", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
+        Variable::build("dst_port", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T))
       };
 
       Struct_ptr tcpudp_hdr = Struct::build("tcpudp_hdr", tcpudp_hdr_fields);
@@ -519,13 +550,14 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
       assert(false && "Missing layers implementation");
     }
 
+    chunk->set_addr(chunk_addr);
     push_to_local(chunk, call.extra_vars["the_chunk"].second);
 
     VariableDecl_ptr chunk_decl = VariableDecl::build(chunk);
     exprs.push_back(chunk_decl);
 
     args = std::vector<Expr_ptr>{ p, pkt_len, chunk };
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else if (fname == "packet_get_unread_length") {
@@ -533,15 +565,23 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     assert(p);
 
     args = std::vector<Expr_ptr>{ p };
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::UINT16_T);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T);
     ret_symbol = "unread_len";
     ret_expr = call.ret;
   }
 
-  else if (fname == "expire_items_single_map") {    
-    uint64_t chain_addr = const_to_value(call.args["chain"].expr);
-    uint64_t vector_addr = const_to_value(call.args["vector"].expr);
-    uint64_t map_addr = const_to_value(call.args["map"].expr);
+  else if (fname == "expire_items_single_map") {
+    Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
+    assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
+
+    Expr_ptr vector_expr = transpile(this, call.args["vector"].expr);
+    assert(vector_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t vector_addr = (static_cast<Constant*>(vector_expr.get()))->get_value();
+
+    Expr_ptr map_expr = transpile(this, call.args["map"].expr);
+    assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
 
     Variable_ptr chain = get_from_state(chain_addr);
     Variable_ptr vector = get_from_state(vector_addr);
@@ -550,19 +590,21 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     assert(now);
 
     args = std::vector<Expr_ptr>{ chain, vector, map, now };
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "unmber_of_freed_flows";
     ret_expr = call.ret;
   }
 
   else if (fname == "map_get") {
-    uint64_t map_addr = const_to_value(call.args["map"].expr);
+    Expr_ptr map_expr = transpile(this, call.args["map"].expr);
+    assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
 
     Expr_ptr key = transpile(this, call.args["key"].expr);
     assert(key);
     Expr_ptr map = get_from_state(map_addr);
 
-    Type_ptr value_out_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    Type_ptr value_out_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     Variable_ptr value_out = generate_new_symbol("value_out", value_out_type);
 
     assert(!call.args["value_out"].out.isNull());
@@ -572,18 +614,20 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     exprs.push_back(value_out_decl);
 
     args = std::vector<Expr_ptr>{ map, key, AddressOf::build(value_out) };
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "map_has_this_key";
     ret_expr = call.ret;
   }
 
   else if (fname == "dchain_allocate_new_index") {
-    uint64_t chain_addr = const_to_value(call.args["chain"].expr);
+    Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
+    assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
 
     Expr_ptr chain = get_from_state(chain_addr);
 
     // dchain allocates an index when is allocated, so we start with new_index_1
-    Type_ptr index_out_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    Type_ptr index_out_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     Variable_ptr index_out = generate_new_symbol("new_index", index_out_type, 0, 1);
     assert(!call.args["index_out"].out.isNull());
     push_to_local(index_out, call.args["index_out"].out);
@@ -595,7 +639,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     exprs.push_back(index_out_decl);
 
     args = std::vector<Expr_ptr>{ chain, AddressOf::build(index_out), now };
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::INT);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "out_of_space";
     ret_expr = call.ret;
     counter_begins = 1;
@@ -604,15 +648,20 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   else if (fname == "vector_borrow") {
     assert(!call.args["val_out"].out.isNull());
 
-    uint64_t vector_addr = const_to_value(call.args["vector"].expr);
-    uint64_t val_out_addr = const_to_value(call.args["val_out"].out);
+    Expr_ptr vector_expr = transpile(this, call.args["vector"].expr);
+    assert(vector_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t vector_addr = (static_cast<Constant*>(vector_expr.get()))->get_value();
+
+    Expr_ptr val_out_expr = transpile(this, call.args["val_out"].out);
+    assert(val_out_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t val_out_addr = (static_cast<Constant*>(val_out_expr.get()))->get_value();
 
     Expr_ptr vector = get_from_state(vector_addr);
     Expr_ptr index = get_from_local(call.args["index"].expr);
     assert(index);
 
     // FIXME: track the type going in the vector
-    Type_ptr val_out_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+    Type_ptr val_out_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
     Variable_ptr val_out = generate_new_symbol("val_out", val_out_type, 1, 0);
     val_out->set_addr(val_out_addr);
 
@@ -620,15 +669,17 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     push_to_local(val_out, call.extra_vars["borrowed_cell"].second);
 
     VariableDecl_ptr val_out_decl = VariableDecl::build(val_out);
-    Expr_ptr zero = Constant::build(PrimitiveType::Kind::UINT32_T, 0);
+    Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
     exprs.push_back(Assignment::build(val_out_decl, zero));
 
     args = std::vector<Expr_ptr>{ vector, index, AddressOf::build(val_out) };
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else if (fname == "map_put") {
-    uint64_t map_addr = const_to_value(call.args["map"].expr);
+    Expr_ptr map_expr = transpile(this, call.args["map"].expr);
+    assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
 
     Expr_ptr map = get_from_state(map_addr);
     Expr_ptr key = transpile(this, call.args["key"].expr);
@@ -637,12 +688,17 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     assert(key);
 
     args = std::vector<Expr_ptr>{ map, key, value };
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else if (fname == "vector_return") {
-    uint64_t vector_addr = const_to_value(call.args["vector"].expr);
-    uint64_t value_addr = const_to_value(call.args["value"].expr);
+    Expr_ptr vector_expr = transpile(this, call.args["vector"].expr);
+    assert(vector_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t vector_addr = (static_cast<Constant*>(vector_expr.get()))->get_value();
+
+    Expr_ptr value_expr = transpile(this, call.args["value"].expr);
+    assert(value_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t value_addr = (static_cast<Constant*>(value_expr.get()))->get_value();
 
     Expr_ptr vector = get_from_state(vector_addr);
     Expr_ptr index = transpile(this, call.args["index"].expr);
@@ -651,11 +707,13 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     assert(value);
 
     args = std::vector<Expr_ptr>{ vector, index, value };
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else if (fname == "dchain_rejuvenate_index") {
-    uint64_t chain_addr = const_to_value(call.args["chain"].expr);
+    Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
+    assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
 
     Expr_ptr chain = get_from_state(chain_addr);
     assert(chain);
@@ -667,11 +725,54 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     args = std::vector<Expr_ptr>{ chain, index, now };
 
     // actually this is an int, but we never use it in any call path...
-    ret_type = PrimitiveType::build(PrimitiveType::Kind::VOID);
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else if (fname == "packet_return_chunk") {
-    // TODO
+    Expr_ptr chunk = get_from_local(call.args["the_chunk"].in);
+
+    // no changes to the chunk
+    if (chunk) {
+      return nullptr;
+    }
+
+    return nullptr; // TODO: remove this
+
+    Expr_ptr chunk_expr = transpile(this, call.args["the_chunk"].in);
+    assert(chunk_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chunk_addr = (static_cast<Constant*>(chunk_expr.get()))->get_value();
+
+    klee::ref<klee::Expr> prev_chunk = get_expr_from_local_by_addr(chunk_addr);
+    assert(!prev_chunk.isNull());
+
+    std::vector<Expr_ptr> changes = apply_changes_to_match(this, prev_chunk, call.args["the_chunk"].in);
+    exprs.insert(exprs.end(), changes.begin(), changes.end());
+
+    exit(0);
+
+    std::cerr << call.function_name << "\n";
+
+    for (const auto& arg : call.args) {
+      std::cerr << arg.first << " : "
+                << expr_to_string(arg.second.expr) << "\n";
+      if (!arg.second.in.isNull()) {
+        std::cerr << "  in:  " << expr_to_string(arg.second.in) << "\n";
+      }
+      if (!arg.second.out.isNull()) {
+        std::cerr << "  out: " << expr_to_string(arg.second.out) << "\n";
+      }
+    }
+
+    for (const auto& ev : call.extra_vars) {
+      std::cerr << ev.first << " : "
+                << expr_to_string(ev.second.first) << " | "
+                << expr_to_string(ev.second.second) << "\n";
+    }
+
+    std::cerr << expr_to_string(call.ret) << "\n";
+
+    assert(false && "Not implemented");
+
     return nullptr;
   }
 
@@ -703,7 +804,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   assert(args.size() == call.args.size());
   FunctionCall_ptr fcall = FunctionCall::build(fname, args, ret_type);
 
-  if (ret_type->get_primitive_kind() != PrimitiveType::Kind::VOID) {
+  if (ret_type->get_primitive_kind() != PrimitiveType::PrimitiveKind::VOID) {
     assert(ret_symbol.size());
 
     Variable_ptr ret_var = generate_new_symbol(ret_symbol, ret_type, 0, counter_begins);
@@ -736,40 +837,40 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
   Expr_ptr ret_expr;
 
   if (!constraint) {
-    Expr_ptr one = Constant::build(PrimitiveType::Kind::INT, 1);
+    Expr_ptr one = Constant::build(PrimitiveType::PrimitiveKind::INT, 1);
     return Return::build(one);
   }
 
   switch (constraint->get_kind()) {
-  case Node::Kind::EQUALS: {
+  case Node::NodeKind::EQUALS: {
     Equals* equals = static_cast<Equals*>(constraint.get());
 
-    assert(equals->get_lhs()->get_kind() == Node::Kind::CONSTANT);
-    assert(equals->get_rhs()->get_kind() == Node::Kind::VARIABLE);
+    assert(equals->get_lhs()->get_kind() == Node::NodeKind::CONSTANT);
+    assert(equals->get_rhs()->get_kind() == Node::NodeKind::VARIABLE);
 
     Constant* literal = static_cast<Constant*>(equals->get_lhs().get());
 
-    ret_expr = Constant::build(PrimitiveType::Kind::INT, literal->get_value() != 0);
+    ret_expr = Constant::build(PrimitiveType::PrimitiveKind::INT, literal->get_value() != 0);
     break;
   }
 
-  case Node::Kind::NOT: {
+  case Node::NodeKind::NOT: {
     Not* _not = static_cast<Not*>(constraint.get());
-    assert(_not->get_expr()->get_kind() == Node::Kind::EQUALS);
+    assert(_not->get_expr()->get_kind() == Node::NodeKind::EQUALS);
 
     Equals* equals = static_cast<Equals*>(_not->get_expr().get());
 
-    assert(equals->get_lhs()->get_kind() == Node::Kind::CONSTANT);
-    assert(equals->get_rhs()->get_kind() == Node::Kind::VARIABLE);
+    assert(equals->get_lhs()->get_kind() == Node::NodeKind::CONSTANT);
+    assert(equals->get_rhs()->get_kind() == Node::NodeKind::VARIABLE);
 
     Constant* literal = static_cast<Constant*>(equals->get_lhs().get());
 
-    ret_expr = Constant::build(PrimitiveType::Kind::INT, literal->get_value() == 0);
+    ret_expr = Constant::build(PrimitiveType::PrimitiveKind::INT, literal->get_value() == 0);
     break;
   }
 
-  case Node::Kind::VARIABLE: {
-    ret_expr = Constant::build(PrimitiveType::Kind::INT, 1);
+  case Node::NodeKind::VARIABLE: {
+    ret_expr = Constant::build(PrimitiveType::PrimitiveKind::INT, 1);
     break;
   }
 
@@ -889,10 +990,10 @@ void AST::context_switch(Context ctx) {
     push();
 
     std::vector<VariableDecl_ptr> args {
-      VariableDecl::build(from_cp_symbol("src_devices"), PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-      VariableDecl::build(from_cp_symbol("p"), Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T))),
-      VariableDecl::build(from_cp_symbol("pkt_len"), PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-      VariableDecl::build(from_cp_symbol("now"), PrimitiveType::build(PrimitiveType::Kind::UINT64_T))
+      VariableDecl::build(from_cp_symbol("src_devices"), PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
+      VariableDecl::build(from_cp_symbol("p"), Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T))),
+      VariableDecl::build(from_cp_symbol("pkt_len"), PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
+      VariableDecl::build(from_cp_symbol("now"), PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT64_T))
     };
 
     for (const auto& arg : args) {
@@ -920,7 +1021,7 @@ void AST::commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr c
   case INIT: {
     std::vector<FunctionArgDecl_ptr> _args;
     Block_ptr _body = Block::build(nodes);
-    Type_ptr _return = PrimitiveType::build(PrimitiveType::Kind::BOOL);
+    Type_ptr _return = PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL);
 
     nf_init = Function::build("nf_init", _args, _body, _return);
 
@@ -930,14 +1031,14 @@ void AST::commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr c
 
   case PROCESS: {
     std::vector<FunctionArgDecl_ptr> _args{
-      FunctionArgDecl::build(from_cp_symbol("src_devices"), PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-      FunctionArgDecl::build(from_cp_symbol("p"), Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T))),
-      FunctionArgDecl::build(from_cp_symbol("pkt_len"), PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-      FunctionArgDecl::build(from_cp_symbol("now"), PrimitiveType::build(PrimitiveType::Kind::UINT64_T)),
+      FunctionArgDecl::build(from_cp_symbol("src_devices"), PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
+      FunctionArgDecl::build(from_cp_symbol("p"), Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T))),
+      FunctionArgDecl::build(from_cp_symbol("pkt_len"), PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
+      FunctionArgDecl::build(from_cp_symbol("now"), PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT64_T)),
     };
 
     Block_ptr _body = Block::build(nodes);
-    Type_ptr _return = PrimitiveType::build(PrimitiveType::Kind::INT);
+    Type_ptr _return = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
 
     nf_process = Function::build("nf_process", _args, _body, _return);
 

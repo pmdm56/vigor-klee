@@ -27,8 +27,10 @@
 class AST;
 
 Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e);
-Expr_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e);
-uint64_t const_to_value(const klee::ref<klee::Expr> &e);
+std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
+                                             const klee::ref<klee::Expr> &e1,
+                                             const klee::ref<klee::Expr> &e2);
+Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e);
 uint64_t get_first_concat_idx(const klee::ref<klee::Expr> &e);
 uint64_t get_last_concat_idx(const klee::ref<klee::Expr> &e);
 

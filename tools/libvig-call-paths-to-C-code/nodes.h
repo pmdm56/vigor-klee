@@ -12,12 +12,9 @@ class AST;
 
 class Node {
 public:
-  enum Kind {
+  enum NodeKind {
     COMMENT,
-    PRIMITIVE,
-    STRUCT,
-    ARRAY,
-    POINTER,
+    TYPE,
     CAST,
     IMPORT,
     BLOCK,
@@ -54,9 +51,9 @@ public:
   };
 
 protected:
-  Kind kind;
+  NodeKind kind;
 
-  Node(Kind _kind) : kind(_kind) {}
+  Node(NodeKind _kind) : kind(_kind) {}
 
   void indent(std::ostream& ofs, unsigned int lvl=0) const {
     while (lvl != 0) {
@@ -66,7 +63,7 @@ protected:
   }
 
 public:
-  Kind get_kind() const { return kind; }
+  NodeKind get_kind() const { return kind; }
 
   virtual void synthesize(std::ostream& ofs, unsigned int lvl=0) const = 0;
   virtual void debug(std::ostream& ofs, unsigned int lvl=0) const = 0;
@@ -75,14 +72,24 @@ public:
 typedef std::shared_ptr<Node> Node_ptr;
 
 class Type : public Node {
+public:
+  enum TypeKind {
+    PRIMITIVE,
+    STRUCT,
+    ARRAY,
+    POINTER
+  };
+
 protected:
+  TypeKind type_kind;
   unsigned int size;
 
-  Type(Kind kind, unsigned int _size)
-    : Node(kind), size(_size) {}
+  Type(TypeKind _type_kind, unsigned int _size)
+    : Node(TYPE), type_kind(_type_kind), size(_size) {}
 
 public:
   unsigned int get_size() const { return size; }
+  TypeKind get_type_kind() const { return type_kind; }
 
   virtual const std::string& get_name() const = 0;
   virtual std::shared_ptr<Type> clone() const = 0;
@@ -122,7 +129,7 @@ protected:
   bool wrap;
   Type_ptr type;
 
-  Expression(Kind kind, std::shared_ptr<Expression> _expr1, std::shared_ptr<Expression> _expr2)
+  Expression(NodeKind kind, std::shared_ptr<Expression> _expr1, std::shared_ptr<Expression> _expr2)
     : Node(kind), terminate_line(false), wrap(false) {
     Type_ptr type1 = _expr1->get_type();
     Type_ptr type2 = _expr2->get_type();
@@ -134,7 +141,7 @@ protected:
     }
   }
 
-  Expression(Kind kind, Type_ptr _type)
+  Expression(NodeKind kind, Type_ptr _type)
     : Node(kind), terminate_line(false), wrap(false),
       type(_type->clone()) {}
 
@@ -178,7 +185,7 @@ typedef std::shared_ptr<Expression> Expr_ptr;
 
 class PrimitiveType : public Type {
 public:
-  enum Kind {
+  enum PrimitiveKind {
     VOID,
     BOOL,
     UINT8_T, INT8_T,
@@ -188,10 +195,10 @@ public:
   };
 
 private:
-  PrimitiveType::Kind primitive_kind;
+  PrimitiveKind primitive_kind;
   std::string name;
 
-  PrimitiveType(PrimitiveType::Kind _primitive_kind, unsigned int _size)
+  PrimitiveType(PrimitiveKind _primitive_kind, unsigned int _size)
     : Type(PRIMITIVE, _size), primitive_kind(_primitive_kind) {
 
     switch (primitive_kind) {
@@ -232,7 +239,7 @@ private:
   }
 
 public:
-  PrimitiveType::Kind get_primitive_kind() const {
+  PrimitiveKind get_primitive_kind() const {
     return primitive_kind;
   }
 
@@ -253,7 +260,7 @@ public:
     return std::shared_ptr<Type>(nt);
   }
 
-  static std::shared_ptr<PrimitiveType> build(PrimitiveType::Kind _kind) {
+  static std::shared_ptr<PrimitiveType> build(PrimitiveKind _kind) {
     PrimitiveType* nt;
 
     switch (_kind) {
@@ -290,37 +297,31 @@ typedef std::shared_ptr<PrimitiveType> PrimitiveType_ptr;
 
 class Array : public Type {
 private:
-  unsigned int n;
+  unsigned int n_elems;
   Type_ptr type;
 
-  Array(Type_ptr _type, unsigned int _n)
-    : Type(ARRAY, _type->get_size() * _n), n(_n), type(_type) {}
+  Array(Type_ptr _type, unsigned int _n_elems)
+    : Type(ARRAY, _type->get_size() * _n_elems), n_elems(_n_elems), type(_type) {}
 
 public:
   const std::string& get_name() const override { return type->get_name(); }
-  unsigned int get_n() const { return n; }
+  unsigned int get_n_elems() const { return n_elems; }
 
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
     ofs << type->get_name();
-    ofs << "[";
-    ofs << n;
-    ofs << "]";
   }
 
   void debug(std::ostream& ofs, unsigned int lvl=0) const override {
     ofs << type->get_name();
-    ofs << "[";
-    ofs << n;
-    ofs << "]";
   }
 
   std::shared_ptr<Type> clone() const override {
-    Type* t = new Array(type, n);
+    Type* t = new Array(type, n_elems);
     return std::shared_ptr<Type>(t);
   }
 
-  static std::shared_ptr<Array> build(Type_ptr _type, unsigned int _n) {
-    Array* a = new Array(_type, _n);
+  static std::shared_ptr<Array> build(Type_ptr _type, unsigned int _n_elems) {
+    Array* a = new Array(_type, _n_elems);
     return std::shared_ptr<Array>(a);
   }
 };
@@ -415,43 +416,43 @@ public:
     Type_ptr _type = _expr->get_type();
     Type_ptr _new_type;
 
-    switch (_type->get_kind()) {
-    case PRIMITIVE: {
+    switch (_type->get_type_kind()) {
+    case Type::TypeKind::PRIMITIVE: {
       PrimitiveType* primitive = static_cast<PrimitiveType*>(_type.get());
 
       switch (primitive->get_primitive_kind()) {
-      case PrimitiveType::Kind::VOID:
+      case PrimitiveType::PrimitiveKind::VOID:
         assert(false && "Flipping sign of a void type");
         break;
-      case PrimitiveType::Kind::BOOL:
+      case PrimitiveType::PrimitiveKind::BOOL:
         assert(false && "Flipping sign of a bool type");
         break;
-      case PrimitiveType::Kind::UINT8_T:
-        _new_type = PrimitiveType::build(PrimitiveType::Kind::INT8_T);
+      case PrimitiveType::PrimitiveKind::UINT8_T:
+        _new_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT8_T);
         break;
-      case PrimitiveType::Kind::UINT16_T:
-        _new_type = PrimitiveType::build(PrimitiveType::Kind::INT16_T);
+      case PrimitiveType::PrimitiveKind::UINT16_T:
+        _new_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT16_T);
         break;
-      case PrimitiveType::Kind::UINT32_T:
-        _new_type = PrimitiveType::build(PrimitiveType::Kind::INT32_T);
+      case PrimitiveType::PrimitiveKind::UINT32_T:
+        _new_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
         break;
-      case PrimitiveType::Kind::UINT64_T:
-        _new_type = PrimitiveType::build(PrimitiveType::Kind::INT64_T);
+      case PrimitiveType::PrimitiveKind::UINT64_T:
+        _new_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT64_T);
         break;
-      case PrimitiveType::Kind::INT:
-      case PrimitiveType::Kind::INT8_T:
-      case PrimitiveType::Kind::INT16_T:
-      case PrimitiveType::Kind::INT32_T:
-      case PrimitiveType::Kind::INT64_T:
+      case PrimitiveType::PrimitiveKind::INT:
+      case PrimitiveType::PrimitiveKind::INT8_T:
+      case PrimitiveType::PrimitiveKind::INT16_T:
+      case PrimitiveType::PrimitiveKind::INT32_T:
+      case PrimitiveType::PrimitiveKind::INT64_T:
         _new_type = _type;
         break;
       }
     }
 
     break;
-    case STRUCT:
-    case POINTER:
-    case ARRAY:
+    case Type::TypeKind::STRUCT:
+    case Type::TypeKind::POINTER:
+    case Type::TypeKind::ARRAY:
       _expr->debug(std::cerr);
       std::cerr << "\n";
       assert(false && "Not implemented");
@@ -580,35 +581,35 @@ private:
   uint64_t value;
   bool hex;
 
-  Constant(PrimitiveType::Kind _kind, uint64_t _value, bool _hex)
+  Constant(PrimitiveType::PrimitiveKind _kind, uint64_t _value, bool _hex)
     : Expression(CONSTANT, PrimitiveType::build(_kind)),
       value(_value), hex(_hex) {}
 
-  Constant(PrimitiveType::Kind _kind, uint64_t _value)
+  Constant(PrimitiveType::PrimitiveKind _kind, uint64_t _value)
     : Constant(_kind, _value, false) {}
 
   void parse_value(std::ostream& ofs) const {
-    assert(type->get_kind() == Node::Kind::PRIMITIVE);
+    assert(type->get_type_kind() == Type::TypeKind::PRIMITIVE);
     PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
 
     switch (primitive->get_primitive_kind()) {
-    case PrimitiveType::Kind::BOOL:
+    case PrimitiveType::PrimitiveKind::BOOL:
       if (value == 0) ofs << "false";
       else ofs << "true";
       break;
-    case PrimitiveType::Kind::UINT8_T:
+    case PrimitiveType::PrimitiveKind::UINT8_T:
       ofs << static_cast<uint8_t>(value);
       break;
-    case PrimitiveType::Kind::UINT16_T:
+    case PrimitiveType::PrimitiveKind::UINT16_T:
       ofs << static_cast<uint16_t>(value);
       break;
-    case PrimitiveType::Kind::INT:
+    case PrimitiveType::PrimitiveKind::INT:
       ofs << static_cast<int>(value);
       break;
-    case PrimitiveType::Kind::UINT32_T:
+    case PrimitiveType::PrimitiveKind::UINT32_T:
       ofs << static_cast<uint32_t>(value);
       break;
-    case PrimitiveType::Kind::UINT64_T:
+    case PrimitiveType::PrimitiveKind::UINT64_T:
       ofs << static_cast<uint64_t>(value);
       break;
     default:
@@ -651,18 +652,18 @@ public:
   }
 
   std::shared_ptr<Expression> clone() const override {
-    assert(type->get_kind() == Node::Kind::PRIMITIVE);
+    assert(type->get_type_kind() == Type::TypeKind::PRIMITIVE);
     PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
     Expression* e = new Constant(primitive->get_primitive_kind(), value, hex);
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<Constant> build(PrimitiveType::Kind _kind, uint64_t _value, bool _hex) {
+  static std::shared_ptr<Constant> build(PrimitiveType::PrimitiveKind _kind, uint64_t _value, bool _hex) {
     Constant* literal = new Constant(_kind, _value, _hex);
     return std::shared_ptr<Constant>(literal);
   }
 
-  static std::shared_ptr<Constant> build(PrimitiveType::Kind _kind, uint64_t _value) {
+  static std::shared_ptr<Constant> build(PrimitiveType::PrimitiveKind _kind, uint64_t _value) {
     Constant* literal = new Constant(_kind, _value, false);
     return std::shared_ptr<Constant>(literal);
   }
@@ -676,7 +677,7 @@ private:
   Expr_ptr rhs;
 
   NotEquals(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(NOT_EQUALS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+    : Expression(NOT_EQUALS, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
@@ -729,7 +730,7 @@ private:
   Expr_ptr rhs;
 
   Equals(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(EQUALS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+    : Expression(EQUALS, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     lhs->set_wrap(true);
     rhs->set_wrap(true);
@@ -953,7 +954,7 @@ public:
     condition->synthesize(ofs);
     ofs << ") ";
 
-    if (on_true->get_kind() == Node::Kind::BLOCK) {
+    if (on_true->get_kind() == Node::NodeKind::BLOCK) {
       on_true->synthesize(ofs, lvl);
     } else {
       ofs << "{" << "\n";
@@ -975,7 +976,7 @@ public:
     indent(ofs, lvl);
     ofs << "else ";
 
-    if (on_false->get_kind() == Node::Kind::BLOCK) {
+    if (on_false->get_kind() == Node::NodeKind::BLOCK) {
       on_false->synthesize(ofs, lvl);
     } else {
       ofs << "{" << "\n";
@@ -1138,7 +1139,7 @@ private:
   Expr_ptr rhs;
 
   Greater(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(GREATER, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+    : Expression(GREATER, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
@@ -1191,7 +1192,7 @@ private:
   Expr_ptr rhs;
 
   GreaterEq(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(GREATER_EQ, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+    : Expression(GREATER_EQ, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
@@ -1244,7 +1245,7 @@ private:
   Expr_ptr rhs;
 
   Less(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(LESS, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+    : Expression(LESS, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
@@ -1297,7 +1298,7 @@ private:
   Expr_ptr rhs;
 
   LessEq(Expr_ptr _lhs, Expr_ptr _rhs)
-    : Expression(LESS_EQ, PrimitiveType::build(PrimitiveType::Kind::BOOL)),
+    : Expression(LESS_EQ, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
     assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
@@ -2004,8 +2005,8 @@ private:
   Expr_ptr expr;
 
   AddressOf(Expr_ptr _expr)
-    : Expression(ADDRESSOF, PrimitiveType::build(PrimitiveType::Kind::UINT32_T)) {
-    assert(_expr->get_kind() == Node::Kind::VARIABLE);    
+    : Expression(ADDRESSOF, PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T)) {
+    assert(_expr->get_kind() == Node::NodeKind::VARIABLE);
     expr = _expr->clone();
   }
 
@@ -2064,7 +2065,7 @@ private:
     Variable* var = static_cast<Variable*>(expr.get());
     Type_ptr t = var->get_type();
 
-    assert(t->get_kind() == ARRAY);
+    assert(t->get_type_kind() == Type::TypeKind::ARRAY);
 
     expr->synthesize(ofs);
     ofs << "[";
@@ -2077,13 +2078,13 @@ private:
     Type_ptr t = var->get_type();
     bool is_ptr = false;
 
-    if (t->get_kind() == POINTER) {
+    if (t->get_type_kind() == Type::TypeKind::POINTER) {
       is_ptr = true;
       Pointer* ptr = static_cast<Pointer*>(var->get_type().get());
       t = ptr->get_type();
     }
 
-    assert(t->get_kind() == STRUCT);
+    assert(t->get_type_kind() == Type::TypeKind::STRUCT);
     assert(idx->get_kind() == CONSTANT);
 
     Constant *idx_const = static_cast<Constant*>(idx.get());
@@ -2139,18 +2140,18 @@ private:
 
     Type_ptr t = var->get_type();
 
-    if (t->get_kind() == POINTER) {
+    if (t->get_type_kind() == Type::TypeKind::POINTER) {
       is_ptr = true;
       Pointer* ptr = static_cast<Pointer*>(var->get_type().get());
       t = ptr->get_type();
     }
 
-    if (t->get_kind() == ARRAY) {
+    if (t->get_type_kind() == Type::TypeKind::ARRAY) {
       synthesize_array(ofs, lvl);
       return;
     }
 
-    if (t->get_kind() == STRUCT) {
+    if (t->get_type_kind() == Type::TypeKind::STRUCT) {
       synthesize_struct(ofs, lvl);
       return;
     }
@@ -2185,7 +2186,7 @@ private:
         ofs << ")";
       }
     } else {
-      Expr_ptr offset = Mul::build(idx, Constant::build(PrimitiveType::Kind::INT, size));
+      Expr_ptr offset = Mul::build(idx, Constant::build(PrimitiveType::PrimitiveKind::INT, size));
 
       ofs << "(";
       expr->synthesize(ofs);

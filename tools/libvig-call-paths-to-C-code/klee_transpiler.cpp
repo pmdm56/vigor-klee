@@ -7,19 +7,19 @@ Type_ptr klee_width_to_type(klee::Expr::Width width) {
   case klee::Expr::InvalidWidth:
     assert(false);
   case klee::Expr::Bool:
-    type = PrimitiveType::build(PrimitiveType::Kind::BOOL);
+    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL);
     break;
   case klee::Expr::Int8:
-    type = PrimitiveType::build(PrimitiveType::Kind::UINT8_T);
+    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
     break;
   case klee::Expr::Int16:
-    type = PrimitiveType::build(PrimitiveType::Kind::UINT16_T);
+    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T);
     break;
   case klee::Expr::Int32:
-    type = PrimitiveType::build(PrimitiveType::Kind::UINT32_T);
+    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
     break;
   case klee::Expr::Int64:
-    type = PrimitiveType::build(PrimitiveType::Kind::UINT64_T);
+    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT64_T);
     break;
   case klee::Expr::Fl80:
   default:
@@ -27,36 +27,29 @@ Type_ptr klee_width_to_type(klee::Expr::Width width) {
       assert(false && "Width not a byte multiple");
     }
 
-    Type_ptr byte = PrimitiveType::build(PrimitiveType::Kind::UINT8_T);
+    Type_ptr byte = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
     type = Array::build(byte, width / 8);
   }
 
   return type;
 }
 
-Expr_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
+Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
+  assert(!e.isNull());
+
   if (e->getKind() != klee::Expr::Kind::Constant) {
     return nullptr;
   }
 
   klee::ConstantExpr* constant = static_cast<klee::ConstantExpr *>(e.get());
-
-  uint64_t value = constant->getZExtValue();
   Type_ptr type = klee_width_to_type(constant->getWidth());
 
-  assert(type->get_kind() == Node::Kind::PRIMITIVE);
+  assert(type->get_type_kind() == Type::TypeKind::PRIMITIVE);
   PrimitiveType* p = static_cast<PrimitiveType*>(type.get());
 
-  return Constant::build(p->get_primitive_kind(), value);
-}
-
-uint64_t const_to_value(const klee::ref<klee::Expr> &e) {
-  assert(e->getKind() == klee::Expr::Kind::Constant);
-
-  klee::ConstantExpr* constant = static_cast<klee::ConstantExpr *>(e.get());
   uint64_t value = constant->getZExtValue();
 
-  return value;
+  return Constant::build(p->get_primitive_kind(), value);
 }
 
 Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e) {
@@ -78,7 +71,6 @@ Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e) {
   result = converter.get_result();
   assert(result);
 
-
   return result->simplify(ast);
 }
 
@@ -93,7 +85,11 @@ uint64_t get_first_concat_idx(const klee::ref<klee::Expr> &e) {
   assert(curr_node->getKind() == klee::Expr::Kind::Read);
   klee::ReadExpr* read = static_cast<klee::ReadExpr*>(curr_node.get());
 
-  return const_to_value(read->index);
+  Expr_ptr idx = const_to_ast_expr(read->index);
+  assert(idx->get_kind() == Node::NodeKind::CONSTANT);
+
+  Constant* idx_const = static_cast<Constant*>(idx.get());
+  return idx_const->get_value();
 }
 
 uint64_t get_last_concat_idx(const klee::ref<klee::Expr> &e) {
@@ -104,7 +100,48 @@ uint64_t get_last_concat_idx(const klee::ref<klee::Expr> &e) {
   assert(left->getKind() == klee::Expr::Kind::Read);
   klee::ReadExpr* read = static_cast<klee::ReadExpr*>(left.get());
 
-  return const_to_value(read->index);
+  Expr_ptr idx = const_to_ast_expr(read->index);
+  assert(idx->get_kind() == Node::NodeKind::CONSTANT);
+
+  Constant* idx_const = static_cast<Constant*>(idx.get());
+  return idx_const->get_value();
+}
+
+std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
+                                             const klee::ref<klee::Expr> &e1,
+                                             const klee::ref<klee::Expr> &e2) {
+  assert(e1->getWidth() == e2->getWidth());
+  std::vector<Expr_ptr> changes;
+  klee::Expr::Width width = e1->getWidth();
+
+  std::cerr << "========= Checking changes =========" << "\n";
+  std::cerr << "FROM: " << expr_to_string(e1) << "\n";
+  std::cerr << "TO:   " << expr_to_string(e2) << "\n";
+
+  Expr_ptr e1_ast = transpile(ast, e1);
+
+  std::cerr << "Expression 1:" << "\n";
+  e1_ast->synthesize(std::cerr);
+  std::cerr << "\n";
+
+  Expr_ptr e2_ast = transpile(ast, e2);
+
+  std::cerr << "Expression 2:" << "\n";
+  e2_ast->synthesize(std::cerr);
+  std::cerr << "\n";
+
+  for (unsigned int offset = 0; offset < width / 8; offset++) {
+    auto e1_byte = ast_builder_assistant_t::exprBuilder->Extract(e1, offset, 8);
+    auto e2_byte = ast_builder_assistant_t::exprBuilder->Extract(e2, offset, 8);
+
+    bool eq = ast_builder_assistant_t::are_exprs_always_equal(e1_byte, e2_byte);
+
+    if (!eq) {
+      std::cerr << "diff in byte " << offset << "\n";
+    }
+  }
+
+  return changes;
 }
 
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::ReadExpr &e) {
@@ -130,7 +167,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::Read
   }
 
   else if (symbol == "packet_chunks") {
-    assert(idx->get_kind() == Node::Kind::CONSTANT);
+    assert(idx->get_kind() == Node::NodeKind::CONSTANT);
     Constant* idx_const = static_cast<Constant*>(idx.get());
 
     AST::chunk_t chunk_info = ast->get_chunk_from_local(idx_const->get_value());
@@ -228,11 +265,11 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::E
   Expr_ptr ast_expr = transpile(ast, expr);
   assert(ast_expr);
 
-  Expr_ptr mask = Constant::build(PrimitiveType::Kind::UINT64_T, (1 << size) - 1, true);
+  Expr_ptr mask = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, (1 << size) - 1, true);
   Expr_ptr extract;
 
   if (offset_value > 0) {
-    Expr_ptr offset = Constant::build(PrimitiveType::Kind::UINT64_T, offset_value);
+    Expr_ptr offset = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, offset_value);
     ShiftRight_ptr shift = ShiftRight::build(ast_expr, offset);
     extract = And::build(shift, mask);
   }
@@ -286,7 +323,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSExt(const klee::SExt
   Expr_ptr result;
 
   if (size > expr_size) {
-    assert(type->get_kind() == Node::Kind::PRIMITIVE);
+    assert(type->get_type_kind() == Type::TypeKind::PRIMITIVE);
 
     PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
     Expr_ptr mask_expr = Constant::build(primitive->get_primitive_kind(), mask, true);
@@ -529,14 +566,14 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitEq(const klee::EqExpr
   Expr_ptr right = transpile(ast, e.getKid(1));
   assert(right);
 
-  if (right->get_kind() == Node::Kind::EQUALS &&
-      left->get_kind() == Node::Kind::CONSTANT) {
+  if (right->get_kind() == Node::NodeKind::EQUALS &&
+      left->get_kind() == Node::NodeKind::CONSTANT) {
 
     Constant* left_const = static_cast<Constant*>(left.get());
     Equals* right_eq = static_cast<Equals*>(right.get());
     Expr_ptr right_eq_left = right_eq->get_lhs();
 
-    if (right_eq_left->get_kind() == Node::Kind::CONSTANT) {
+    if (right_eq_left->get_kind() == Node::NodeKind::CONSTANT) {
       Constant* right_eq_left_const = static_cast<Constant*>(right_eq_left.get());
 
       if (right_eq_left_const->get_value() == 0 && left_const->get_value() == 0) {

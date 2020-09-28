@@ -344,6 +344,7 @@ public:
   };
 
   chunk_t get_chunk_from_local(unsigned int idx);
+  klee::ref<klee::Expr> get_expr_from_local_by_addr(unsigned int addr);
   Variable_ptr get_from_local_by_addr(const std::string& symbol, unsigned int addr);
   Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
   Variable_ptr get_from_local(klee::ref<klee::Expr> expr);
