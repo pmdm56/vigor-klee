@@ -805,6 +805,10 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     expr->set_wrap(false);
   }
 
+  if (exprs.size() == 0) {
+    return nullptr;
+  }
+
   return Block::build(exprs, false);
 }
 
