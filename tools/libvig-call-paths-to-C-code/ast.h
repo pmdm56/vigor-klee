@@ -171,6 +171,17 @@ struct ast_builder_assistant_t {
     ast_builder_assistant_t::exprBuilder = klee::createDefaultExprBuilder();
   }
 
+  static uint64_t value_from_expr(klee::ref<klee::Expr> expr) {
+    klee::ConstraintManager no_constraints;
+    klee::Query sat_query(no_constraints, expr);
+
+    klee::ref<klee::ConstantExpr> value_expr;
+    bool success = ast_builder_assistant_t::solver->getValue(sat_query, value_expr);
+
+    assert(success);
+    return value_expr->getZExtValue();
+  }
+
   static bool is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr) {
     klee::Query sat_query(constraints, expr);
 

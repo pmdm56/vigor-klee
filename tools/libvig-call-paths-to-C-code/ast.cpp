@@ -472,9 +472,11 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   klee::ref<klee::Expr> ret_expr;
   unsigned int counter_begins = 0;
 
+  bool ignore = false;
+
   if (fname == "current_time") {
     associate_expr_to_local("now", call.ret);
-    return nullptr;
+    ignore = true;
   }
 
   else if (fname == "packet_borrow_next_chunk") {
@@ -729,51 +731,22 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   }
 
   else if (fname == "packet_return_chunk") {
+    ignore = true;
+
     Expr_ptr chunk = get_from_local(call.args["the_chunk"].in);
 
-    // no changes to the chunk
-    if (chunk) {
-      return nullptr;
+    // changes to the chunk
+    if (chunk == nullptr) {
+      Expr_ptr chunk_expr = transpile(this, call.args["the_chunk"].expr);
+      assert(chunk_expr->get_kind() == Node::NodeKind::CONSTANT);
+      uint64_t chunk_addr = (static_cast<Constant*>(chunk_expr.get()))->get_value();
+
+      klee::ref<klee::Expr> prev_chunk = get_expr_from_local_by_addr(chunk_addr);
+      assert(!prev_chunk.isNull());
+
+      std::vector<Expr_ptr> changes = apply_changes_to_match(this, prev_chunk, call.args["the_chunk"].in);
+      exprs.insert(exprs.end(), changes.begin(), changes.end());
     }
-
-    return nullptr; // TODO: remove this
-
-    Expr_ptr chunk_expr = transpile(this, call.args["the_chunk"].in);
-    assert(chunk_expr->get_kind() == Node::NodeKind::CONSTANT);
-    uint64_t chunk_addr = (static_cast<Constant*>(chunk_expr.get()))->get_value();
-
-    klee::ref<klee::Expr> prev_chunk = get_expr_from_local_by_addr(chunk_addr);
-    assert(!prev_chunk.isNull());
-
-    std::vector<Expr_ptr> changes = apply_changes_to_match(this, prev_chunk, call.args["the_chunk"].in);
-    exprs.insert(exprs.end(), changes.begin(), changes.end());
-
-    exit(0);
-
-    std::cerr << call.function_name << "\n";
-
-    for (const auto& arg : call.args) {
-      std::cerr << arg.first << " : "
-                << expr_to_string(arg.second.expr) << "\n";
-      if (!arg.second.in.isNull()) {
-        std::cerr << "  in:  " << expr_to_string(arg.second.in) << "\n";
-      }
-      if (!arg.second.out.isNull()) {
-        std::cerr << "  out: " << expr_to_string(arg.second.out) << "\n";
-      }
-    }
-
-    for (const auto& ev : call.extra_vars) {
-      std::cerr << ev.first << " : "
-                << expr_to_string(ev.second.first) << " | "
-                << expr_to_string(ev.second.second) << "\n";
-    }
-
-    std::cerr << expr_to_string(call.ret) << "\n";
-
-    assert(false && "Not implemented");
-
-    return nullptr;
   }
 
   else {
@@ -801,28 +774,30 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     assert(false && "Not implemented");
   }
 
-  assert(args.size() == call.args.size());
-  FunctionCall_ptr fcall = FunctionCall::build(fname, args, ret_type);
+  if (!ignore) {
+    assert(args.size() == call.args.size());
+    FunctionCall_ptr fcall = FunctionCall::build(fname, args, ret_type);
 
-  if (ret_type->get_primitive_kind() != PrimitiveType::PrimitiveKind::VOID) {
-    assert(ret_symbol.size());
+    if (ret_type->get_primitive_kind() != PrimitiveType::PrimitiveKind::VOID) {
+      assert(ret_symbol.size());
 
-    Variable_ptr ret_var = generate_new_symbol(ret_symbol, ret_type, 0, counter_begins);
+      Variable_ptr ret_var = generate_new_symbol(ret_symbol, ret_type, 0, counter_begins);
 
-    if (!ret_expr.isNull()) {
-      push_to_local(ret_var, ret_expr);
-    } else {
-      push_to_local(ret_var);
+      if (!ret_expr.isNull()) {
+        push_to_local(ret_var, ret_expr);
+      } else {
+        push_to_local(ret_var);
+      }
+
+      VariableDecl_ptr ret = VariableDecl::build(ret_var);
+      Assignment_ptr assignment = Assignment::build(ret, fcall);
+
+      exprs.push_back(assignment);
     }
 
-    VariableDecl_ptr ret = VariableDecl::build(ret_var);
-    Assignment_ptr assignment = Assignment::build(ret, fcall);
-
-    exprs.push_back(assignment);
-  }
-
-  else {
-    exprs.push_back(fcall);
+    else {
+      exprs.push_back(fcall);
+    }
   }
 
   for (auto expr : exprs) {

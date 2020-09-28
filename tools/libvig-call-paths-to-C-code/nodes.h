@@ -305,6 +305,7 @@ private:
 
 public:
   const std::string& get_name() const override { return type->get_name(); }
+  Type_ptr get_elem_type() const { return type; }
   unsigned int get_n_elems() const { return n_elems; }
 
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -313,6 +314,8 @@ public:
 
   void debug(std::ostream& ofs, unsigned int lvl=0) const override {
     ofs << type->get_name();
+    ofs << "*";
+    ofs << n_elems;
   }
 
   std::shared_ptr<Type> clone() const override {
@@ -578,59 +581,123 @@ typedef std::shared_ptr<Block> Block_ptr;
 
 class Constant : public Expression {
 private:
-  uint64_t value;
+  std::vector<uint64_t> values;
   bool hex;
 
   Constant(PrimitiveType::PrimitiveKind _kind, uint64_t _value, bool _hex)
-    : Expression(CONSTANT, PrimitiveType::build(_kind)),
-      value(_value), hex(_hex) {}
+    : Expression(CONSTANT, PrimitiveType::build(_kind)), hex(_hex) {
+    values = std::vector<uint64_t>(1);
+    values[0] = _value;
+  }
 
-  Constant(PrimitiveType::PrimitiveKind _kind, uint64_t _value)
-    : Constant(_kind, _value, false) {}
+  Constant(Type_ptr type, bool _hex)
+    : Expression(CONSTANT, type), hex(_hex) {
+    switch (type->get_type_kind()) {
+    case Type::TypeKind::ARRAY: {
+      Array* arr = static_cast<Array*>(type.get());
+      values = std::vector<uint64_t>(arr->get_n_elems());
+      break;
+    }
+    case Type::TypeKind::POINTER:
+    case Type::TypeKind::PRIMITIVE:
+      values = std::vector<uint64_t>(1);
+      break;
+    case Type::TypeKind::STRUCT:
+      assert(false && "Not implemented");
+    };
+  }
+
+  Constant(Type_ptr type, std::vector<uint64_t> _values, bool _hex)
+    : Expression(CONSTANT, type), values(_values), hex(_hex) {}
 
   void parse_value(std::ostream& ofs) const {
-    assert(type->get_type_kind() == Type::TypeKind::PRIMITIVE);
-    PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
+    assert(values.size());
 
-    switch (primitive->get_primitive_kind()) {
-    case PrimitiveType::PrimitiveKind::BOOL:
-      if (value == 0) ofs << "false";
-      else ofs << "true";
-      break;
-    case PrimitiveType::PrimitiveKind::UINT8_T:
-      ofs << static_cast<uint8_t>(value);
-      break;
-    case PrimitiveType::PrimitiveKind::UINT16_T:
-      ofs << static_cast<uint16_t>(value);
-      break;
-    case PrimitiveType::PrimitiveKind::INT:
-      ofs << static_cast<int>(value);
-      break;
-    case PrimitiveType::PrimitiveKind::UINT32_T:
-      ofs << static_cast<uint32_t>(value);
-      break;
-    case PrimitiveType::PrimitiveKind::UINT64_T:
-      ofs << static_cast<uint64_t>(value);
-      break;
-    default:
-      assert(false);
+    if (hex) {
+      ofs << std::hex;
     }
+
+    switch (type->get_type_kind()) {
+    case Type::TypeKind::ARRAY: {
+      ofs << "{ ";
+      for (unsigned int idx = 0; idx < values.size(); idx++) {
+        auto value = values[idx];
+
+        if (hex) ofs << "0x";
+        ofs << value;
+
+        if (idx < values.size() - 1) {
+          ofs << ", ";
+        }
+      }
+      ofs << " }";
+      break;
+    }
+    case Type::TypeKind::POINTER:
+      assert(false && "Not implemented");
+    case Type::TypeKind::PRIMITIVE: {
+      PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
+
+      switch (primitive->get_primitive_kind()) {
+      case PrimitiveType::PrimitiveKind::BOOL:
+        if (values[0] == 0) ofs << "false";
+        else ofs << "true";
+        break;
+      case PrimitiveType::PrimitiveKind::UINT8_T:
+        if (hex) ofs << "0x";
+        ofs << static_cast<uint8_t>(values[0]);
+        break;
+      case PrimitiveType::PrimitiveKind::UINT16_T:
+        if (hex) ofs << "0x";
+        ofs << static_cast<uint16_t>(values[0]);
+        break;
+      case PrimitiveType::PrimitiveKind::INT:
+        if (hex) ofs << "0x";
+        ofs << static_cast<int>(values[0]);
+        break;
+      case PrimitiveType::PrimitiveKind::UINT32_T:
+        if (hex) ofs << "0x";
+        ofs << static_cast<uint32_t>(values[0]);
+        break;
+      case PrimitiveType::PrimitiveKind::UINT64_T:
+        if (hex) ofs << "0x";
+        ofs << static_cast<uint64_t>(values[0]);
+        break;
+      default:
+        assert(false);
+      }
+      break;
+    }
+    case Type::TypeKind::STRUCT:
+      assert(false && "Not implemented");
+    };
+
+    ofs << std::dec;
   }
 
 public:
-  uint64_t get_value() const { return value; }
+  uint64_t get_value() const {
+    assert(values.size());
+    return values[0];
+  }
+
+  uint64_t get_value(unsigned int idx) const {
+    assert(values.size() > idx);
+    return values[idx];
+  }
+
+  void set_value(uint64_t value) {
+    assert(values.size());
+    values[0] = value;
+  }
+
+  void set_value(uint64_t value, unsigned int idx) {
+    assert(values.size() > idx);
+    values[idx] = value;
+  }
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
-    if (hex) {
-      ofs << "0x";
-      ofs << std::hex;
-      ofs << value;
-      ofs << std::dec;
-    }
-
-    else {
-      parse_value(ofs);
-    }
+    parse_value(ofs);
   }
 
   void debug(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -652,10 +719,18 @@ public:
   }
 
   std::shared_ptr<Expression> clone() const override {
-    assert(type->get_type_kind() == Type::TypeKind::PRIMITIVE);
-    PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
-    Expression* e = new Constant(primitive->get_primitive_kind(), value, hex);
+    Expression* e = new Constant(type, values, hex);
     return std::shared_ptr<Expression>(e);
+  }
+
+  static std::shared_ptr<Constant> build(Type_ptr _type, bool _hex) {
+    Constant* literal = new Constant(_type, _hex);
+    return std::shared_ptr<Constant>(literal);
+  }
+
+  static std::shared_ptr<Constant> build(Type_ptr _type) {
+    Constant* literal = new Constant(_type, false);
+    return std::shared_ptr<Constant>(literal);
   }
 
   static std::shared_ptr<Constant> build(PrimitiveType::PrimitiveKind _kind, uint64_t _value, bool _hex) {
@@ -2067,6 +2142,16 @@ private:
 
     assert(t->get_type_kind() == Type::TypeKind::ARRAY);
 
+    if (idx->get_kind() == Node::NodeKind::CONSTANT) {
+      Constant *idx_const = static_cast<Constant*>(idx.get());
+
+      if (type->get_size() == t->get_size()) {
+        assert(idx_const->get_value() == 0);
+        expr->synthesize(ofs);
+        return;
+      }
+    }
+
     expr->synthesize(ofs);
     ofs << "[";
     idx->synthesize(ofs);
@@ -2135,6 +2220,8 @@ private:
   }
 
   void synthesize_helper(std::ostream& ofs, unsigned int lvl, bool offset) const {
+    assert(expr->get_kind() == Node::NodeKind::VARIABLE);
+
     Variable* var = static_cast<Variable*>(expr.get());
     bool is_ptr = false;
 
@@ -2673,13 +2760,8 @@ public:
     return std::shared_ptr<Expression>(e);
   }
 
-  static std::shared_ptr<Assignment> build(Variable_ptr _variable, Expr_ptr _value) {
-    Assignment* assignment = new Assignment(_variable, _value);
-    return std::shared_ptr<Assignment>(assignment);
-  }
-
-  static std::shared_ptr<Assignment> build(VariableDecl_ptr _variable_decl, Expr_ptr _value) {
-    Assignment* assignment = new Assignment(_variable_decl, _value);
+  static std::shared_ptr<Assignment> build(Expr_ptr _expr, Expr_ptr _value) {
+    Assignment* assignment = new Assignment(_expr, _value);
     return std::shared_ptr<Assignment>(assignment);
   }
 };

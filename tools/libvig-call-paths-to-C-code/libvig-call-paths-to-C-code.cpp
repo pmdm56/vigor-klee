@@ -233,20 +233,40 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     std::cerr << "===================================" << "\n";
     std::cerr << "fname         " << fname << "\n";
     std::cerr << "nodes         " << nodes.size() << "\n";
-    std::cerr << "group         " << "(" << group.group.first.size() << "," << group.group.second.size() << ")\n";
+    if (group.group.first.size()) {
+      std::cerr << "group in      ";
+      for (unsigned int i = 0; i < group.group.first.size(); i++) {
+        auto cp = group.group.first[i];
+        if (i != 0) {
+          std::cerr << "              ";
+        }
+        std::cerr << cp->file_name << "\n";
+      }
+    }
+    if (group.group.second.size()) {
+      std::cerr << "group out     ";
+      for (unsigned int i = 0; i < group.group.second.size(); i++) {
+        auto cp = group.group.second[i];
+        if (i != 0) {
+          std::cerr << "              ";
+        }
+        std::cerr << cp->file_name << "\n";
+      }
+    }
+    std::cerr << "equal calls   " << group.equal_calls << "\n";
     std::cerr << "ret diff      " << group.ret_diff << "\n";
     std::cerr << "root          " << assistant.root << "\n";
     std::cerr << "should commit " << should_commit << "\n";
     std::cerr << "===================================" << "\n";
 
-    if (should_commit && assistant.root) {
+    if (group.equal_calls && should_commit && assistant.root) {
       ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
       nodes.clear();
       assistant.jump_to_call_idx(assistant.call_idx + 1);
       continue;
     }
 
-    else if (should_commit && !assistant.root) {
+    else if (group.equal_calls && should_commit && !assistant.root) {
       break;
     }
 
@@ -316,6 +336,13 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
     if (!assistant.root) {
       break;
+    }
+
+    if (should_commit) {
+      ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
+      nodes.clear();
+      assistant.jump_to_call_idx(assistant.call_idx + 1);
+      continue;
     }
   }
 

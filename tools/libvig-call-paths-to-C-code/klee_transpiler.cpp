@@ -44,12 +44,25 @@ Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
   klee::ConstantExpr* constant = static_cast<klee::ConstantExpr *>(e.get());
   Type_ptr type = klee_width_to_type(constant->getWidth());
 
-  assert(type->get_type_kind() == Type::TypeKind::PRIMITIVE);
-  PrimitiveType* p = static_cast<PrimitiveType*>(type.get());
+  Constant_ptr constant_node = Constant::build(type);
 
-  uint64_t value = constant->getZExtValue();
+  if (type->get_type_kind() == Type::TypeKind::ARRAY) {
+    Array* array = static_cast<Array*>(type.get());
 
-  return Constant::build(p->get_primitive_kind(), value);
+    for (unsigned int offset = 0; offset < array->get_n_elems(); offset++) {
+      auto byte = ast_builder_assistant_t::exprBuilder->Extract(constant, offset, 8);
+      auto value = ast_builder_assistant_t::value_from_expr(byte);
+      constant_node->set_value(value, offset);
+    }
+  }
+
+  else {
+    assert(type->get_size() <= 64);
+    uint64_t value = constant->getZExtValue();
+    constant_node->set_value(value);
+  }
+
+  return constant_node;
 }
 
 Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e) {
@@ -108,37 +121,58 @@ uint64_t get_last_concat_idx(const klee::ref<klee::Expr> &e) {
 }
 
 std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
-                                             const klee::ref<klee::Expr> &e1,
-                                             const klee::ref<klee::Expr> &e2) {
-  assert(e1->getWidth() == e2->getWidth());
+                                             const klee::ref<klee::Expr> &before,
+                                             const klee::ref<klee::Expr> &after) {
+  assert(before->getWidth() == after->getWidth());
+
   std::vector<Expr_ptr> changes;
-  klee::Expr::Width width = e1->getWidth();
 
-  std::cerr << "========= Checking changes =========" << "\n";
-  std::cerr << "FROM: " << expr_to_string(e1) << "\n";
-  std::cerr << "TO:   " << expr_to_string(e2) << "\n";
+  Expr_ptr before_expr = transpile(ast, before);
+  Expr_ptr after_expr = transpile(ast, after);
 
-  Expr_ptr e1_ast = transpile(ast, e1);
+  Type_ptr type = before_expr->get_type();
 
-  std::cerr << "Expression 1:" << "\n";
-  e1_ast->synthesize(std::cerr);
-  std::cerr << "\n";
+  while (type->get_type_kind() == Type::TypeKind::POINTER) {
+    Pointer* ptr = static_cast<Pointer*>(before_expr->get_type().get());
+    type = ptr->get_type();
+  }
 
-  Expr_ptr e2_ast = transpile(ast, e2);
+  switch (type->get_type_kind()) {
+  case Type::TypeKind::STRUCT: {
+    Struct* s = static_cast<Struct*>(type.get());
+    std::vector<Variable_ptr> fields = s->get_fields();
 
-  std::cerr << "Expression 2:" << "\n";
-  e2_ast->synthesize(std::cerr);
-  std::cerr << "\n";
+    unsigned int offset = 0;
+    for (auto field : fields) {
+      auto field_size = field->get_type()->get_size();
 
-  for (unsigned int offset = 0; offset < width / 8; offset++) {
-    auto e1_byte = ast_builder_assistant_t::exprBuilder->Extract(e1, offset, 8);
-    auto e2_byte = ast_builder_assistant_t::exprBuilder->Extract(e2, offset, 8);
+      auto e1_chunk = ast_builder_assistant_t::exprBuilder->Extract(before, offset, field_size);
+      auto e2_chunk = ast_builder_assistant_t::exprBuilder->Extract(after, offset, field_size);
 
-    bool eq = ast_builder_assistant_t::are_exprs_always_equal(e1_byte, e2_byte);
+      bool eq = ast_builder_assistant_t::are_exprs_always_equal(e1_chunk, e2_chunk);
 
-    if (!eq) {
-      std::cerr << "diff in byte " << offset << "\n";
+      if (!eq) {
+        auto field_changes = apply_changes_to_match(ast, e1_chunk, e2_chunk);
+        changes.insert(changes.end(), field_changes.begin(), field_changes.end());
+      }
+
+      offset += field_size;
     }
+
+    break;
+  }
+  case Type::TypeKind::PRIMITIVE: {
+    assert(false && "Not implemented");
+    break;
+  }
+  case Type::TypeKind::ARRAY: {
+    Expr_ptr change = Assignment::build(before_expr, after_expr);
+    changes.push_back(change);
+    break;
+  }
+  case Type::TypeKind::POINTER:
+    assert(false && "Should not be here");
+    break;
   }
 
   return changes;
@@ -236,7 +270,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSelect(const klee::Se
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::ConcatExpr& e) {
   Expr_ptr left = transpile(ast, e.getKid(0));
   Expr_ptr right = transpile(ast, e.getKid(1));
-  Type_ptr type = klee_width_to_type(e.getWidth());
+  Type_ptr type = klee_width_to_type(e.getWidth());\
 
   Concat_ptr concat = Concat::build(left, right, type);
 
@@ -260,10 +294,84 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::E
   auto offset_value = e.offset;
   auto size = e.width;
 
+  assert(offset_value % 8 == 0);
+
   Type_ptr type = klee_width_to_type(e.getWidth());
 
   Expr_ptr ast_expr = transpile(ast, expr);
   assert(ast_expr);
+
+  while (ast_expr->get_kind() == Node::NodeKind::CONCAT) {
+    Concat* concat = static_cast<Concat*>(ast_expr.get());
+
+    Expr_ptr left = concat->get_left();
+    Expr_ptr right = concat->get_right();
+
+    auto right_size = right->get_type()->get_size();
+
+    if (offset_value < right_size && offset_value < right_size + size) {
+      ast_expr = right;
+    }
+
+    else if (offset_value >= right_size && offset_value >= right_size + size) {
+      ast_expr = left;
+      offset_value -= right_size;
+    }
+
+    else {
+      break;
+    }
+  }
+
+  if (ast_expr->get_kind() == Node::NodeKind::VARIABLE) {
+    Expr_ptr offset = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, offset_value / 8);
+    Read_ptr read = Read::build(ast_expr, type, offset);
+
+    save_result(read);
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  if (ast_expr->get_kind() == Node::NodeKind::CONSTANT) {
+    Constant* constant = static_cast<Constant*>(ast_expr.get());
+    switch (constant->get_type()->get_type_kind()) {
+    case Type::TypeKind::PRIMITIVE: {
+      Constant_ptr new_constant = Constant::build(type);
+      new_constant->set_value((constant->get_value() >> (offset_value)) & ((1 << size) - 1));
+
+      save_result(new_constant);
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+    case Type::TypeKind::POINTER:
+    case Type::TypeKind::STRUCT:
+      assert(false && "Not implemented");
+      break;
+    case Type::TypeKind::ARRAY: {
+      Array* array = static_cast<Array*>(constant->get_type().get());
+
+      assert(offset_value % array->get_elem_type()->get_size() == 0);
+      assert(size % array->get_elem_type()->get_size() == 0);
+
+      auto new_size = size / array->get_elem_type()->get_size();
+
+      Array_ptr new_array = Array::build(array->get_elem_type(), new_size);
+      Constant_ptr new_constant = Constant::build(new_array);
+
+      unsigned int old_idx = offset_value / array->get_elem_type()->get_size();
+      unsigned int new_idx = 0;
+
+      while (size > 0) {
+        new_constant->set_value(constant->get_value(old_idx), new_idx);
+
+        size -= array->get_elem_type()->get_size();
+        new_idx++;
+        old_idx++;
+      }
+
+      save_result(new_constant);
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+    }
+  }
 
   Expr_ptr mask = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, (1 << size) - 1, true);
   Expr_ptr extract;
