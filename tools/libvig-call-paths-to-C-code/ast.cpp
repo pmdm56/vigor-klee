@@ -21,8 +21,11 @@ void ast_builder_assistant_t::remove_skip_functions(const AST& ast) {
   }
 }
 
-Variable_ptr AST::generate_new_symbol(const std::string& symbol, Type_ptr type,
+Variable_ptr AST::generate_new_symbol(std::string symbol, Type_ptr type,
                                       unsigned int ptr_lvl, unsigned int counter_begins) {
+
+  symbol = from_cp_symbol(symbol);
+
   auto state_partial_name_finder = [&](Variable_ptr v) -> bool {
     std::string local_symbol = v->get_symbol();
     return local_symbol.find(symbol) != std::string::npos;
@@ -106,8 +109,10 @@ Variable_ptr AST::generate_new_symbol(const std::string& symbol, Type_ptr type) 
 }
 
 Variable_ptr AST::get_from_state(const std::string& symbol) {
+  auto translated = from_cp_symbol(symbol);
+
   auto finder = [&](Variable_ptr v) -> bool {
-    return symbol == v->get_symbol();
+    return translated == v->get_symbol();
   };
 
   auto it = std::find_if(state.begin(), state.end(), finder);
@@ -119,12 +124,12 @@ Variable_ptr AST::get_from_state(const std::string& symbol) {
   return *it;
 }
 
-std::string AST::from_callpath_symbol(std::string name) {
+std::string AST::from_cp_symbol(std::string name) {
+  if (callpath_var_translation.find(name) == callpath_var_translation.end()) {
+    return name;
+  }
 
-}
-
-std::string AST::to_callpath_symbol(std::string name) {
-
+  return callpath_var_translation[name];
 }
 
 AST::chunk_t AST::get_chunk_from_local(unsigned int idx) {
@@ -169,12 +174,14 @@ AST::chunk_t AST::get_chunk_from_local(unsigned int idx) {
 }
 
 Variable_ptr AST::get_from_local(const std::string& symbol, bool partial) {
+  auto translated = from_cp_symbol(symbol);
+
   auto finder = [&](local_variable_t v) -> bool {
     if (!partial) {
-      return v.first->get_symbol() == symbol;
+      return v.first->get_symbol() == translated;
     } else {
       std::string local_symbol = v.first->get_symbol();
-      return local_symbol.find(symbol) != std::string::npos;
+      return local_symbol.find(translated) != std::string::npos;
     }
   };
 
@@ -192,10 +199,11 @@ Variable_ptr AST::get_from_local(const std::string& symbol, bool partial) {
 
 Variable_ptr AST::get_from_local_by_addr(const std::string& symbol, unsigned int addr) {
   assert(addr != 0);
+  auto translated = from_cp_symbol(symbol);
 
   auto partial_name_finder = [&](local_variable_t v) -> bool {
     std::string local_symbol = v.first->get_symbol();
-    return local_symbol.find(symbol) != std::string::npos;
+    return local_symbol.find(translated) != std::string::npos;
   };
 
   auto addr_finder = [&](local_variable_t v) -> bool {
@@ -276,8 +284,10 @@ Variable_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
 }
 
 void AST::associate_expr_to_local(const std::string& symbol, klee::ref<klee::Expr> expr) {
+  auto translated = from_cp_symbol(symbol);
+
   auto name_finder = [&](local_variable_t v) -> bool {
-    return v.first->get_symbol() == symbol;
+    return v.first->get_symbol() == translated;
   };
 
   for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
@@ -315,7 +325,6 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
   call_t call = assistant.get_call(grab_ret_success);
 
   auto fname = call.function_name;
-
   std::vector<Expr_ptr> args;
 
   PrimitiveType_ptr ret_type;
@@ -880,10 +889,10 @@ void AST::context_switch(Context ctx) {
     push();
 
     std::vector<VariableDecl_ptr> args {
-      VariableDecl::build("src_devices", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-      VariableDecl::build("p", Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T))),
-      VariableDecl::build("pkt_len", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-      VariableDecl::build("now", PrimitiveType::build(PrimitiveType::Kind::UINT64_T))
+      VariableDecl::build(from_cp_symbol("src_devices"), PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+      VariableDecl::build(from_cp_symbol("p"), Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T))),
+      VariableDecl::build(from_cp_symbol("pkt_len"), PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+      VariableDecl::build(from_cp_symbol("now"), PrimitiveType::build(PrimitiveType::Kind::UINT64_T))
     };
 
     for (const auto& arg : args) {
@@ -921,10 +930,10 @@ void AST::commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr c
 
   case PROCESS: {
     std::vector<FunctionArgDecl_ptr> _args{
-      FunctionArgDecl::build("src_devices", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-      FunctionArgDecl::build("p", Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T))),
-      FunctionArgDecl::build("pkt_len", PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
-      FunctionArgDecl::build("now", PrimitiveType::build(PrimitiveType::Kind::UINT64_T)),
+      FunctionArgDecl::build(from_cp_symbol("src_devices"), PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+      FunctionArgDecl::build(from_cp_symbol("p"), Pointer::build(PrimitiveType::build(PrimitiveType::Kind::UINT8_T))),
+      FunctionArgDecl::build(from_cp_symbol("pkt_len"), PrimitiveType::build(PrimitiveType::Kind::UINT16_T)),
+      FunctionArgDecl::build(from_cp_symbol("now"), PrimitiveType::build(PrimitiveType::Kind::UINT64_T)),
     };
 
     Block_ptr _body = Block::build(nodes);

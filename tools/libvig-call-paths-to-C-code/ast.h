@@ -352,11 +352,10 @@ public:
   Variable_ptr get_from_state(unsigned int addr);
   Variable_ptr get_from_state(const std::string& symbol);
 
-  std::string from_callpath_symbol(std::string name);
-  std::string to_callpath_symbol(std::string name);
+  std::string from_cp_symbol(std::string name);
 
 private:
-  Variable_ptr generate_new_symbol(const std::string& symbol, Type_ptr type,
+  Variable_ptr generate_new_symbol(std::string symbol, Type_ptr type,
                                    unsigned int ptr_lvl, unsigned int counter_begins);
   Variable_ptr generate_new_symbol(const std::string& symbol, Type_ptr type);
 
@@ -394,7 +393,12 @@ public:
     commit_functions = std::vector<std::string> { "start_time", "packet_send" };
 
     callpath_var_translation = {
-      { "src_devices", "device" }
+      { "src_devices", "device" },
+      { "p", "buffer" },
+      { "pkt_len", "buffer_length" },
+      { "unmber_of_freed_flows", "number_of_freed_flows" },
+      { "value_out", "map_value_out" },
+      { "val_out", "vector_value_out" }
     };
   }
 
