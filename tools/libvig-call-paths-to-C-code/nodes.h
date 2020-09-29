@@ -2073,12 +2073,12 @@ private:
     assert(expr->get_kind() == Node::NodeKind::VARIABLE);
 
     Variable* var = static_cast<Variable*>(expr.get());
-    bool is_ptr = false;
+    // bool is_ptr = false;
 
     Type_ptr t = var->get_type();
 
     if (t->get_type_kind() == Type::TypeKind::POINTER) {
-      is_ptr = true;
+      // is_ptr = true;
       Pointer* ptr = static_cast<Pointer*>(var->get_type().get());
       t = ptr->get_type();
     }
@@ -2093,7 +2093,8 @@ private:
       return;
     }
 
-    assert(!is_ptr);
+    // FIXME: this is a workaround for not knowing the type inside vector
+    // assert(!is_ptr);
     unsigned int size = type->get_size();
 
     if (idx->get_kind() == CONSTANT) {

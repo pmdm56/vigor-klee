@@ -295,13 +295,6 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     Node_ptr branch = Branch::build(cond, then_ret.node, else_ret.node, in, out);
     nodes.push_back(branch);
 
-    if (should_commit && assistant.root) {
-      ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
-      nodes.clear();
-      assistant.jump_to_call_idx(assistant.call_idx + 1);
-      continue;
-    }
-
     assistant.call_paths.clear();
 
     assistant.call_paths.insert(assistant.call_paths.begin(),
@@ -312,18 +305,18 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
                                 else_ret.remaining_call_paths.begin(),
                                 else_ret.remaining_call_paths.end());
 
-    std::cerr << "jumping to commit function..." << "\n";
     assistant.jump_to_call_idx(assistant.call_idx);
     while (assistant.call_paths.size() &&
            !ast.is_commit_function(assistant.get_call().function_name)) {
       assistant.jump_to_call_idx(assistant.call_idx + 1);
     }
 
-    for (auto cp : assistant.call_paths) {
-      std::cerr << cp->file_name << " : " << cp->calls[assistant.call_idx].function_name << "\n";
+    if (assistant.root) {
+      ast.commit(nodes, nullptr, assistant.discriminating_constraint);
+      nodes.clear();
+      assistant.jump_to_call_idx(assistant.call_idx + 1);
+      continue;
     }
-
-    char c; std::cin>>c;
   }
 
   if (!bifurcates) {
@@ -334,13 +327,12 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
   Node_ptr final = Block::build(nodes);
 
-  std::cerr << "Returning..." << "\n";
   assistant.jump_to_call_idx(assistant.call_idx);
   while (assistant.call_paths.size() &&
          !ast.is_commit_function(assistant.get_call().function_name)) {
     assistant.jump_to_call_idx(assistant.call_idx + 1);
   }
-  std::cerr << "Done!" << "\n";
+  assistant.jump_to_call_idx(assistant.call_idx + 1);
 
   return ast_builder_ret_t(final, assistant.call_paths);
 }

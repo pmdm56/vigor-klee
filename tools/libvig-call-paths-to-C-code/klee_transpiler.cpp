@@ -150,7 +150,7 @@ std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
   }
   case Type::TypeKind::ARRAY: {
     Expr_ptr change = Assignment::build(before_expr, after_expr);
-    changes.push_back(change);
+    changes.push_back(change->simplify(ast));
     break;
   }
   case Type::TypeKind::POINTER:

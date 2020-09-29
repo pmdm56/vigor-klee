@@ -356,9 +356,13 @@ public:
 
   chunk_t get_chunk_from_local(unsigned int idx);
   klee::ref<klee::Expr> get_expr_from_local_by_addr(unsigned int addr);
+
   Variable_ptr get_from_local_by_addr(const std::string& symbol, unsigned int addr);
   Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
+
   Expr_ptr get_from_local(klee::ref<klee::Expr> expr);
+  Expr_ptr get_from_local(klee::ref<klee::Expr> expr, bool exact);
+
   void associate_expr_to_local(const std::string& symbol, klee::ref<klee::Expr> expr);
 
   Variable_ptr get_from_state(unsigned int addr);
@@ -442,6 +446,9 @@ public:
       std::cerr << "  ===================================" << "\n";
       for (const auto var : stack) {
         var.first->debug(std::cerr, 2);
+        if (!var.second.isNull()) {
+          std::cerr << "  expr: " << expr_to_string(var.second) << "\n";
+        }
       }
     }
     std::cerr << "\n";

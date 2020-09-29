@@ -280,6 +280,10 @@ Variable_ptr AST::get_from_state(unsigned int addr) {
 }
 
 Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
+  return get_from_local(expr, true);
+}
+
+Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr, bool exact) {
   assert(!expr.isNull());
 
   auto find_matching_offset = [](klee::ref<klee::Expr> saved,
@@ -287,12 +291,10 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
     auto saved_sz = saved->getWidth();
     auto wanted_sz = wanted->getWidth();
 
+    assert(wanted_sz != saved_sz);
+
     if (wanted_sz > saved_sz) {
       return -1;
-    }
-
-    if (wanted_sz == saved_sz) {
-      return 0;
     }
 
     for (unsigned int offset = 0; offset < saved_sz - wanted_sz; offset += 8) {
@@ -307,8 +309,12 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
   };
 
   auto finder = [&](local_variable_t v) -> bool {
-    if (v.second.isNull()) {
+    if (v.second.isNull() || v.second->getWidth() != expr->getWidth()) {
       return false;
+    }
+
+    if (exact) {
+      return ast_builder_assistant_t::are_exprs_always_equal(v.second, expr);
     }
 
     return find_matching_offset(v.second, expr) >= 0;
@@ -318,7 +324,11 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
     auto stack = *i;
 
     auto it = std::find_if(stack.begin(), stack.end(), finder);
-    if (it != stack.end()) {     
+    if (it != stack.end()) {
+      if (exact) {
+        return it->first;
+      }
+
       auto offset = find_matching_offset(it->second, expr);
       assert(offset % 8 == 0 && "Found the local variable, but offset is not multiple of byte");
 
@@ -776,17 +786,18 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   else if (fname == "packet_return_chunk") {
     ignore = true;
 
-    Expr_ptr chunk = get_from_local(call.args["the_chunk"].in);
+    Expr_ptr chunk_expr = transpile(this, call.args["the_chunk"].expr);
+    assert(chunk_expr->get_kind() == Node::NodeKind::CONSTANT);
+
+    uint64_t chunk_addr = (static_cast<Constant*>(chunk_expr.get()))->get_value();
+
+    klee::ref<klee::Expr> prev_chunk = get_expr_from_local_by_addr(chunk_addr);
+    assert(!prev_chunk.isNull());
+
+    auto eq = ast_builder_assistant_t::are_exprs_always_equal(prev_chunk, call.args["the_chunk"].in);
 
     // changes to the chunk
-    if (chunk == nullptr) {
-      Expr_ptr chunk_expr = transpile(this, call.args["the_chunk"].expr);
-      assert(chunk_expr->get_kind() == Node::NodeKind::CONSTANT);
-      uint64_t chunk_addr = (static_cast<Constant*>(chunk_expr.get()))->get_value();
-
-      klee::ref<klee::Expr> prev_chunk = get_expr_from_local_by_addr(chunk_addr);
-      assert(!prev_chunk.isNull());
-
+    if (!eq) {
       std::vector<Expr_ptr> changes = apply_changes_to_match(this, prev_chunk, call.args["the_chunk"].in);
       exprs.insert(exprs.end(), changes.begin(), changes.end());
     }
@@ -1045,6 +1056,7 @@ void AST::context_switch(Context ctx) {
 
 void AST::commit(std::vector<Node_ptr> nodes, call_path_t* call_path, Node_ptr constraint) {
   if (nodes.size() == 0) {
+    assert(call_path);
     Node_ptr ret = get_return(call_path, constraint);
     assert(ret);
     nodes.push_back(ret);
