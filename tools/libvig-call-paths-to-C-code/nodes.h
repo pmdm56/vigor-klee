@@ -5,7 +5,6 @@
 #include <numeric>
 #include <memory>
 
-#include "ast.h"
 #include "load-call-paths.h"
 
 class AST;
@@ -129,7 +128,9 @@ protected:
   bool wrap;
   Type_ptr type;
 
-  Expression(NodeKind kind, std::shared_ptr<Expression> _expr1, std::shared_ptr<Expression> _expr2)
+  Expression(NodeKind kind,
+             std::shared_ptr<Expression> _expr1,
+             std::shared_ptr<Expression> _expr2)
     : Node(kind), terminate_line(false), wrap(false) {
     Type_ptr type1 = _expr1->get_type();
     Type_ptr type2 = _expr2->get_type();
@@ -396,18 +397,15 @@ public:
 
   Expr_ptr get_expression() const { return expr; }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr expr_simplified = expr->simplify(ast);
-    return Cast::build(expr_simplified, type);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
   void set_wrap(bool _wrap) override {
     expr->set_wrap(_wrap);
   }
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* cast = new Cast(expr, type);
-    return std::shared_ptr<Expression>(cast);
+    return Expr_ptr(cast);
   }
 
   static std::shared_ptr<Cast> build(Expr_ptr _expr, Type_ptr _type) {
@@ -714,13 +712,13 @@ public:
     // ignore
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
+  Expr_ptr simplify(AST* ast) const override {
     return clone();
   }
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Constant(type, values, hex);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Constant> build(Type_ptr _type, bool _hex) {
@@ -754,7 +752,8 @@ private:
   NotEquals(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(NOT_EQUALS, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
+    // TODO: track the type of data the vectors store
+    // assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
     rhs->set_wrap(true);
   }
@@ -780,15 +779,11 @@ public:
     ofs << "</not-equals>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return NotEquals::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new NotEquals(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<NotEquals> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -832,38 +827,11 @@ public:
     ofs << "</equals>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
+  Expr_ptr simplify(AST* ast) const override;
 
-    if (lhs_simplified->get_kind() == CONSTANT &&
-        rhs_simplified->get_kind() == EQUALS) {
-      Constant* c = static_cast<Constant*>(lhs_simplified.get());
-      Equals* e = static_cast<Equals*>(rhs_simplified.get());
-
-      if (c->get_value() == 0) {
-        NotEquals_ptr ne = NotEquals::build(e->get_lhs(), e->get_rhs());
-        return ne->simplify(ast);
-      }
-    }
-
-    if (lhs_simplified->get_kind() == EQUALS &&
-        rhs_simplified->get_kind() == CONSTANT) {
-      Equals* e = static_cast<Equals*>(lhs_simplified.get());
-      Constant* c = static_cast<Constant*>(rhs_simplified.get());
-
-      if (c->get_value() == 0) {
-        NotEquals_ptr ne = NotEquals::build(e->get_lhs(), e->get_rhs());
-        return ne->simplify(ast);
-      }
-    }
-
-    return Equals::build(lhs_simplified, rhs_simplified);
-  }
-
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Equals(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Equals> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -905,65 +873,11 @@ public:
     ofs << "</not>" << "\n";
   }
 
-  Expr_ptr simplify(AST* ast) const override {
-    Expr_ptr expr_simplified = expr->simplify(ast);
+  Expr_ptr simplify(AST* ast) const override;
 
-    switch (expr_simplified->get_kind()) {
-    case NOT: {
-      Not* n = static_cast<Not*>(expr_simplified.get());
-      return n->get_expr()->simplify(ast);
-    }
-    case EQUALS: {
-      Equals* eq = static_cast<Equals*>(expr_simplified.get());
-      Expr_ptr constant;
-      Expr_ptr expression;
-
-      if (eq->get_lhs()->get_kind() == CONSTANT &&
-          eq->get_rhs()->get_kind() != CONSTANT) {
-        constant = eq->get_lhs();
-        expression = eq->get_rhs();
-      }
-
-      else if (eq->get_lhs()->get_kind() != CONSTANT &&
-               eq->get_rhs()->get_kind() == CONSTANT) {
-        constant = eq->get_rhs();
-        expression = eq->get_lhs();
-      }
-
-      else if (eq->get_lhs()->get_kind() != CONSTANT &&
-               eq->get_rhs()->get_kind() != CONSTANT) {
-        NotEquals_ptr ne = NotEquals::build(eq->get_lhs(), eq->get_rhs());
-        return ne->simplify(ast);
-      }
-
-      else {
-        break;
-      }
-
-      Constant* c = static_cast<Constant*>(constant.get());
-
-      if (c->get_value() != 0) {
-        break;
-      }
-
-      return expression->simplify(ast);
-    }
-
-    case NOT_EQUALS: {
-      NotEquals* ne = static_cast<NotEquals*>(expr_simplified.get());
-      Equals_ptr eq = Equals::build(ne->get_lhs(), ne->get_rhs());
-      return eq->simplify(ast);
-    };
-    default:
-      break;
-    };
-
-    return Not::build(expr_simplified);
-  }
-
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Not(expr);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Not> build(Expr_ptr _expr) {
@@ -1183,19 +1097,11 @@ public:
     // ignore
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    std::vector<Expr_ptr> args_simplified;
+  Expr_ptr simplify(AST* ast) const override;
 
-    for (auto arg : args) {
-      args_simplified.push_back(arg->simplify(ast));
-    }
-
-    return FunctionCall::build(name, args, type);
-  }
-
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new FunctionCall(name, args, type);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<FunctionCall> build(const std::string& _name,
@@ -1242,15 +1148,11 @@ public:
     ofs << "</greater-than>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return Greater::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Greater(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Greater> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1295,15 +1197,11 @@ public:
     ofs << "</greater-eq>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return GreaterEq::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new GreaterEq(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<GreaterEq> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1348,15 +1246,11 @@ public:
     ofs << "</less>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return Less::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Less(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Less> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1401,15 +1295,11 @@ public:
     ofs << "</less-eq>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return LessEq::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new LessEq(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<LessEq> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1455,15 +1345,11 @@ public:
     ofs << "</add>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return Add::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Add(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Add> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1509,15 +1395,11 @@ public:
     ofs << "</sub>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return Sub::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Sub(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Sub> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1563,15 +1445,11 @@ public:
     ofs << "</mul>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return Mul::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Mul(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Mul> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1617,15 +1495,11 @@ public:
     ofs << "</div>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return Div::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Div(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Div> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1671,15 +1545,11 @@ public:
     ofs << "</bitwise-and>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return And::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new And(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<And> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1725,15 +1595,11 @@ public:
     ofs << "</bitwise-or>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return Or::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Or(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Or> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1779,15 +1645,11 @@ public:
     ofs << "</xor>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return Xor::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Xor(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Xor> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1833,15 +1695,11 @@ public:
     ofs << "</mod>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return Mod::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Mod(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Mod> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1887,15 +1745,11 @@ public:
     ofs << "</shift-left>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return ShiftLeft::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new ShiftLeft(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<ShiftLeft> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1941,15 +1795,11 @@ public:
     ofs << "</shift-right>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr lhs_simplified = lhs->simplify(ast);
-    Expr_ptr rhs_simplified = rhs->simplify(ast);
-    return ShiftRight::build(lhs_simplified, rhs_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new ShiftRight(lhs, rhs);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<ShiftRight> build(Expr_ptr _lhs, Expr_ptr _rhs) {
@@ -1997,7 +1847,7 @@ public:
     addr = _addr;
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
+  Expr_ptr simplify(AST* ast) const override {
     return clone();
   }
 
@@ -2005,9 +1855,9 @@ public:
     // ignore
   }
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Variable(symbol, type, addr);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Variable> build(const std::string& _symbol,
@@ -2047,6 +1897,9 @@ public:
   void debug(std::ostream& ofs, unsigned int lvl=0) const override {
     ofs << "struct ";
     ofs << get_name();
+    ofs << " (";
+    ofs << get_size();
+    ofs << " bits)";
   }
 
   std::shared_ptr<Type> clone() const override {
@@ -2103,18 +1956,15 @@ public:
     ofs << "</address_of>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr expr_simplified = expr->simplify(ast);
-    return AddressOf::build(expr_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
   void set_wrap(bool _wrap) override {
     // ignore
   }
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new AddressOf(expr);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<AddressOf> build(Expr_ptr _expr) {
@@ -2313,19 +2163,15 @@ public:
     ofs << "</read>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr idx_simplified = idx->simplify(ast);
-    Expr_ptr expr_simplified = expr->simplify(ast);
-    return Read::build(expr_simplified, type, idx_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
   void set_wrap(bool _wrap) override {
     // ignore
   }
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Read(expr, type, idx);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Read> build(Expr_ptr _expr, Type_ptr _type, Expr_ptr _idx) {
@@ -2496,51 +2342,11 @@ public:
     ofs << "</concat>" << "\n";
   }
 
-  Expr_ptr simplify(AST* ast) const override {
-    assert(ast);
+  Expr_ptr simplify(AST* ast) const override;
 
-    Expr_ptr left_simplified = left->simplify(ast);
-    Expr_ptr right_simplified = right->simplify(ast);
-
-    auto concat_size = type->get_size();
-
-    if (left_simplified->get_kind() == READ && right_simplified->get_kind() == READ) {
-      Read* rread = static_cast<Read*>(right_simplified.get());
-
-      if (rread->get_expr()->get_kind() == VARIABLE) {
-        Variable* var = static_cast<Variable*>(rread->get_expr().get());
-
-        auto var_size = var->get_type()->get_size();
-
-        if (var_size == concat_size) {
-          return var->clone();
-        }
-      }
-
-      Read_ptr r = Read::build(rread->get_expr(), type, rread->get_idx());
-      return r->simplify(ast);
-    }
-
-    if (left_simplified->get_kind() == READ && right_simplified->get_kind() == CONCAT) {
-      Concat* right_concat = static_cast<Concat*>(right_simplified.get());
-      Expr_ptr right_concat_left = right_concat->get_left();
-      Expr_ptr right_concat_right = right_concat->get_right();
-
-      if (right_concat_left->get_kind() == READ) {
-        Concat* left_concat = new Concat(left_simplified, right_concat_left);
-        Expr_ptr left_concat_simplified = left_concat->simplify(ast);
-
-        Concat* final_concat = new Concat(left_concat_simplified, right_concat_right);
-        return final_concat->simplify(ast);
-      }
-    }
-
-    return Concat::build(left_simplified, right_simplified, type);
-  }
-
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Concat(left, right, type);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Concat> build(Expr_ptr _left, Expr_ptr _right, Type_ptr _type) {
@@ -2577,13 +2383,13 @@ public:
     ofs << " />" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
+  Expr_ptr simplify(AST* ast) const override {
     return clone();
   }
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new VariableDecl(symbol, type);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   void set_wrap(bool _wrap) override {
@@ -2739,16 +2545,11 @@ public:
     ofs << "</select>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    Expr_ptr cond_simplified = cond->simplify(ast);
-    Expr_ptr first_simplified = first->simplify(ast);
-    Expr_ptr second_simplified = second->simplify(ast);
-    return Select::build(cond_simplified, first_simplified, second_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Select(cond, first, second);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Select> build(Expr_ptr _cond, Expr_ptr _first, Expr_ptr _second) {
@@ -2791,16 +2592,11 @@ public:
     ofs << "</assignment>" << "\n";
   }
 
-  std::shared_ptr<Expression> simplify(AST* ast) const override {
-    assert(variable->get_kind() == VARIABLE);
-    Variable_ptr var = Variable_ptr(static_cast<Variable*>(variable.get()));
-    Expr_ptr value_simplified = value->simplify(ast);
-    return Assignment::build(var, value_simplified);
-  }
+  Expr_ptr simplify(AST* ast) const override;
 
-  std::shared_ptr<Expression> clone() const override {
+  Expr_ptr clone() const override {
     Expression* e = new Assignment(variable, value);
-    return std::shared_ptr<Expression>(e);
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Assignment> build(Expr_ptr _expr, Expr_ptr _value) {
@@ -2810,3 +2606,5 @@ public:
 };
 
 typedef std::shared_ptr<Assignment> Assignment_ptr;
+
+Type_ptr type_from_size(uint64_t size);

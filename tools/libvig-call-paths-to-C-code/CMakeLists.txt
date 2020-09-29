@@ -8,6 +8,7 @@
 #===------------------------------------------------------------------------===#
 add_executable(libvig-call-paths-to-C-code
   libvig-call-paths-to-C-code.cpp
+  nodes.cpp
   klee_transpiler.cpp
   ast.cpp
   misc.cpp

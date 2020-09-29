@@ -30,8 +30,9 @@
 #include <stack>
 
 #include "load-call-paths.h"
-#include "klee_transpiler.h"
+
 #include "nodes.h"
+#include "klee_transpiler.h"
 #include "ast.h"
 #include "misc.h"
 
@@ -94,44 +95,6 @@ struct call_paths_group_t {
 
     assert(equal_calls || !discriminating_constraint.isNull());
   }
-  void dump_call(call_t call) {
-    std::cout << "    Function: " << call.function_name << std::endl;
-    if (!call.args.empty()) {
-      std::cout << "      With Args:" << std::endl;
-      for (auto arg : call.args) {
-        std::cout << "        " << arg.first << ":" << std::endl;
-        std::cout << "          Expr:" << std::endl;
-        arg.second.expr->dump();
-        if (!arg.second.in.isNull()) {
-          std::cout << "          Before:" << std::endl;
-          arg.second.in->dump();
-        }
-        if (!arg.second.out.isNull()) {
-          std::cout << "          After:" << std::endl;
-          arg.second.out->dump();
-        }
-      }
-    }
-    if (!call.extra_vars.empty()) {
-      std::cout << "      With Extra Vars:" << std::endl;
-      for (auto extra_var : call.extra_vars) {
-        std::cout << "        " << extra_var.first << ":" << std::endl;
-        if (!extra_var.second.first.isNull()) {
-          std::cout << "          Before:" << std::endl;
-          extra_var.second.first->dump();
-        }
-        if (!extra_var.second.second.isNull()) {
-          std::cout << "          After:" << std::endl;
-          extra_var.second.second->dump();
-        }
-      }
-    }
-
-    if (!call.ret.isNull()) {
-      std::cout << "      With Ret:" << std::endl;
-      call.ret->dump();
-    }
-  }
 
   bool are_calls_equal(call_t c1, call_t c2) {
     if (c1.function_name != c2.function_name) {
@@ -146,12 +109,12 @@ struct call_paths_group_t {
     for (auto arg_name_value_pair : c1.args) {
       auto arg_name = arg_name_value_pair.first;
 
-      if (arg_name == "p" || arg_name == "chunk") {
-        continue;
-      }
-
       auto c1_arg = c1.args[arg_name];
       auto c2_arg = c2.args[arg_name];
+
+      if (!c1_arg.out.isNull()) {
+        continue;
+      }
 
       if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
         return false;
@@ -208,10 +171,10 @@ struct call_paths_group_t {
 
 struct ast_builder_ret_t {
   Node_ptr node;
-  unsigned int last_call_idx;
+  std::vector<call_path_t*> remaining_call_paths;
 
-  ast_builder_ret_t(Node_ptr _node, unsigned int _last_call_idx)
-    : node(_node), last_call_idx(_last_call_idx) {}
+  ast_builder_ret_t(Node_ptr _node, std::vector<call_path_t*> _remaining_call_paths)
+    : node(_node), remaining_call_paths(_remaining_call_paths) {}
 };
 
 ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
@@ -301,6 +264,7 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
     unsigned int next_call_idx = (fcall ? assistant.call_idx + 1 : assistant.call_idx);
 
+    std::cerr << "\n";
     std::cerr << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << "\n";
     std::cerr << "Condition: ";
     cond->synthesize(std::cerr);
@@ -329,25 +293,37 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     ast.pop();
 
     Node_ptr branch = Branch::build(cond, then_ret.node, else_ret.node, in, out);
-
     nodes.push_back(branch);
 
-    next_call_idx = (then_ret.last_call_idx > else_ret.last_call_idx)
-        ? then_ret.last_call_idx
-        : else_ret.last_call_idx;
-
-    assistant.jump_to_call_idx(next_call_idx);
-
-    if (!assistant.root) {
-      break;
-    }
-
-    if (should_commit) {
+    if (should_commit && assistant.root) {
       ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
       nodes.clear();
       assistant.jump_to_call_idx(assistant.call_idx + 1);
       continue;
     }
+
+    assistant.call_paths.clear();
+
+    assistant.call_paths.insert(assistant.call_paths.begin(),
+                                then_ret.remaining_call_paths.begin(),
+                                then_ret.remaining_call_paths.end());
+
+    assistant.call_paths.insert(assistant.call_paths.begin(),
+                                else_ret.remaining_call_paths.begin(),
+                                else_ret.remaining_call_paths.end());
+
+    std::cerr << "jumping to commit function..." << "\n";
+    assistant.jump_to_call_idx(assistant.call_idx);
+    while (assistant.call_paths.size() &&
+           !ast.is_commit_function(assistant.get_call().function_name)) {
+      assistant.jump_to_call_idx(assistant.call_idx + 1);
+    }
+
+    for (auto cp : assistant.call_paths) {
+      std::cerr << cp->file_name << " : " << cp->calls[assistant.call_idx].function_name << "\n";
+    }
+
+    char c; std::cin>>c;
   }
 
   if (!bifurcates) {
@@ -357,7 +333,16 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   }
 
   Node_ptr final = Block::build(nodes);
-  return ast_builder_ret_t(final, assistant.call_idx);
+
+  std::cerr << "Returning..." << "\n";
+  assistant.jump_to_call_idx(assistant.call_idx);
+  while (assistant.call_paths.size() &&
+         !ast.is_commit_function(assistant.get_call().function_name)) {
+    assistant.jump_to_call_idx(assistant.call_idx + 1);
+  }
+  std::cerr << "Done!" << "\n";
+
+  return ast_builder_ret_t(final, assistant.call_paths);
 }
 
 int main(int argc, char **argv) {

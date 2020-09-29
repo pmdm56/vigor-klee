@@ -20,8 +20,8 @@
 #include <klee/Solver.h>
 #include "llvm/Support/CommandLine.h"
 
-#include "ast.h"
 #include "nodes.h"
+#include "ast.h"
 #include "misc.h"
 
 class AST;

@@ -44,9 +44,10 @@ Variable_ptr AST::generate_new_symbol(std::string symbol, Type_ptr type,
   while (state_it != state.end()) {
     Variable_ptr var = *state_it;
     std::string saved_symbol = var->get_symbol();
-    assert(saved_symbol != symbol || counter == 0);
+
     auto delim = saved_symbol.find(symbol);
     assert(delim != std::string::npos);
+
     std::string suffix = saved_symbol.substr(delim + symbol.size());
     if (suffix.size() > 1 && isdigit(suffix[1])) {
       assert(suffix[0] == '_');
@@ -68,9 +69,10 @@ Variable_ptr AST::generate_new_symbol(std::string symbol, Type_ptr type,
     while (local_it != stack.end()) {
       Variable_ptr var = local_it->first;
       std::string saved_symbol = var->get_symbol();
-      assert(saved_symbol != symbol || counter == 0);
+
       auto delim = saved_symbol.find(symbol);
       assert(delim != std::string::npos);
+
       std::string suffix = saved_symbol.substr(delim + symbol.size());
       if (suffix.size() > 1 && isdigit(suffix[1])) {
         assert(suffix[0] == '_');
@@ -277,27 +279,53 @@ Variable_ptr AST::get_from_state(unsigned int addr) {
   assert(false && "No variable allocated in this address");
 }
 
-Variable_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
+Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
   assert(!expr.isNull());
+
+  auto find_matching_offset = [](klee::ref<klee::Expr> saved,
+                                 klee::ref<klee::Expr> wanted) -> int {
+    auto saved_sz = saved->getWidth();
+    auto wanted_sz = wanted->getWidth();
+
+    if (wanted_sz > saved_sz) {
+      return -1;
+    }
+
+    if (wanted_sz == saved_sz) {
+      return 0;
+    }
+
+    for (unsigned int offset = 0; offset < saved_sz - wanted_sz; offset += 8) {
+      auto saved_chunk = ast_builder_assistant_t::exprBuilder->Extract(saved, offset, wanted_sz);
+
+      if (ast_builder_assistant_t::are_exprs_always_equal(saved_chunk, wanted)) {
+        return offset;
+      }
+    }
+
+    return -1;
+  };
 
   auto finder = [&](local_variable_t v) -> bool {
     if (v.second.isNull()) {
       return false;
     }
 
-    if (expr->getWidth() != v.second->getWidth()) {
-      return false;
-    }
-
-    return ast_builder_assistant_t::are_exprs_always_equal(v.second, expr);
+    return find_matching_offset(v.second, expr) >= 0;
   };
 
   for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
     auto stack = *i;
 
     auto it = std::find_if(stack.begin(), stack.end(), finder);
-    if (it != stack.end()) {
-      return it->first;
+    if (it != stack.end()) {     
+      auto offset = find_matching_offset(it->second, expr);
+      assert(offset % 8 == 0 && "Found the local variable, but offset is not multiple of byte");
+
+      Constant_ptr idx = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, offset / 8);
+      Read_ptr extracted = Read::build(it->first, type_from_size(expr->getWidth()), idx);
+
+      return extracted;
     }
   }
 
@@ -762,6 +790,17 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
       std::vector<Expr_ptr> changes = apply_changes_to_match(this, prev_chunk, call.args["the_chunk"].in);
       exprs.insert(exprs.end(), changes.begin(), changes.end());
     }
+  }
+
+  else if (fname == "ether_addr_hash") {
+    assert(ast_builder_assistant_t::are_exprs_always_equal(call.args["obj"].in, call.args["obj"].out));
+    Expr_ptr obj = transpile(this, call.args["obj"].in);
+    assert(obj);
+
+    args = std::vector<Expr_ptr>{ obj };
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    ret_symbol = "hash";
+    ret_expr = call.ret;
   }
 
   else {

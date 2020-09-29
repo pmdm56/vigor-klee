@@ -1,37 +1,8 @@
-#include "ast.h"
+#include "klee_transpiler.h"
 
 Type_ptr klee_width_to_type(klee::Expr::Width width) {
-  Type_ptr type;
-
-  switch (width) {
-  case klee::Expr::InvalidWidth:
-    assert(false);
-  case klee::Expr::Bool:
-    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL);
-    break;
-  case klee::Expr::Int8:
-    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
-    break;
-  case klee::Expr::Int16:
-    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T);
-    break;
-  case klee::Expr::Int32:
-    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
-    break;
-  case klee::Expr::Int64:
-    type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT64_T);
-    break;
-  case klee::Expr::Fl80:
-  default:
-    if (width % 8 != 0) {
-      assert(false && "Width not a byte multiple");
-    }
-
-    Type_ptr byte = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
-    type = Array::build(byte, width / 8);
-  }
-
-  return type;
+  assert(width != klee::Expr::InvalidWidth);
+  return type_from_size(width);
 }
 
 Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
@@ -66,6 +37,18 @@ Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
 }
 
 Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e) {
+  RetrieveSymbols retriever;
+  retriever.visit(e);
+  auto symbols = retriever.get_retrieved_strings();
+  auto found_it = std::find(symbols.begin(), symbols.end(), "vector_data_reset_1");
+  if (found_it != symbols.end()) {
+    std::cerr << "\n===------------------------------------------------===\n";
+    std::cerr << "transpiling " << expr_to_string(e) << "\n";
+    ast->dump_stack();
+    std::cerr << "===------------------------------------------------===\n";
+  }
+
+
   Expr_ptr result = const_to_ast_expr(e);
 
   if (result) {
@@ -223,7 +206,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitRead(const klee::Read
 
   symbol_width = std::make_pair(true, root->getSize() * 8);
 
-  Variable_ptr var = ast->get_from_local(symbol);
+  Expr_ptr var = ast->get_from_local(symbol);
 
   if (var == nullptr) {
     var = ast->get_from_local(eref);
@@ -270,7 +253,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSelect(const klee::Se
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::ConcatExpr& e) {
   Expr_ptr left = transpile(ast, e.getKid(0));
   Expr_ptr right = transpile(ast, e.getKid(1));
-  Type_ptr type = klee_width_to_type(e.getWidth());\
+  Type_ptr type = klee_width_to_type(e.getWidth());
 
   Concat_ptr concat = Concat::build(left, right, type);
 

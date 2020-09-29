@@ -358,7 +358,7 @@ public:
   klee::ref<klee::Expr> get_expr_from_local_by_addr(unsigned int addr);
   Variable_ptr get_from_local_by_addr(const std::string& symbol, unsigned int addr);
   Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
-  Variable_ptr get_from_local(klee::ref<klee::Expr> expr);
+  Expr_ptr get_from_local(klee::ref<klee::Expr> expr);
   void associate_expr_to_local(const std::string& symbol, klee::ref<klee::Expr> expr);
 
   Variable_ptr get_from_state(unsigned int addr);
@@ -425,6 +425,8 @@ public:
 
   Node_ptr get_return(call_path_t *call_path, Node_ptr constraint);
   Node_ptr node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success=false);
+
+  bool is_done() { return context == DONE; }
 
   void dump_stack() const {
     std::cerr << "\n";
