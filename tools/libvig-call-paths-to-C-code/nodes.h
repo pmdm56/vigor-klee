@@ -2351,6 +2351,41 @@ private:
     right->set_wrap(true);
   }
 
+  Concat(Expr_ptr _left, Expr_ptr _right)
+    : Concat(_left, _right, type_from_concat_exprs(_left, _right)) {}
+
+  static Type_ptr type_from_concat_exprs(Expr_ptr _left, Expr_ptr _right) {
+    uint64_t sz = _left->get_type()->get_size() + _right->get_type()->get_size();
+    Type_ptr result;
+
+    switch (sz) {
+    case 1:
+      result = PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL);
+      break;
+    case 8:
+      result = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
+      break;
+    case 16:
+      result = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T);
+      break;
+    case 32:
+      result = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
+      break;
+    case 64:
+      result = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT64_T);
+      break;
+    default:
+      if (sz % 8 != 0) {
+        assert(false && "Width not a byte multiple");
+      }
+
+      Type_ptr byte = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
+      result = Array::build(byte, sz / 8);
+    }
+
+    return result;
+  }
+
 public:
   Expr_ptr get_left() const { return left; }
   Expr_ptr get_right() const { return right; }
@@ -2441,10 +2476,8 @@ public:
 
     ofs << "(";
     left->synthesize(ofs);
-    ofs << " << 0x";
-    ofs << std::hex;
+    ofs << " << ";
     ofs << offset;
-    ofs << std::dec;
     ofs << ") | ";
     right->synthesize(ofs);
   }
@@ -2469,10 +2502,6 @@ public:
     Expr_ptr left_simplified = left->simplify(ast);
     Expr_ptr right_simplified = right->simplify(ast);
 
-    if (!is_sequential()) {
-      return Concat::build(left_simplified, right_simplified, type);
-    }
-
     auto concat_size = type->get_size();
 
     if (left_simplified->get_kind() == READ && right_simplified->get_kind() == READ) {
@@ -2490,6 +2519,20 @@ public:
 
       Read_ptr r = Read::build(rread->get_expr(), type, rread->get_idx());
       return r->simplify(ast);
+    }
+
+    if (left_simplified->get_kind() == READ && right_simplified->get_kind() == CONCAT) {
+      Concat* right_concat = static_cast<Concat*>(right_simplified.get());
+      Expr_ptr right_concat_left = right_concat->get_left();
+      Expr_ptr right_concat_right = right_concat->get_right();
+
+      if (right_concat_left->get_kind() == READ) {
+        Concat* left_concat = new Concat(left_simplified, right_concat_left);
+        Expr_ptr left_concat_simplified = left_concat->simplify(ast);
+
+        Concat* final_concat = new Concat(left_concat_simplified, right_concat_right);
+        return final_concat->simplify(ast);
+      }
     }
 
     return Concat::build(left_simplified, right_simplified, type);
