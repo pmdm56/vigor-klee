@@ -715,6 +715,14 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     Expr_ptr value = get_from_local_by_addr("val_out", value_addr);
     assert(value);
 
+    Expr_ptr value_by_expr = get_from_local(call.args["value"].in);
+
+    // changes to this value were made
+    if (value_by_expr == nullptr) {
+      Expr_ptr changes = transpile(this, call.args["value"].in);
+      exprs.push_back(Assignment::build(value, changes));
+    }
+
     args = std::vector<Expr_ptr>{ vector, index, value };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
