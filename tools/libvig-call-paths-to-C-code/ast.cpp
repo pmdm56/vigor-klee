@@ -356,9 +356,13 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
     assert(map_out_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t map_addr = (static_cast<Constant*>(map_out_expr.get()))->get_value();
 
-    Expr_ptr keq = transpile(this, call.args["keq"].expr);
+    assert(call.args["keq"].fn_ptr_name.first);
+    assert(call.args["khash"].fn_ptr_name.first);
+    Type_ptr void_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+
+    Expr_ptr keq = Variable::build(call.args["keq"].fn_ptr_name.second, void_type);
     assert(keq);
-    Expr_ptr khash = transpile(this, call.args["khash"].expr);
+    Expr_ptr khash = Variable::build(call.args["khash"].fn_ptr_name.second, void_type);
     assert(khash);
     Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
     assert(capacity);
@@ -378,11 +382,14 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
     assert(vector_out_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t vector_addr = (static_cast<Constant*>(vector_out_expr.get()))->get_value();
 
+    assert(call.args["init_elem"].fn_ptr_name.first);
+    Type_ptr void_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+
     Expr_ptr elem_size = transpile(this, call.args["elem_size"].expr);
     assert(elem_size);
     Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
     assert(capacity);
-    Expr_ptr init_elem = transpile(this, call.args["init_elem"].expr);
+    Expr_ptr init_elem = Variable::build(call.args["init_elem"].fn_ptr_name.second, void_type);
     assert(init_elem);
     Variable_ptr new_vector = generate_new_symbol("vector", Struct::build("Vector"), 1, 0);
     new_vector->set_addr(vector_addr);
