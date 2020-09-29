@@ -39,47 +39,56 @@ int main(int argc, char **argv, char **envp) {
   }
 
   for (unsigned i = 0; i < call_paths.size(); i++) {
-    std::cout << "Call Path " << i << std::endl;
-    std::cout << "  Assuming:" << std::endl;
+    std::cerr << "Call Path " << i << std::endl;
+    std::cerr << "  Assuming: ";
     for (auto constraint : call_paths[i]->constraints) {
       constraint->dump();
+      std::cerr << std::endl;
     }
-    std::cout << "  Calls:" << std::endl;
+    std::cerr << "  Calls:" << std::endl;
     for (auto call : call_paths[i]->calls) {
-      std::cout << "    Function: " << call.function_name << std::endl;
+      std::cerr << "    Function: " << call.function_name << std::endl;
       if (!call.args.empty()) {
-        std::cout << "      With Args:" << std::endl;
+        std::cerr << "      With Args:" << std::endl;
         for (auto arg : call.args) {
-          std::cout << "        " << arg.first << ":" << std::endl;
-          std::cout << "          Expr:" << std::endl;
+          std::cerr << "        " << arg.first << std::endl;
+
+          std::cerr << "            Expr: ";
           arg.second.expr->dump();
+
           if (!arg.second.in.isNull()) {
-            std::cout << "          Before:" << std::endl;
+            std::cerr << "            Before: ";
             arg.second.in->dump();
           }
+
           if (!arg.second.out.isNull()) {
-            std::cout << "          After:" << std::endl;
+            std::cerr << "            After: ";
             arg.second.out->dump();
+          }
+
+          if (arg.second.fn_ptr_name.first) {
+            std::cerr << "            Fn: " << arg.second.fn_ptr_name.second;
+            std::cerr << std::endl;
           }
         }
       }
       if (!call.extra_vars.empty()) {
-        std::cout << "      With Extra Vars:" << std::endl;
+        std::cerr << "      With Extra Vars:" << std::endl;
         for (auto extra_var : call.extra_vars) {
-          std::cout << "        " << extra_var.first << ":" << std::endl;
+          std::cerr << "        " << extra_var.first << std::endl;
           if (!extra_var.second.first.isNull()) {
-            std::cout << "          Before:" << std::endl;
+            std::cerr << "            Before: ";
             extra_var.second.first->dump();
           }
           if (!extra_var.second.second.isNull()) {
-            std::cout << "          After:" << std::endl;
+            std::cerr << "            After: ";
             extra_var.second.second->dump();
           }
         }
       }
 
       if (!call.ret.isNull()) {
-        std::cout << "      With Ret:" << std::endl;
+        std::cerr << "      With Ret: ";
         call.ret->dump();
       }
     }

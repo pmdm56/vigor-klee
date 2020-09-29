@@ -5,7 +5,7 @@
 
 typedef struct {
   klee::ref<klee::Expr> expr;
-
+  std::pair<bool, std::string> fn_ptr_name;
   klee::ref<klee::Expr> in;
   klee::ref<klee::Expr> out;
 } arg_t;

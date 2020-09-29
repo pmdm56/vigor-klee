@@ -235,9 +235,15 @@ call_path_t *load_call_path(std::string file_name,
                 call_path->calls.back().args[current_arg_name].expr = exprs[0];
                 exprs.erase(exprs.begin(), exprs.begin() + 1);
 
-                if (current_arg.substr(delim + 1) == "[...]" ||
-                    current_arg.substr(delim + 1)[0] != '[')
+                if (current_arg.substr(delim + 1) == "[...]") {
+                    continue;
+                }
+
+                if (current_arg.substr(delim + 1)[0] != '[') {
+                  call_path->calls.back().args[current_arg_name].fn_ptr_name =
+                      std::make_pair(true, current_arg.substr(delim + 1));
                   continue;
+                }
 
                 current_arg = current_arg.substr(delim + 2);
 
@@ -357,9 +363,15 @@ call_path_t *load_call_path(std::string file_name,
               call_path->calls.back().args[current_arg_name].expr = exprs[0];
               exprs.erase(exprs.begin(), exprs.begin() + 1);
 
-              if (current_arg.substr(delim + 1) == "[...]" ||
-                  current_arg.substr(delim + 1)[0] != '[')
+              if (current_arg.substr(delim + 1) == "[...]") {
+                  continue;
+              }
+
+              if (current_arg.substr(delim + 1)[0] != '[') {
+                call_path->calls.back().args[current_arg_name].fn_ptr_name =
+                    std::make_pair(true, current_arg.substr(delim + 1));
                 continue;
+              }
 
               current_arg = current_arg.substr(delim + 2);
 
