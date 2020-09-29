@@ -426,11 +426,6 @@ public:
   Node_ptr get_return(call_path_t *call_path, Node_ptr constraint);
   Node_ptr node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success=false);
 
-  void dump() const {
-    debug();
-    print();
-  }
-
   void dump_stack() const {
     std::cerr << "\n";
 
@@ -450,52 +445,46 @@ public:
     std::cerr << "\n";
   }
 
-private:
-  void print() const {
+  void print(std::ostream &os) const {
 
     for (auto import : imports) {
-      import->synthesize(std::cout);
-      std::cout << "\n";
+      import->synthesize(os);
+      os << "\n";
     }
 
     if (state.size()) {
-      std::cout<< "\n";
+      os << "\n";
     }
 
     for (auto gv : state) {
       VariableDecl_ptr decl = VariableDecl::build(gv);
       decl->set_terminate_line(true);
-      decl->synthesize(std::cout);
-      std::cout<< "\n";
+      decl->synthesize(os);
+      os << "\n";
     }
 
     if (nf_init) {
-      std::cout<< "\n";
-      nf_init->synthesize(std::cout);
-      std::cout<< "\n";
+      os << "\n";
+      nf_init->synthesize(os);
+      os << "\n";
     }
 
     if (nf_process) {
-      std::cout<< "\n";
-      nf_process->synthesize(std::cout);
-      std::cout<< "\n";
+      os << "\n";
+      nf_process->synthesize(os);
+      os << "\n";
     }
   }
 
-  void debug() const {
-    dump_stack();
-
+  void print_xml(std::ostream& os) const {
     if (nf_init) {
-      std::cerr << "\n";
-      nf_init->debug(std::cerr);
-      std::cerr << "\n";
+      nf_init->debug(os);
+      os << "\n";
     }
 
     if (nf_process) {
-      std::cerr << "\n";
-      nf_process->debug(std::cerr);
-      std::cerr << "\n";
+      nf_process->debug(os);
+      os << "\n";
     }
   }
-
 };

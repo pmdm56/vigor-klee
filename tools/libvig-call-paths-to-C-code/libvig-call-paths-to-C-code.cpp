@@ -40,10 +40,14 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::Positional,
                                                llvm::cl::OneOrMore);
 
-llvm::cl::opt<std::string> OutputDir(
-    "output-dir",
-    llvm::cl::desc("Output directory of the syntethized code"),
-    llvm::cl::init("."));
+llvm::cl::opt<std::string> Out(
+    "out",
+    llvm::cl::desc("Output file of the syntethized code"));
+
+llvm::cl::opt<std::string> XML(
+    "xml",
+    llvm::cl::desc("Output file of the syntethized code's XML"));
+
 }
 
 struct call_paths_group_t {
@@ -376,7 +380,22 @@ int main(int argc, char **argv) {
   ast_builder_assistant_t assistant(call_paths);
 
   build_ast(ast, assistant);
-  ast.dump();
+
+  if (Out.getValue().size()) {
+    auto file = std::ofstream(Out.getValue());
+    assert(file.is_open());
+    ast.print(file);
+  } else {
+    ast.print(std::cout);
+  }
+
+  if (XML.getValue().size()) {
+    auto file = std::ofstream(XML.getValue());
+    assert(file.is_open());
+    ast.print_xml(file);
+  } else {
+    ast.print_xml(std::cerr);
+  }
 
   for (auto call_path : call_paths) {
     delete call_path;
