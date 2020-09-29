@@ -42,11 +42,11 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 
 llvm::cl::opt<std::string> Out(
     "out",
-    llvm::cl::desc("Output file of the syntethized code"));
+    llvm::cl::desc("Output file of the syntethized code. If omited, code will be dumped to stdout."));
 
 llvm::cl::opt<std::string> XML(
     "xml",
-    llvm::cl::desc("Output file of the syntethized code's XML"));
+    llvm::cl::desc("Output file of the syntethized code's XML. If omited, XML will not be dumped."));
 
 }
 
@@ -393,8 +393,6 @@ int main(int argc, char **argv) {
     auto file = std::ofstream(XML.getValue());
     assert(file.is_open());
     ast.print_xml(file);
-  } else {
-    ast.print_xml(std::cerr);
   }
 
   for (auto call_path : call_paths) {
