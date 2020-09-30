@@ -115,7 +115,6 @@ public:
 
 struct ast_builder_assistant_t {
   std::vector<call_path_t*> call_paths;
-  unsigned int call_idx;
   Node_ptr discriminating_constraint;
   bool root;
   unsigned int layer;
@@ -124,38 +123,58 @@ struct ast_builder_assistant_t {
   static klee::ExprBuilder *exprBuilder;
 
   ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
-                          unsigned int _call_idx,
                           Node_ptr _discriminating_constraint,
                           unsigned int _layer)
     : call_paths(_call_paths),
-      call_idx(_call_idx),
       discriminating_constraint(_discriminating_constraint),
-      root(_call_idx == 0),
+      root(false),
       layer(_layer) {}
 
   ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
-                          unsigned int _call_idx,
                           unsigned int _layer)
     : call_paths(_call_paths),
-      call_idx(_call_idx),
-      root(_call_idx == 0),
+      root(false),
       layer(_layer) {}
 
   ast_builder_assistant_t(std::vector<call_path_t*> _call_paths)
-    : ast_builder_assistant_t(_call_paths, 0, 2) {}
+    : ast_builder_assistant_t(_call_paths, 2) {
+    root = true;
+  }
 
   bool are_call_paths_finished() {
     if (call_paths.size() == 0) {
       return true;
     }
 
-    bool finished = call_idx >= call_paths[0]->calls.size();
+    bool finished = call_paths[0]->calls.size() == 0;
 
     for (call_path_t* call_path : call_paths) {
-      assert((call_idx >= call_path->calls.size()) == finished);
+      assert((call_path->calls.size() == 0) == finished);
     }
 
     return finished;
+  }
+
+  void next_call() {
+    std::vector<call_path_t*> trimmed_call_paths;
+
+    for (auto cp : call_paths) {
+      cp->calls.erase(cp->calls.begin());
+      if (cp->calls.size() != 0) {
+        trimmed_call_paths.push_back(cp);
+      }
+    }
+
+    call_paths = trimmed_call_paths;
+  }
+
+  call_t get_call() {
+    assert(call_paths.size());
+    for (auto cp : call_paths) {
+      assert(cp->calls.size());
+    }
+
+    return call_paths[0]->calls[0];
   }
 
   void remove_skip_functions(const AST& ast);
@@ -252,76 +271,12 @@ struct ast_builder_assistant_t {
 
     return is_expr_always_true(exprBuilder->Eq(expr1, replaced));
   }
-
-  call_t get_call(bool grab_ret_success) {
-    if (!grab_ret_success) {
-      return get_call();
-    }
-
-    for (call_path_t* call_path : call_paths) {
-      if (call_idx < call_path->calls.size()) {
-        assert(!call_path->calls[call_idx].ret.isNull());
-
-        auto width = call_path->calls[call_idx].ret->getWidth();
-
-        auto ret_zero_expr = ast_builder_assistant_t::exprBuilder->Eq(
-              ast_builder_assistant_t::exprBuilder->Constant(0, width),
-              call_path->calls[call_idx].ret
-              );
-
-        auto success = ast_builder_assistant_t::is_expr_always_false(ret_zero_expr);
-
-        if (!success) {
-          continue;
-        }
-
-        return call_path->calls[call_idx];
-      }
-    }
-
-    assert(false);
-  }
-
-  call_t get_call() {
-    for (call_path_t* call_path : call_paths) {
-      if (call_idx < call_path->calls.size()) {
-        return call_path->calls[call_idx];
-      }
-    }
-
-    assert(false);
-  }
-
-  call_t get_call(unsigned int call_path_idx) {
-    assert(call_path_idx < call_paths.size());
-    assert(call_idx < call_paths[call_path_idx]->calls.size());
-    return call_paths[call_path_idx]->calls[call_idx];
-  }
-
-  unsigned int get_calls_size(unsigned int call_path_idx) {
-    assert(call_path_idx < call_paths.size());
-    return call_paths[call_path_idx]->calls.size();
-  }
-
-  void jump_to_call_idx(unsigned _call_idx) {
-    call_idx = _call_idx;
-
-    auto overflows = [&](call_path_t* call_path) {
-      return call_idx >= call_path->calls.size();
-    };
-
-    std::vector<call_path_t*> trimmed_call_paths;
-    for (auto cp : call_paths) {
-      if (!overflows(cp)) {
-        trimmed_call_paths.push_back(cp);
-      }
-    }
-
-    call_paths = trimmed_call_paths;
-  }
 };
 
 class AST {
+public:
+  enum OnProcessFail { DROP, FLOOD };
+
 private:
   enum Context { INIT, PROCESS, DONE };
 
@@ -343,6 +298,7 @@ private:
   Node_ptr nf_process;
 
   Context context;
+  OnProcessFail opf;
 
 public:
   static constexpr char CHUNK_LAYER_2[] = "ether_header";
@@ -379,13 +335,13 @@ private:
   void push_to_local(Variable_ptr var);
   void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);
 
-  Node_ptr init_state_node_from_call(ast_builder_assistant_t& assistant, bool greb_ret_success=false);
-  Node_ptr process_state_node_from_call(ast_builder_assistant_t& assistant, bool greb_ret_success=false);
+  Node_ptr init_state_node_from_call(ast_builder_assistant_t& assistant);
+  Node_ptr process_state_node_from_call(ast_builder_assistant_t& assistant);
   Node_ptr get_return_from_init(Node_ptr constraint);
-  Node_ptr get_return_from_process(call_path_t *call_path, Node_ptr constraint);
+  Node_ptr get_return_from_process(call_path_t *call_path);
 
 public:
-  AST() {
+  AST(OnProcessFail _opf) : opf(_opf) {
     context_switch(INIT);
 
     imports = std::vector<Import_ptr> {
@@ -428,7 +384,7 @@ public:
   void pop();
 
   Node_ptr get_return(call_path_t *call_path, Node_ptr constraint);
-  Node_ptr node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success=false);
+  Node_ptr node_from_call(ast_builder_assistant_t& assistant);
 
   bool is_done() { return context == DONE; }
 

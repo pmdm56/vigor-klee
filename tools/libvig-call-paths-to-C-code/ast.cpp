@@ -380,8 +380,8 @@ void AST::push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr) {
   local_variables.back().push_back(std::make_pair(var, expr));
 }
 
-Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success) {
-  call_t call = assistant.get_call(grab_ret_success);
+Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
+  call_t call = assistant.get_call();
 
   auto fname = call.function_name;
   std::vector<Expr_ptr> args;
@@ -504,9 +504,8 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
   return fcall;
 }
 
-Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success) {
-  call_t call = assistant.get_call(grab_ret_success);
-
+Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
+  call_t call = assistant.get_call();
   auto fname = call.function_name;
 
   std::vector<Expr_ptr> exprs;
@@ -929,7 +928,7 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
   return Return::build(ret_expr);
 }
 
-Node_ptr AST::get_return_from_process(call_path_t *call_path, Node_ptr constraint) {
+Node_ptr AST::get_return_from_process(call_path_t *call_path) {
   auto packet_send_finder = [](call_t call) -> bool {
     return call.function_name == "packet_send";
   };
@@ -939,11 +938,30 @@ Node_ptr AST::get_return_from_process(call_path_t *call_path, Node_ptr constrain
                                      packet_send_finder);
 
   if (packet_send_it == call_path->calls.end()) {
+    std::cerr << "BAM" << "\n";
+    char c; std::cin >> c;
+    Return_ptr ret;
+    Comment_ptr comm;
+
     // dropping
-    Comment_ptr comm = Comment::build("dropping");
-    Variable_ptr device = get_from_local("src_devices");
-    assert(device);
-    Return_ptr ret = Return::build(device);
+    switch (opf) {
+    case DROP: {
+      Variable_ptr device = get_from_local("src_devices");
+      assert(device);
+
+      ret = Return::build(device);
+      comm = Comment::build("dropping");
+      break;
+    }
+    case FLOOD: {
+      Expr_ptr flood = Constant::build(PrimitiveType::PrimitiveKind::UINT16_T, (uint16_t) - 1);
+
+      ret = Return::build(flood);
+      comm = Comment::build("flooding");
+      break;
+    }
+    }
+
     return Block::build(std::vector<Node_ptr>{ comm, ret }, false);
   }
 
@@ -1004,17 +1022,17 @@ void AST::pop() {
 Node_ptr AST::get_return(call_path_t *call_path, Node_ptr constraint) {
   switch (context) {
     case INIT: return get_return_from_init(constraint);
-    case PROCESS: return get_return_from_process(call_path, constraint);
+    case PROCESS: return get_return_from_process(call_path);
     case DONE: assert(false);
   }
 
   return nullptr;
 }
 
-Node_ptr AST::node_from_call(ast_builder_assistant_t& assistant, bool grab_ret_success) {
+Node_ptr AST::node_from_call(ast_builder_assistant_t& assistant) {
   switch (context) {
-  case INIT: return init_state_node_from_call(assistant, grab_ret_success);
-  case PROCESS: return process_state_node_from_call(assistant, grab_ret_success);
+  case INIT: return init_state_node_from_call(assistant);
+  case PROCESS: return process_state_node_from_call(assistant);
   case DONE: assert(false);
   }
 

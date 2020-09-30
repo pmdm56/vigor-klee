@@ -41,14 +41,30 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::Positional,
                                                llvm::cl::OneOrMore);
 
+
+llvm::cl::OptionCategory SynthesizerCat("Synthesizer specific options");
+
 llvm::cl::opt<std::string> Out(
     "out",
-    llvm::cl::desc("Output file of the syntethized code. If omited, code will be dumped to stdout."));
+    llvm::cl::desc("Output file of the syntethized code. If omited, code will be dumped to stdout."),
+    llvm::cl::cat(SynthesizerCat));
 
 llvm::cl::opt<std::string> XML(
     "xml",
-    llvm::cl::desc("Output file of the syntethized code's XML. If omited, XML will not be dumped."));
+    llvm::cl::desc("Output file of the syntethized code's XML. If omited, XML will not be dumped."),
+    llvm::cl::cat(SynthesizerCat));
 
+llvm::cl::opt<AST::OnProcessFail> Opf(
+    "on-fail",
+    llvm::cl::desc("NF's behavior on fail"),
+    llvm::cl::Required,
+    llvm::cl::cat(SynthesizerCat),
+    llvm::cl::values(
+      clEnumValN(AST::OnProcessFail::DROP, "drop", "Drop the packet"),
+      clEnumValN(AST::OnProcessFail::FLOOD, "flood", "Flood packet to all devices")
+      KLEE_LLVM_CL_VAL_END
+      )
+    );
 }
 
 struct call_paths_group_t {
@@ -70,10 +86,10 @@ struct call_paths_group_t {
       group.first.clear();
       group.second.clear();
 
-      call_t call = assistant.get_call(i);
+      call_t call = assistant.get_call();
 
       for (auto call_path : assistant.call_paths) {
-        if (are_calls_equal(call_path->calls[assistant.call_idx], call)) {
+        if (are_calls_equal(call_path->calls[0], call)) {
           group.first.push_back(call_path);
           continue;
         }
@@ -179,8 +195,6 @@ struct ast_builder_ret_t {
 
 ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   assert(assistant.call_paths.size());
-  bool bifurcates = false;
-  bool fcall;
 
   if (assistant.root) {
     assistant.remove_skip_functions(ast);
@@ -190,10 +204,7 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
 
   while (!assistant.are_call_paths_finished()) {
     std::string fname = assistant.get_call().function_name;
-
     call_paths_group_t group(assistant);
-    fcall = false;
-
     bool should_commit = ast.is_commit_function(fname);
 
     std::cerr << "\n";
@@ -207,7 +218,8 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
         if (i != 0) {
           std::cerr << "              ";
         }
-        std::cerr << cp->file_name << "\n";
+        std::cerr << cp->file_name;
+        std::cerr << " (" << cp->calls.size() << " calls)" << "\n";
       }
     }
     if (group.group.second.size()) {
@@ -217,7 +229,8 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
         if (i != 0) {
           std::cerr << "              ";
         }
-        std::cerr << cp->file_name << "\n";
+        std::cerr << cp->file_name;
+        std::cerr << " (" << cp->calls.size() << " calls)" << "\n";
       }
     }
     std::cerr << "equal calls   " << group.equal_calls << "\n";
@@ -229,29 +242,30 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     if (group.equal_calls && should_commit && assistant.root) {
       ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
       nodes.clear();
-      assistant.jump_to_call_idx(assistant.call_idx + 1);
+      assistant.next_call();
       continue;
     }
 
     else if (group.equal_calls && should_commit && !assistant.root) {
+      Node_ptr ret = ast.get_return(assistant.call_paths[0], assistant.discriminating_constraint);
+      assert(ret);
+      nodes.push_back(ret);
+      assistant.next_call();
       break;
     }
 
     if (group.equal_calls || group.ret_diff) {
-      Node_ptr node = ast.node_from_call(assistant, group.ret_diff);
-      fcall = true;
+      Node_ptr node = ast.node_from_call(assistant);
 
       if (node) {
         nodes.push_back(node);
       }
-    }
 
-    if (group.equal_calls) {
-      assistant.jump_to_call_idx(assistant.call_idx + 1);
-      continue;
+      if (group.equal_calls) {
+        assistant.next_call();
+        continue;
+      }
     }
-
-    bifurcates = true;
 
     std::vector<call_path_t*> in = group.group.first;
     std::vector<call_path_t*> out = group.group.second;
@@ -262,27 +276,25 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     Expr_ptr cond = transpile(&ast, constraint);
     Expr_ptr not_cond = transpile(&ast, not_constraint);
 
-    unsigned int next_call_idx = (fcall ? assistant.call_idx + 1 : assistant.call_idx);
-
     std::cerr << "\n";
     std::cerr << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << "\n";
     std::cerr << "Condition: ";
     cond->synthesize(std::cerr);
     std::cerr << "\n";
 
-    if (in[0]->calls.size() > next_call_idx)
-      std::cerr << "Then function: " << in[0]->calls[next_call_idx].function_name << "\n";
+    if (in[0]->calls.size())
+      std::cerr << "Then function: " << in[0]->calls[0].function_name << "\n";
     else
       std::cerr << "Then function: none" << "\n";
 
-    if (out[0]->calls.size() > next_call_idx)
-      std::cerr << "Else function: " << out[0]->calls[next_call_idx].function_name << "\n";
+    if (out[0]->calls.size())
+      std::cerr << "Else function: " << out[0]->calls[0].function_name << "\n";
     else
       std::cerr << "Else function: none" << "\n";
     std::cerr << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << "\n";
 
-    ast_builder_assistant_t then_assistant(in, next_call_idx, cond, assistant.layer);
-    ast_builder_assistant_t else_assistant(out, next_call_idx, not_cond, assistant.layer);
+    ast_builder_assistant_t then_assistant(in, cond, assistant.layer);
+    ast_builder_assistant_t else_assistant(out, not_cond, assistant.layer);
 
     ast.push();
     ast_builder_ret_t then_ret = build_ast(ast, then_assistant);
@@ -305,34 +317,16 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
                                 else_ret.remaining_call_paths.begin(),
                                 else_ret.remaining_call_paths.end());
 
-    assistant.jump_to_call_idx(assistant.call_idx);
-    while (assistant.call_paths.size() &&
-           !ast.is_commit_function(assistant.get_call().function_name)) {
-      assistant.jump_to_call_idx(assistant.call_idx + 1);
-    }
-
+    std::cerr << "?" << "\n"; char c; std::cin >> c;
     if (assistant.root) {
       ast.commit(nodes, nullptr, assistant.discriminating_constraint);
       nodes.clear();
-      assistant.jump_to_call_idx(assistant.call_idx + 1);
+      assistant.next_call();
       continue;
     }
   }
 
-  if (!bifurcates) {
-    Node_ptr ret = ast.get_return(assistant.call_paths[0], assistant.discriminating_constraint);
-    assert(ret);
-    nodes.push_back(ret);
-  }
-
   Node_ptr final = Block::build(nodes);
-
-  assistant.jump_to_call_idx(assistant.call_idx);
-  while (assistant.call_paths.size() &&
-         !ast.is_commit_function(assistant.get_call().function_name)) {
-    assistant.jump_to_call_idx(assistant.call_idx + 1);
-  }
-  assistant.jump_to_call_idx(assistant.call_idx + 1);
 
   return ast_builder_ret_t(final, assistant.call_paths);
 }
@@ -353,21 +347,21 @@ int main(int argc, char **argv) {
 
   ast_builder_assistant_t::init();
 
-  AST ast;
+  AST ast(Opf);
   ast_builder_assistant_t assistant(call_paths);
 
   build_ast(ast, assistant);
 
-  if (Out.getValue().size()) {
-    auto file = std::ofstream(Out.getValue());
+  if (Out.size()) {
+    auto file = std::ofstream(Out);
     assert(file.is_open());
     ast.print(file);
   } else {
     ast.print(std::cout);
   }
 
-  if (XML.getValue().size()) {
-    auto file = std::ofstream(XML.getValue());
+  if (XML.size()) {
+    auto file = std::ofstream(XML);
     assert(file.is_open());
     ast.print_xml(file);
   }
