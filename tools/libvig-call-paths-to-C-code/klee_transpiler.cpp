@@ -37,18 +37,6 @@ Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
 }
 
 Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e) {
-  RetrieveSymbols retriever;
-  retriever.visit(e);
-  auto symbols = retriever.get_retrieved_strings();
-  auto found_it = std::find(symbols.begin(), symbols.end(), "vector_data_reset_1");
-  if (found_it != symbols.end()) {
-    std::cerr << "\n===------------------------------------------------===\n";
-    std::cerr << "transpiling " << expr_to_string(e) << "\n";
-    ast->dump_stack();
-    std::cerr << "===------------------------------------------------===\n";
-  }
-
-
   Expr_ptr result = const_to_ast_expr(e);
 
   if (result) {

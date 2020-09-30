@@ -276,14 +276,12 @@ Variable_ptr AST::get_from_state(unsigned int addr) {
     return *addr_finder_it;
   }
 
+  dump_stack();
+  std::cerr << "Address requested: " << addr << "\n";
   assert(false && "No variable allocated in this address");
 }
 
 Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
-  return get_from_local(expr, true);
-}
-
-Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr, bool exact) {
   assert(!expr.isNull());
 
   auto find_matching_offset = [](klee::ref<klee::Expr> saved,
@@ -291,13 +289,11 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr, bool exact) {
     auto saved_sz = saved->getWidth();
     auto wanted_sz = wanted->getWidth();
 
-    assert(wanted_sz != saved_sz);
-
     if (wanted_sz > saved_sz) {
       return -1;
     }
 
-    for (unsigned int offset = 0; offset < saved_sz - wanted_sz; offset += 8) {
+    for (unsigned int offset = 0; offset <= saved_sz - wanted_sz; offset += 8) {
       auto saved_chunk = ast_builder_assistant_t::exprBuilder->Extract(saved, offset, wanted_sz);
 
       if (ast_builder_assistant_t::are_exprs_always_equal(saved_chunk, wanted)) {
@@ -309,12 +305,8 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr, bool exact) {
   };
 
   auto finder = [&](local_variable_t v) -> bool {
-    if (v.second.isNull() || v.second->getWidth() != expr->getWidth()) {
+    if (v.second.isNull()) {
       return false;
-    }
-
-    if (exact) {
-      return ast_builder_assistant_t::are_exprs_always_equal(v.second, expr);
     }
 
     return find_matching_offset(v.second, expr) >= 0;
@@ -325,10 +317,6 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr, bool exact) {
 
     auto it = std::find_if(stack.begin(), stack.end(), finder);
     if (it != stack.end()) {
-      if (exact) {
-        return it->first;
-      }
-
       auto offset = find_matching_offset(it->second, expr);
       assert(offset % 8 == 0 && "Found the local variable, but offset is not multiple of byte");
 
@@ -380,8 +368,8 @@ void AST::push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr) {
   local_variables.back().push_back(std::make_pair(var, expr));
 }
 
-Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
-  call_t call = assistant.get_call();
+Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool grab_successful_return) {
+  call_t call = assistant.get_call(grab_successful_return);
 
   auto fname = call.function_name;
   std::vector<Expr_ptr> args;
@@ -504,8 +492,8 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant) {
   return fcall;
 }
 
-Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant) {
-  call_t call = assistant.get_call();
+Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, bool grab_successful_return) {
+  call_t call = assistant.get_call(grab_successful_return);
   auto fname = call.function_name;
 
   std::vector<Expr_ptr> exprs;
@@ -929,17 +917,26 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
 }
 
 Node_ptr AST::get_return_from_process(call_path_t *call_path) {
-  auto packet_send_finder = [](call_t call) -> bool {
-    return call.function_name == "packet_send";
-  };
+  bool found = false;
+  call_t packet_send;
 
-  auto packet_send_it = std::find_if(call_path->calls.begin(),
-                                     call_path->calls.end(),
-                                     packet_send_finder);
+  if (call_path) {
+    auto packet_send_finder = [](call_t call) -> bool {
+      return call.function_name == "packet_send";
+    };
 
-  if (packet_send_it == call_path->calls.end()) {
-    std::cerr << "BAM" << "\n";
-    char c; std::cin >> c;
+    auto packet_send_it = std::find_if(call_path->calls.begin(),
+                                       call_path->calls.end(),
+                                       packet_send_finder);
+
+    found = (packet_send_it != call_path->calls.end());
+
+    if (found) {
+      packet_send = *packet_send_it;
+    }
+  }
+
+  if (!found) {
     Return_ptr ret;
     Comment_ptr comm;
 
@@ -965,37 +962,12 @@ Node_ptr AST::get_return_from_process(call_path_t *call_path) {
     return Block::build(std::vector<Node_ptr>{ comm, ret }, false);
   }
 
-  call_t packet_send = *packet_send_it;
-
   klee::ref<klee::Expr> dst_device_expr = packet_send.args["dst_device"].expr;
   Expr_ptr dst_device = transpile(this, dst_device_expr);
 
   if (dst_device != nullptr) {
     return Return::build(dst_device);
   }
-
-  call_t call = *packet_send_it;
-
-  std::cerr << call.function_name << "\n";
-
-  for (const auto& arg : call.args) {
-    std::cerr << arg.first << " : "
-              << expr_to_string(arg.second.expr) << "\n";
-    if (!arg.second.in.isNull()) {
-      std::cerr << "  in:  " << expr_to_string(arg.second.in) << "\n";
-    }
-    if (!arg.second.out.isNull()) {
-      std::cerr << "  out: " << expr_to_string(arg.second.out) << "\n";
-    }
-  }
-
-  for (const auto& ev : call.extra_vars) {
-    std::cerr << ev.first << " : "
-              << expr_to_string(ev.second.first) << " | "
-              << expr_to_string(ev.second.second) << "\n";
-  }
-
-  std::cerr << expr_to_string(call.ret) << "\n";
 
   assert(false && "dst device is a complex expression");
 }
@@ -1029,10 +1001,10 @@ Node_ptr AST::get_return(call_path_t *call_path, Node_ptr constraint) {
   return nullptr;
 }
 
-Node_ptr AST::node_from_call(ast_builder_assistant_t& assistant) {
+Node_ptr AST::node_from_call(ast_builder_assistant_t& assistant, bool grab_successful_return) {
   switch (context) {
-  case INIT: return init_state_node_from_call(assistant);
-  case PROCESS: return process_state_node_from_call(assistant);
+  case INIT: return init_state_node_from_call(assistant, grab_successful_return);
+  case PROCESS: return process_state_node_from_call(assistant, grab_successful_return);
   case DONE: assert(false);
   }
 

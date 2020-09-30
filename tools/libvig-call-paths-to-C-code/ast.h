@@ -168,13 +168,38 @@ struct ast_builder_assistant_t {
     call_paths = trimmed_call_paths;
   }
 
-  call_t get_call() {
+  call_t get_call(bool grab_successful_return) {
     assert(call_paths.size());
     for (auto cp : call_paths) {
       assert(cp->calls.size());
     }
 
-    return call_paths[0]->calls[0];
+    if (!grab_successful_return) {
+      return call_paths[0]->calls[0];
+    }
+
+    for (auto cp : call_paths) {
+      call_t call = cp->calls[0];
+
+      auto zero = ast_builder_assistant_t::exprBuilder->Constant(0, call.ret->getWidth());
+      auto eq_zero = ast_builder_assistant_t::exprBuilder->Eq(call.ret, zero);
+      auto is_ret_success = ast_builder_assistant_t::is_expr_always_false(eq_zero);
+
+      if (is_ret_success) {
+        return call;
+      }
+    }
+
+    assert(false && "Call with successful return not found");
+  }
+
+  call_t get_call(unsigned int call_path_idx) {
+    assert(call_path_idx < call_paths.size());
+    for (auto cp : call_paths) {
+      assert(cp->calls.size());
+    }
+
+    return call_paths[call_path_idx]->calls[0];
   }
 
   void remove_skip_functions(const AST& ast);
@@ -317,7 +342,6 @@ public:
   Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
 
   Expr_ptr get_from_local(klee::ref<klee::Expr> expr);
-  Expr_ptr get_from_local(klee::ref<klee::Expr> expr, bool exact);
 
   void associate_expr_to_local(const std::string& symbol, klee::ref<klee::Expr> expr);
 
@@ -335,8 +359,8 @@ private:
   void push_to_local(Variable_ptr var);
   void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);
 
-  Node_ptr init_state_node_from_call(ast_builder_assistant_t& assistant);
-  Node_ptr process_state_node_from_call(ast_builder_assistant_t& assistant);
+  Node_ptr init_state_node_from_call(ast_builder_assistant_t& assistant, bool grab_successful_return);
+  Node_ptr process_state_node_from_call(ast_builder_assistant_t& assistant, bool grab_successful_return);
   Node_ptr get_return_from_init(Node_ptr constraint);
   Node_ptr get_return_from_process(call_path_t *call_path);
 
@@ -384,7 +408,7 @@ public:
   void pop();
 
   Node_ptr get_return(call_path_t *call_path, Node_ptr constraint);
-  Node_ptr node_from_call(ast_builder_assistant_t& assistant);
+  Node_ptr node_from_call(ast_builder_assistant_t& assistant, bool grab_successful_return);
 
   bool is_done() { return context == DONE; }
 

@@ -28,6 +28,7 @@
 #include <vector>
 #include <memory>
 #include <stack>
+#include <utility>
 
 #include "load-call-paths.h"
 
@@ -86,7 +87,7 @@ struct call_paths_group_t {
       group.first.clear();
       group.second.clear();
 
-      call_t call = assistant.get_call();
+      call_t call = assistant.get_call(i);
 
       for (auto call_path : assistant.call_paths) {
         if (are_calls_equal(call_path->calls[0], call)) {
@@ -112,6 +113,16 @@ struct call_paths_group_t {
     assert(equal_calls || !discriminating_constraint.isNull());
   }
 
+  group_t get_group() {
+    if (ret_diff) {
+      group.first.erase(group.first.begin());
+      group.second.erase(group.second.begin());
+      ret_diff = false;
+    }
+
+    return group;
+  }
+
   bool are_calls_equal(call_t c1, call_t c2) {
     if (c1.function_name != c2.function_name) {
       return false;
@@ -124,6 +135,11 @@ struct call_paths_group_t {
 
     for (auto arg_name_value_pair : c1.args) {
       auto arg_name = arg_name_value_pair.first;
+
+      // exception: we don't care about 'p' differences (arg of packet_borrow_next_chunk)
+      if (arg_name == "p") {
+        continue;
+      }
 
       auto c1_arg = c1.args[arg_name];
       auto c2_arg = c2.args[arg_name];
@@ -194,7 +210,8 @@ struct ast_builder_ret_t {
 };
 
 ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
-  assert(assistant.call_paths.size());
+  //assert(assistant.call_paths.size());
+  bool missing_return = true;
 
   if (assistant.root) {
     assistant.remove_skip_functions(ast);
@@ -203,13 +220,13 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
   std::vector<Node_ptr> nodes;
 
   while (!assistant.are_call_paths_finished()) {
-    std::string fname = assistant.get_call().function_name;
+    std::string fname = assistant.get_call(false).function_name;
     call_paths_group_t group(assistant);
     bool should_commit = ast.is_commit_function(fname);
 
     std::cerr << "\n";
     std::cerr << "===================================" << "\n";
-    std::cerr << "fname         " << fname << "\n";
+    std::cerr << "in fname      " << fname << "\n";
     std::cerr << "nodes         " << nodes.size() << "\n";
     if (group.group.first.size()) {
       std::cerr << "group in      ";
@@ -239,36 +256,39 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     std::cerr << "should commit " << should_commit << "\n";
     std::cerr << "===================================" << "\n";
 
-    if (group.equal_calls && should_commit && assistant.root) {
-      ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
-      nodes.clear();
-      assistant.next_call();
-      continue;
-    }
+    if (group.equal_calls && should_commit) {
+      if (assistant.root) {
+        ast.commit(nodes, assistant.call_paths[0], assistant.discriminating_constraint);
+        nodes.clear();
+        missing_return = true;
+        assistant.next_call();
+        continue;
+      }
 
-    else if (group.equal_calls && should_commit && !assistant.root) {
       Node_ptr ret = ast.get_return(assistant.call_paths[0], assistant.discriminating_constraint);
       assert(ret);
       nodes.push_back(ret);
-      assistant.next_call();
+      missing_return = false;
       break;
     }
 
     if (group.equal_calls || group.ret_diff) {
-      Node_ptr node = ast.node_from_call(assistant);
+      Node_ptr node = ast.node_from_call(assistant, group.ret_diff);
+      assistant.next_call();
 
       if (node) {
         nodes.push_back(node);
       }
 
       if (group.equal_calls) {
-        assistant.next_call();
         continue;
       }
     }
 
-    std::vector<call_path_t*> in = group.group.first;
-    std::vector<call_path_t*> out = group.group.second;
+    std::vector<call_path_t*> in;
+    std::vector<call_path_t*> out;
+
+    std::tie(in, out) = group.get_group();
 
     klee::ref<klee::Expr> constraint = group.discriminating_constraint;
     klee::ref<klee::Expr> not_constraint = ast_builder_assistant_t::exprBuilder->Not(constraint);
@@ -281,16 +301,6 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
     std::cerr << "Condition: ";
     cond->synthesize(std::cerr);
     std::cerr << "\n";
-
-    if (in[0]->calls.size())
-      std::cerr << "Then function: " << in[0]->calls[0].function_name << "\n";
-    else
-      std::cerr << "Then function: none" << "\n";
-
-    if (out[0]->calls.size())
-      std::cerr << "Else function: " << out[0]->calls[0].function_name << "\n";
-    else
-      std::cerr << "Else function: none" << "\n";
     std::cerr << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << "\n";
 
     ast_builder_assistant_t then_assistant(in, cond, assistant.layer);
@@ -317,17 +327,25 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
                                 else_ret.remaining_call_paths.begin(),
                                 else_ret.remaining_call_paths.end());
 
-    std::cerr << "?" << "\n"; char c; std::cin >> c;
     if (assistant.root) {
       ast.commit(nodes, nullptr, assistant.discriminating_constraint);
       nodes.clear();
+      missing_return = true;
       assistant.next_call();
       continue;
     }
+
+    missing_return = false;
+    break;
+  }
+
+  if (!assistant.root && missing_return) {
+    Node_ptr ret = ast.get_return(nullptr, assistant.discriminating_constraint);
+    assert(ret);
+    nodes.push_back(ret);
   }
 
   Node_ptr final = Block::build(nodes);
-
   return ast_builder_ret_t(final, assistant.call_paths);
 }
 
