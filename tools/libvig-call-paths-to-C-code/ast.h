@@ -114,6 +114,11 @@ public:
 };
 
 struct ast_builder_assistant_t {
+  enum OnProcessFail {
+    DROP = (uint16_t) - 2,
+    FLOOD = (uint16_t) - 1
+  };
+
   std::vector<call_path_t*> call_paths;
   Node_ptr discriminating_constraint;
   bool root;
@@ -136,9 +141,45 @@ struct ast_builder_assistant_t {
       root(false),
       layer(_layer) {}
 
-  ast_builder_assistant_t(std::vector<call_path_t*> _call_paths)
+  ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
+                          OnProcessFail opf)
     : ast_builder_assistant_t(_call_paths, 2) {
     root = true;
+    add_packet_send_if_missing(opf);
+  }
+
+  void add_packet_send_if_missing(OnProcessFail opf) {
+    auto should_add_packet_send = [](call_path_t* cp) -> bool {
+      assert(cp);
+      bool received_packet = false;
+
+      for (auto call : cp->calls) {
+        if (call.function_name == "packet_receive") {
+          received_packet = is_expr_always_true(call.ret);
+        }
+
+        if (call.function_name == "packet_send") {
+          return false;
+        }
+      }
+
+      return received_packet;
+    };
+
+    for (auto cp : call_paths) {
+      if (!should_add_packet_send(cp)) {
+        continue;
+      }
+
+      call_t packet_send;
+
+      auto dst_device = exprBuilder->Constant(opf, 16);
+
+      packet_send.function_name = "packet_send";
+      packet_send.args["dst_device"].expr = dst_device;
+
+      cp->calls.push_back(packet_send);
+    }
   }
 
   bool are_call_paths_finished() {
@@ -299,9 +340,6 @@ struct ast_builder_assistant_t {
 };
 
 class AST {
-public:
-  enum OnProcessFail { DROP, FLOOD };
-
 private:
   enum Context { INIT, PROCESS, DONE };
 
@@ -323,7 +361,6 @@ private:
   Node_ptr nf_process;
 
   Context context;
-  OnProcessFail opf;
 
 public:
   static constexpr char CHUNK_LAYER_2[] = "ether_header";
@@ -365,7 +402,7 @@ private:
   Node_ptr get_return_from_process(call_path_t *call_path);
 
 public:
-  AST(OnProcessFail _opf) : opf(_opf) {
+  AST() {
     context_switch(INIT);
 
     imports = std::vector<Import_ptr> {

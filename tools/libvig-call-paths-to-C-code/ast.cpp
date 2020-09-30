@@ -936,6 +936,9 @@ Node_ptr AST::get_return_from_process(call_path_t *call_path) {
     }
   }
 
+  assert(found);
+
+  /*
   if (!found) {
     Return_ptr ret;
     Comment_ptr comm;
@@ -961,15 +964,37 @@ Node_ptr AST::get_return_from_process(call_path_t *call_path) {
 
     return Block::build(std::vector<Node_ptr>{ comm, ret }, false);
   }
+  */
 
   klee::ref<klee::Expr> dst_device_expr = packet_send.args["dst_device"].expr;
   Expr_ptr dst_device = transpile(this, dst_device_expr);
 
-  if (dst_device != nullptr) {
-    return Return::build(dst_device);
+  assert(dst_device && "dst device is a complex expression");
+  assert(dst_device->get_kind() == Node::NodeKind::CONSTANT);
+
+  Constant* dst_device_const = static_cast<Constant*>(dst_device.get());
+  Node_ptr final;
+
+  switch (dst_device_const->get_value()) {
+    case ast_builder_assistant_t::OnProcessFail::DROP: {
+      Expr_ptr device = get_from_local("device");
+      Return_ptr ret = Return::build(device);
+      Comment_ptr comm = Comment::build("dropping");
+      final = Block::build(std::vector<Node_ptr>{ comm, ret }, false);
+      break;
+    }
+    case ast_builder_assistant_t::OnProcessFail::FLOOD: {
+      Return_ptr ret = Return::build(dst_device);
+      Comment_ptr comm = Comment::build("flooding");
+      final = Block::build(std::vector<Node_ptr>{ comm, ret }, false);
+      break;
+    }
+    default: {
+      final = Return::build(dst_device);
+    }
   }
 
-  assert(false && "dst device is a complex expression");
+  return final;
 }
 
 bool AST::is_skip_function(const std::string& fname) const {

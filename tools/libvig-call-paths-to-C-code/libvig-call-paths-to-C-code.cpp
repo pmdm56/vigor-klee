@@ -55,14 +55,14 @@ llvm::cl::opt<std::string> XML(
     llvm::cl::desc("Output file of the syntethized code's XML. If omited, XML will not be dumped."),
     llvm::cl::cat(SynthesizerCat));
 
-llvm::cl::opt<AST::OnProcessFail> Opf(
+llvm::cl::opt<ast_builder_assistant_t::OnProcessFail> Opf(
     "on-fail",
     llvm::cl::desc("NF's behavior on fail"),
     llvm::cl::Required,
     llvm::cl::cat(SynthesizerCat),
     llvm::cl::values(
-      clEnumValN(AST::OnProcessFail::DROP, "drop", "Drop the packet"),
-      clEnumValN(AST::OnProcessFail::FLOOD, "flood", "Flood packet to all devices")
+      clEnumValN(ast_builder_assistant_t::OnProcessFail::DROP, "drop", "Drop the packet"),
+      clEnumValN(ast_builder_assistant_t::OnProcessFail::FLOOD, "flood", "Flood packet to all devices")
       KLEE_LLVM_CL_VAL_END
       )
     );
@@ -210,7 +210,6 @@ struct ast_builder_ret_t {
 };
 
 ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
-  //assert(assistant.call_paths.size());
   bool missing_return = true;
 
   if (assistant.root) {
@@ -365,8 +364,8 @@ int main(int argc, char **argv) {
 
   ast_builder_assistant_t::init();
 
-  AST ast(Opf);
-  ast_builder_assistant_t assistant(call_paths);
+  AST ast;
+  ast_builder_assistant_t assistant(call_paths, Opf);
 
   build_ast(ast, assistant);
 
