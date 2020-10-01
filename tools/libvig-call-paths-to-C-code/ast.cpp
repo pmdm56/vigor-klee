@@ -692,7 +692,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     uint64_t val_out_addr = (static_cast<Constant*>(val_out_expr.get()))->get_value();
 
     Expr_ptr vector = get_from_state(vector_addr);
-    Expr_ptr index = get_from_local(call.args["index"].expr);
+    Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
 
     // FIXME: track the type going in the vector
@@ -741,7 +741,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     Expr_ptr value = get_from_local_by_addr("val_out", value_addr);
     assert(value);
 
-    Expr_ptr value_by_expr = get_from_local(call.args["value"].in);
+    Expr_ptr value_by_expr = transpile(this, call.args["value"].in);
 
     // changes to this value were made
     if (value_by_expr == nullptr) {
@@ -799,6 +799,23 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     args = std::vector<Expr_ptr>{ obj };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "hash";
+    ret_expr = call.ret;
+  }
+
+  else if (fname == "dchain_is_index_allocated") {
+    Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
+    assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
+
+    Expr_ptr chain = get_from_state(chain_addr);
+    assert(chain);
+    Expr_ptr index = transpile(this, call.args["index"].expr);
+    assert(index);
+
+    args = std::vector<Expr_ptr>{ chain, index };
+
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
+    ret_symbol = "dchain_is_index_allocated";
     ret_expr = call.ret;
   }
 

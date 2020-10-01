@@ -261,7 +261,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::Co
 }
 
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::ExtractExpr& e) {
-  auto expr = e.expr;
+  auto expr = e.getKid(0);
   auto offset_value = e.offset;
   auto size = e.width;
 
