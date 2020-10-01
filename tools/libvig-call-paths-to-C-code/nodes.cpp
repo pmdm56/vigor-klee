@@ -207,12 +207,13 @@ Expr_ptr Read::simplify(AST* ast) const {
 
   if (idx_simplified->get_kind() == Node::NodeKind::CONSTANT) {
     Constant* idx_constant = static_cast<Constant*>(idx_simplified.get());
+    Type_ptr expr_type = expr_simplified->get_type();
 
     auto size = type->get_size();
     auto idx_value = idx_constant->get_value();
     auto expr_size = expr_type->get_size();
 
-    if (idx_value == 0 && size == expr_size) {
+    if (idx_value == 0 && size == expr_size && type->get_type_kind() != Type::TypeKind::POINTER) {
       return expr_simplified;
     }
   }

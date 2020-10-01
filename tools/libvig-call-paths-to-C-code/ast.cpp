@@ -564,7 +564,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
       break;
     }
     case 4: {
-      if (pkt_len->get_kind() == Node::NodeKind::CONSTANT) {
+      if (pkt_len->get_kind() != Node::NodeKind::CONSTANT) {
         chunk = Variable::build("ip_options", Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T)));
         break;
       }
@@ -580,8 +580,9 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
       assistant.layer++;
       break;
     }
-    default:
+    default: {
       assert(false && "Missing layers implementation");
+    }
     }
 
     chunk->set_addr(chunk_addr);
