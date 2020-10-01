@@ -54,18 +54,6 @@ llvm::cl::opt<std::string> XML(
     "xml",
     llvm::cl::desc("Output file of the syntethized code's XML. If omited, XML will not be dumped."),
     llvm::cl::cat(SynthesizerCat));
-
-llvm::cl::opt<ast_builder_assistant_t::OnProcessFail> Opf(
-    "on-fail",
-    llvm::cl::desc("NF's behavior on fail"),
-    llvm::cl::Required,
-    llvm::cl::cat(SynthesizerCat),
-    llvm::cl::values(
-      clEnumValN(ast_builder_assistant_t::OnProcessFail::DROP, "drop", "Drop the packet"),
-      clEnumValN(ast_builder_assistant_t::OnProcessFail::FLOOD, "flood", "Flood packet to all devices")
-      KLEE_LLVM_CL_VAL_END
-      )
-    );
 }
 
 struct call_paths_group_t {
@@ -110,7 +98,33 @@ struct call_paths_group_t {
       }
     }
 
-    assert(equal_calls || !discriminating_constraint.isNull());
+    if (equal_calls || !discriminating_constraint.isNull()) {
+      return;
+    }
+
+    // trying one by one...
+
+    for (unsigned int i = 0; i < assistant.call_paths.size(); i++) {
+      group.first.clear();
+      group.second.clear();
+
+      for (unsigned int j = 0; j < assistant.call_paths.size(); j++) {
+        if (j != i) {
+          group.second.push_back(assistant.call_paths[j]);
+        } else {
+          group.first.push_back(assistant.call_paths[j]);
+        }
+      }
+
+      discriminating_constraint = find_discriminating_constraint();
+
+      if (!discriminating_constraint.isNull()) {
+        break;
+      }
+    }
+
+
+    assert(!discriminating_constraint.isNull());
   }
 
   group_t get_group() {
@@ -365,7 +379,7 @@ int main(int argc, char **argv) {
   ast_builder_assistant_t::init();
 
   AST ast;
-  ast_builder_assistant_t assistant(call_paths, Opf);
+  ast_builder_assistant_t assistant(call_paths);
 
   build_ast(ast, assistant);
 

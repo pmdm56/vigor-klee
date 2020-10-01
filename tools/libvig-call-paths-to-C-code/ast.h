@@ -114,11 +114,6 @@ public:
 };
 
 struct ast_builder_assistant_t {
-  enum OnProcessFail {
-    DROP = (uint16_t) - 2,
-    FLOOD = (uint16_t) - 1
-  };
-
   std::vector<call_path_t*> call_paths;
   Node_ptr discriminating_constraint;
   bool root;
@@ -141,29 +136,30 @@ struct ast_builder_assistant_t {
       root(false),
       layer(_layer) {}
 
-  ast_builder_assistant_t(std::vector<call_path_t*> _call_paths,
-                          OnProcessFail opf)
+  ast_builder_assistant_t(std::vector<call_path_t*> _call_paths)
     : ast_builder_assistant_t(_call_paths, 2) {
     root = true;
-    add_packet_send_if_missing(opf);
+    add_packet_send_if_missing();
   }
 
-  void add_packet_send_if_missing(OnProcessFail opf) {
+  void add_packet_send_if_missing() {
     auto should_add_packet_send = [](call_path_t* cp) -> bool {
       assert(cp);
       bool received_packet = false;
+      unsigned int packet_send_counter = 0;
 
       for (auto call : cp->calls) {
         if (call.function_name == "packet_receive") {
           received_packet = is_expr_always_true(call.ret);
         }
 
-        if (call.function_name == "packet_send") {
-          return false;
+        else if (call.function_name == "packet_send") {
+          packet_send_counter++;
         }
       }
 
-      return received_packet;
+      assert(packet_send_counter <= 1 && "Not implemented");
+      return received_packet && packet_send_counter == 0;
     };
 
     for (auto cp : call_paths) {
@@ -173,7 +169,7 @@ struct ast_builder_assistant_t {
 
       call_t packet_send;
 
-      auto dst_device = exprBuilder->Constant(opf, 16);
+      auto dst_device = exprBuilder->Constant((uint16_t) - 1, 16);
 
       packet_send.function_name = "packet_send";
       packet_send.args["dst_device"].expr = dst_device;
