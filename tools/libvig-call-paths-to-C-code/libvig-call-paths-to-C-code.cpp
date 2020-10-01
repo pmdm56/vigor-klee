@@ -56,6 +56,29 @@ llvm::cl::opt<std::string> XML(
     llvm::cl::cat(SynthesizerCat));
 }
 
+std::vector<std::vector<unsigned int>> comb(unsigned int n, unsigned int k) {
+  std::vector<std::vector<unsigned int>> result;
+
+  if (k == 1) {
+    for (unsigned int idx = 0; idx < n; idx++) {
+      std::vector<unsigned int> curr_comb { idx };
+      result.push_back(curr_comb);
+    }
+    return result;
+  }
+
+  for (unsigned int idx = 0; idx + k <= n; idx++) {
+    auto sub_comb = comb(n-idx-1, k-1);
+    for (auto c : sub_comb) {
+      std::vector<unsigned int> curr_comb {n-idx-1};
+      curr_comb.insert(curr_comb.end(), c.begin(), c.end());
+      result.push_back(curr_comb);
+    }
+  }
+
+  return result;
+}
+
 struct call_paths_group_t {
   typedef std::pair<std::vector<call_path_t*>, std::vector<call_path_t*>> group_t;
 
@@ -102,39 +125,71 @@ struct call_paths_group_t {
       return;
     }
 
-    // trying one by one...
-
+    // some equal calls have different reasons for existing
+    // let's try something more elaborate
     for (unsigned int i = 0; i < assistant.call_paths.size(); i++) {
       group.first.clear();
       group.second.clear();
 
-      for (unsigned int j = 0; j < assistant.call_paths.size(); j++) {
-        if (j != i) {
-          group.second.push_back(assistant.call_paths[j]);
-        } else {
-          group.first.push_back(assistant.call_paths[j]);
+      call_t call = assistant.get_call(i);
+
+      for (auto call_path : assistant.call_paths) {
+        if (are_calls_equal(call_path->calls[0], call)) {
+          group.first.push_back(call_path);
+          continue;
+        }
+
+        group.second.push_back(call_path);
+      }
+
+      auto in = group.first;
+      auto out = group.second;
+
+      std::cerr << "\n";
+      for (auto cp : group.first)  std::cerr << "original in  " << cp->file_name << "\n";
+      for (auto cp : group.second) std::cerr << "original out " << cp->file_name << "\n";
+
+      // grabbing combinations of the in group
+      for (unsigned int group_size = 1; group_size <= in.size(); group_size++) {
+        auto combinations = comb(in.size(), group_size);
+
+        for (auto comb : combinations) {
+          group.first.clear();
+          group.second.clear();
+
+          std::cerr << "\n";
+          std::cerr << "n=" << in.size() << " k=" << group_size << "\n";
+          for (auto comb_i : comb)
+            std::cerr << comb_i << " ";
+          std::cerr << "\n";
+
+          for (unsigned int idx = 0; idx < in.size(); idx++) {
+            auto found_it = std::find(comb.begin(), comb.end(), idx);
+
+            if (found_it != comb.end()) {
+              group.first.push_back(in[idx]);
+            } else {
+              group.second.push_back(in[idx]);
+            }
+          }
+
+          group.second.insert(group.second.end(), out.begin(), out.end());
+
+          for (auto cp : group.first)  std::cerr << "in  " << cp->file_name << "\n";
+          for (auto cp : group.second) std::cerr << "out " << cp->file_name << "\n";
+
+          discriminating_constraint = find_discriminating_constraint();
+
+          if (!discriminating_constraint.isNull()) {
+            std::cerr << "YES\n";
+            exit(0);
+            return;
+          }
         }
       }
-
-      discriminating_constraint = find_discriminating_constraint();
-
-      if (!discriminating_constraint.isNull()) {
-        break;
-      }
     }
-
 
     assert(!discriminating_constraint.isNull());
-  }
-
-  group_t get_group() {
-    if (ret_diff) {
-      group.first.erase(group.first.begin());
-      group.second.erase(group.second.begin());
-      ret_diff = false;
-    }
-
-    return group;
   }
 
   bool are_calls_equal(call_t c1, call_t c2) {
@@ -298,10 +353,8 @@ ast_builder_ret_t build_ast(AST& ast, ast_builder_assistant_t assistant) {
       }
     }
 
-    std::vector<call_path_t*> in;
-    std::vector<call_path_t*> out;
-
-    std::tie(in, out) = group.get_group();
+    std::vector<call_path_t*> in = group.group.first;
+    std::vector<call_path_t*> out = group.group.second;
 
     klee::ref<klee::Expr> constraint = group.discriminating_constraint;
     klee::ref<klee::Expr> not_constraint = ast_builder_assistant_t::exprBuilder->Not(constraint);

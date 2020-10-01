@@ -917,6 +917,7 @@ Node_ptr AST::get_return_from_init(Node_ptr constraint) {
 }
 
 Node_ptr AST::get_return_from_process(call_path_t *call_path) {
+  assert(call_path);
   bool found = false;
   call_t packet_send;
 

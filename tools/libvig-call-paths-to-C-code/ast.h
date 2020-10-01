@@ -168,7 +168,6 @@ struct ast_builder_assistant_t {
       }
 
       call_t packet_send;
-
       auto dst_device = exprBuilder->Constant((uint16_t) - 1, 16);
 
       packet_send.function_name = "packet_send";
@@ -196,7 +195,12 @@ struct ast_builder_assistant_t {
     std::vector<call_path_t*> trimmed_call_paths;
 
     for (auto cp : call_paths) {
+      if (cp->calls.size() == 0) {
+        continue;
+      }
+
       cp->calls.erase(cp->calls.begin());
+
       if (cp->calls.size() != 0) {
         trimmed_call_paths.push_back(cp);
       }
