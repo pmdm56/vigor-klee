@@ -219,12 +219,10 @@ struct call_paths_group_t {
 
     assert(group.first.size());
 
-    for (auto in : group.first) {
-      for (auto constraint : in->constraints) {
-        std::cerr << ".";
-        if (check_discriminating_constraint(constraint)) {
-          return constraint;
-        }
+    for (auto constraint : group.first[0]->constraints) {
+      std::cerr << ".";
+      if (check_discriminating_constraint(constraint)) {
+        return constraint;
       }
     }
 

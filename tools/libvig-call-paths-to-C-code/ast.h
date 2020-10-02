@@ -388,6 +388,7 @@ public:
   std::string from_cp_symbol(std::string name);
 
 private:
+  Variable_ptr generate_new_symbol(klee::ref<klee::Expr> expr);
   Variable_ptr generate_new_symbol(std::string symbol, Type_ptr type,
                                    unsigned int ptr_lvl, unsigned int counter_begins);
   Variable_ptr generate_new_symbol(const std::string& symbol, Type_ptr type);

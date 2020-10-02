@@ -21,6 +21,38 @@ void ast_builder_assistant_t::remove_skip_functions(const AST& ast) {
   }
 }
 
+Variable_ptr AST::generate_new_symbol(klee::ref<klee::Expr> expr) {
+  Type_ptr type = type_from_size(expr->getWidth());
+
+  RetrieveSymbols retriever;
+  retriever.visit(expr);
+  auto symbols = retriever.get_retrieved_strings();
+  assert(symbols.size() == 1);
+
+  std::string symbol = from_cp_symbol(symbols[0]);
+
+  auto state_partial_name_finder = [&](Variable_ptr v) -> bool {
+    std::string local_symbol = v->get_symbol();
+    return local_symbol.find(symbol) != std::string::npos;
+  };
+
+  auto local_partial_name_finder = [&](local_variable_t v) -> bool {
+    std::string local_symbol = v.first->get_symbol();
+    return local_symbol.find(symbol) != std::string::npos;
+  };
+
+  auto state_it = std::find_if(state.begin(), state.end(), state_partial_name_finder);
+  assert(state_it == state.end());
+
+  for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
+    auto stack = *i;
+    auto local_it = std::find_if(stack.begin(), stack.end(), local_partial_name_finder);
+    assert(local_it == stack.end());
+  }
+
+  return Variable::build(symbol, type);
+}
+
 Variable_ptr AST::generate_new_symbol(std::string symbol, Type_ptr type,
                                       unsigned int ptr_lvl, unsigned int counter_begins) {
 
@@ -519,7 +551,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   PrimitiveType_ptr ret_type;
   std::string ret_symbol;
   klee::ref<klee::Expr> ret_expr;
-  unsigned int counter_begins = 0;
+  int counter_begins = 0;
 
   bool ignore = false;
 
@@ -677,11 +709,10 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
 
     Expr_ptr chain = get_from_state(chain_addr);
+    assert(chain);
 
-    // dchain allocates an index when is allocated, so we start with new_index_1
-    Type_ptr index_out_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    Variable_ptr index_out = generate_new_symbol("new_index", index_out_type, 0, 1);
-    assert(!call.args["index_out"].out.isNull());
+    Variable_ptr index_out = generate_new_symbol(call.args["index_out"].out);
+    assert(index_out);
     push_to_local(index_out, call.args["index_out"].out);
 
     Expr_ptr now = transpile(this, call.args["time"].expr);
@@ -690,11 +721,18 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     VariableDecl_ptr index_out_decl = VariableDecl::build(index_out);
     exprs.push_back(index_out_decl);
 
+    std::string suffix;
+
+    if (index_out->get_symbol().find_last_of("_") != std::string::npos) {
+      std::string counter = index_out->get_symbol().substr(index_out->get_symbol().find_last_of("_") + 1);
+      suffix = "_" + counter;
+    }
+
     args = std::vector<Expr_ptr>{ chain, AddressOf::build(index_out), now };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    ret_symbol = "out_of_space";
+    ret_symbol = "out_of_space" + suffix;
     ret_expr = call.ret;
-    counter_begins = 1;
+    counter_begins = -1;
   }
 
   else if (fname == "vector_borrow") {
@@ -836,6 +874,81 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     ret_expr = call.ret;
   }
 
+  else if (fname == "LoadBalancedFlow_hash") {
+    Expr_ptr obj = transpile(this, call.args["obj"].in);
+    assert(obj);
+
+    args = std::vector<Expr_ptr>{ obj };
+
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
+    ret_symbol = "load_balanced_flow_hash";
+    ret_expr = call.ret;
+  }
+
+  else if (fname == "cht_find_preferred_available_backend") {
+    Expr_ptr hash = transpile(this, call.args["hash"].expr);
+    assert(hash);
+
+    Expr_ptr cht_expr = transpile(this, call.args["cht"].expr);
+    assert(cht_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t cht_addr = (static_cast<Constant*>(cht_expr.get()))->get_value();
+
+    Expr_ptr cht = get_from_state(cht_addr);
+    assert(cht);
+
+    Expr_ptr active_backends_expr = transpile(this, call.args["active_backends"].expr);
+    assert(active_backends_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t active_backends_addr = (static_cast<Constant*>(active_backends_expr.get()))->get_value();
+
+    Expr_ptr active_backends = get_from_state(active_backends_addr);
+    assert(active_backends);
+
+    Expr_ptr cht_height = transpile(this, call.args["cht_height"].expr);
+    assert(cht_height);
+
+    Expr_ptr backend_capacity = transpile(this, call.args["backend_capacity"].expr);
+    assert(backend_capacity);
+
+    Variable_ptr chosen_backend = generate_new_symbol(call.args["chosen_backend"].out);
+
+    Expr_ptr chosen_backend_expr = transpile(this, call.args["chosen_backend"].expr);
+    assert(chosen_backend_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chosen_backend_addr = (static_cast<Constant*>(chosen_backend_expr.get()))->get_value();
+    chosen_backend->set_addr(chosen_backend_addr);
+    push_to_local(chosen_backend, call.args["chosen_backend"].out);
+
+    VariableDecl_ptr chosen_backend_decl = VariableDecl::build(chosen_backend);
+    Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+    exprs.push_back(Assignment::build(chosen_backend_decl, zero));
+
+    args = std::vector<Expr_ptr>{ hash, cht, active_backends, cht_height, backend_capacity, AddressOf::build(chosen_backend) };
+
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
+    ret_symbol = "prefered_backend_found";
+    ret_expr = call.ret;
+  }
+
+  else if (fname == "nf_set_ipv4_udptcp_checksum") {
+    Expr_ptr ip_header_expr = transpile(this, call.args["ip_header"].expr);
+    assert(ip_header_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t ip_header_addr = (static_cast<Constant*>(ip_header_expr.get()))->get_value();
+
+    Expr_ptr l4_header_expr = transpile(this, call.args["l4_header"].expr);
+    assert(l4_header_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t l4_header_addr = (static_cast<Constant*>(l4_header_expr.get()))->get_value();
+
+    Expr_ptr ip_header = get_from_local_by_addr("ipv4_hdr", ip_header_addr);
+    assert(ip_header);
+    Expr_ptr l4_header = get_from_local_by_addr("tcpudp_hdr", l4_header_addr);
+    assert(l4_header);
+    Expr_ptr packet = get_from_local("p");
+    assert(packet);
+
+    args = std::vector<Expr_ptr>{ ip_header, l4_header, packet };
+
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+  }
+
   else {
     std::cerr << call.function_name << "\n";
 
@@ -868,7 +981,13 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     if (ret_type->get_primitive_kind() != PrimitiveType::PrimitiveKind::VOID) {
       assert(ret_symbol.size());
 
-      Variable_ptr ret_var = generate_new_symbol(ret_symbol, ret_type, 0, counter_begins);
+      Variable_ptr ret_var;
+
+      if (counter_begins >= 0) {
+        ret_var = generate_new_symbol(ret_symbol, ret_type, 0, counter_begins);
+      } else {
+        ret_var = Variable::build(ret_symbol, ret_type);
+      }
 
       if (!ret_expr.isNull()) {
         push_to_local(ret_var, ret_expr);
