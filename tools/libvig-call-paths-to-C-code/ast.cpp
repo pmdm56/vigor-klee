@@ -446,6 +446,23 @@ Node_ptr AST::init_state_node_from_call(ast_builder_assistant_t& assistant, bool
     ret_symbol = "is_dchain_allocated";
   }
 
+  else if (fname == "cht_fill_cht") {
+    Expr_ptr vector_expr = transpile(this, call.args["cht"].expr);
+    assert(vector_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t vector_addr = (static_cast<Constant*>(vector_expr.get()))->get_value();
+
+    Expr_ptr vector = get_from_state(vector_addr);
+    Expr_ptr cht_height = transpile(this, call.args["cht_height"].expr);
+    assert(cht_height);
+    Expr_ptr backend_capacity = transpile(this, call.args["backend_capacity"].expr);
+    assert(backend_capacity);
+
+    args = std::vector<Expr_ptr>{ vector, cht_height, backend_capacity };
+
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    ret_symbol = "cht_fill_cht_successful";
+  }
+
   else {
     std::cerr << call.function_name << "\n";
 
