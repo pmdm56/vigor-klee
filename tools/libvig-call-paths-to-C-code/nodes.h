@@ -584,12 +584,11 @@ private:
 
   Constant(PrimitiveType::PrimitiveKind _kind, uint64_t _value, bool _hex)
     : Expression(CONSTANT, PrimitiveType::build(_kind)), hex(_hex) {
-    values = std::vector<uint64_t>(1);
-    values[0] = _value;
+    values.push_back(_value);
   }
 
-  Constant(Type_ptr type, bool _hex)
-    : Expression(CONSTANT, type), hex(_hex) {
+  Constant(Type_ptr type)
+    : Expression(CONSTANT, type), hex(false) {
     switch (type->get_type_kind()) {
     case Type::TypeKind::ARRAY: {
       Array* arr = static_cast<Array*>(type.get());
@@ -641,28 +640,10 @@ private:
         if (values[0] == 0) ofs << "false";
         else ofs << "true";
         break;
-      case PrimitiveType::PrimitiveKind::UINT8_T:
-        if (hex) ofs << "0x";
-        ofs << static_cast<uint8_t>(values[0]);
-        break;
-      case PrimitiveType::PrimitiveKind::UINT16_T:
-        if (hex) ofs << "0x";
-        ofs << static_cast<uint16_t>(values[0]);
-        break;
-      case PrimitiveType::PrimitiveKind::INT:
-        if (hex) ofs << "0x";
-        ofs << static_cast<int>(values[0]);
-        break;
-      case PrimitiveType::PrimitiveKind::UINT32_T:
-        if (hex) ofs << "0x";
-        ofs << static_cast<uint32_t>(values[0]);
-        break;
-      case PrimitiveType::PrimitiveKind::UINT64_T:
-        if (hex) ofs << "0x";
-        ofs << static_cast<uint64_t>(values[0]);
-        break;
       default:
-        assert(false);
+        if (hex) ofs << "0x";
+        ofs << values[0];
+        break;
       }
       break;
     }
@@ -721,13 +702,8 @@ public:
     return Expr_ptr(e);
   }
 
-  static std::shared_ptr<Constant> build(Type_ptr _type, bool _hex) {
-    Constant* literal = new Constant(_type, _hex);
-    return std::shared_ptr<Constant>(literal);
-  }
-
   static std::shared_ptr<Constant> build(Type_ptr _type) {
-    Constant* literal = new Constant(_type, false);
+    Constant* literal = new Constant(_type);
     return std::shared_ptr<Constant>(literal);
   }
 
@@ -2193,7 +2169,7 @@ private:
     Type_ptr lt = left->get_type();
     Type_ptr rt = right->get_type();
 
-    assert(_type->get_size() == (lt->get_size() + rt->get_size()));
+    assert(type->get_size() == (lt->get_size() + rt->get_size()));
     left->set_wrap(true);
     right->set_wrap(true);
   }

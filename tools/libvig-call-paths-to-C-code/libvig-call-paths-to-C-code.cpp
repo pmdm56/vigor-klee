@@ -91,6 +91,9 @@ struct call_paths_group_t {
   call_paths_group_t(ast_builder_assistant_t assistant) {
     assert(assistant.call_paths.size());
 
+    std::cerr << "\n";
+    std::cerr << "[*] Grouping call paths" << "\n";
+
     ret_diff = false;
     equal_calls = false;
 
@@ -122,11 +125,16 @@ struct call_paths_group_t {
     }
 
     if (equal_calls || !discriminating_constraint.isNull()) {
+      std::cerr << "\n";
       return;
     }
 
     // some equal calls have different reasons for existing
     // let's try something more elaborate
+
+    ret_diff = false;
+    equal_calls = false;
+
     for (unsigned int i = 0; i < assistant.call_paths.size(); i++) {
       group.first.clear();
       group.second.clear();
@@ -142,47 +150,28 @@ struct call_paths_group_t {
         group.second.push_back(call_path);
       }
 
-      auto in = group.first;
-      auto out = group.second;
-
-      std::cerr << "\n";
-      for (auto cp : group.first)  std::cerr << "original in  " << cp->file_name << "\n";
-      for (auto cp : group.second) std::cerr << "original out " << cp->file_name << "\n";
-
       // grabbing combinations of the in group
-      for (unsigned int group_size = 1; group_size <= in.size(); group_size++) {
-        auto combinations = comb(in.size(), group_size);
+      for (unsigned int group_size = 1; group_size < assistant.call_paths.size(); group_size++) {
+        auto combinations = comb(assistant.call_paths.size(), group_size);
 
         for (auto comb : combinations) {
           group.first.clear();
           group.second.clear();
 
-          std::cerr << "\n";
-          std::cerr << "n=" << in.size() << " k=" << group_size << "\n";
-          for (auto comb_i : comb)
-            std::cerr << comb_i << " ";
-          std::cerr << "\n";
-
-          for (unsigned int idx = 0; idx < in.size(); idx++) {
+          for (unsigned int idx = 0; idx < assistant.call_paths.size(); idx++) {
             auto found_it = std::find(comb.begin(), comb.end(), idx);
 
             if (found_it != comb.end()) {
-              group.first.push_back(in[idx]);
+              group.first.push_back(assistant.call_paths[idx]);
             } else {
-              group.second.push_back(in[idx]);
+              group.second.push_back(assistant.call_paths[idx]);
             }
           }
-
-          group.second.insert(group.second.end(), out.begin(), out.end());
-
-          for (auto cp : group.first)  std::cerr << "in  " << cp->file_name << "\n";
-          for (auto cp : group.second) std::cerr << "out " << cp->file_name << "\n";
 
           discriminating_constraint = find_discriminating_constraint();
 
           if (!discriminating_constraint.isNull()) {
-            std::cerr << "YES\n";
-            exit(0);
+            std::cerr << "\n";
             return;
           }
         }
@@ -228,20 +217,21 @@ struct call_paths_group_t {
   klee::ref<klee::Expr> find_discriminating_constraint() {
     klee::ref<klee::Expr> chosen_constraint;
 
-    if (group.first.size() == 0) {
-      return chosen_constraint;
-    }
+    assert(group.first.size());
 
-    for (auto constraint : group.first[0]->constraints) {
-      if (check_discriminating_constraint(constraint, group)) {
-        chosen_constraint = constraint;
+    for (auto in : group.first) {
+      for (auto constraint : in->constraints) {
+        std::cerr << ".";
+        if (check_discriminating_constraint(constraint)) {
+          return constraint;
+        }
       }
     }
 
     return chosen_constraint;
   }
 
-  bool check_discriminating_constraint(klee::ref<klee::Expr> constraint, group_t group) {
+  bool check_discriminating_constraint(klee::ref<klee::Expr> constraint) {
     assert(group.first.size());
     assert(group.second.size());
 
@@ -253,15 +243,16 @@ struct call_paths_group_t {
     std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
 
     ReplaceSymbols symbol_replacer(symbols);
+    auto not_constraint = ast_builder_assistant_t::exprBuilder->Not(constraint);
 
     for (call_path_t* call_path : in) {
-      if (!ast_builder_assistant_t::is_expr_always_true(call_path->constraints, constraint, symbol_replacer)) {
+      if (!ast_builder_assistant_t::is_expr_always_false(call_path->constraints, not_constraint, symbol_replacer)) {
         return false;
       }
     }
 
     for (call_path_t* call_path : out) {
-      if (!ast_builder_assistant_t::is_expr_always_false(call_path->constraints, constraint, symbol_replacer)) {
+      if (!ast_builder_assistant_t::is_expr_always_true(call_path->constraints, not_constraint, symbol_replacer)) {
         return false;
       }
     }
