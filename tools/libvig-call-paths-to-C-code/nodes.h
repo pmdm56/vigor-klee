@@ -2002,7 +2002,6 @@ private:
     Struct* s = static_cast<Struct*>(t.get());
 
     unsigned int idx_val = idx_const->get_value();
-    unsigned int size = type->get_size();
 
     for (Variable_ptr field : s->get_fields()) {
       unsigned int field_size = field->get_type()->get_size();
@@ -2018,27 +2017,10 @@ private:
       std::shared_ptr<Read> field_read = Read::build(field, type, new_idx_expr);
       field_read->set_wrap(false);
 
-      if (idx_val != 0) {
-        ofs << "(";
-      }
       ofs << var->get_symbol();
       ofs << (is_ptr ? "->" : ".");
 
       field_read->synthesize_helper(ofs, 0, false);
-
-      if (idx_val != 0) {
-        ofs << " >> ";
-        ofs << (idx_val * size);
-        ofs << ")";
-      }
-
-      if (size != field_size) {
-        ofs << " & 0x";
-        ofs << std::hex;
-        ofs << ((1 << size) - 1);
-        ofs << std::dec;
-      }
-
       return;
     }
 

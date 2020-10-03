@@ -137,8 +137,24 @@ std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
     break;
   }
   case Type::TypeKind::ARRAY: {
-    Expr_ptr change = Assignment::build(before_expr, after_expr);
-    changes.push_back(change->simplify(ast));
+    Array* a = static_cast<Array*>(type.get());
+    auto elem_sz = a->get_elem_type()->get_size();
+
+    for (unsigned int offset = 0; offset < a->get_size(); offset += elem_sz) {
+      auto e1_chunk = ast_builder_assistant_t::exprBuilder->Extract(before, offset, elem_sz);
+      auto e2_chunk = ast_builder_assistant_t::exprBuilder->Extract(after, offset, elem_sz);
+
+      bool eq = ast_builder_assistant_t::are_exprs_always_equal(e1_chunk, e2_chunk);
+
+      if (!eq) {
+        Expr_ptr e1_chunk_ast = transpile(ast, e1_chunk);
+        Expr_ptr e2_chunk_ast = transpile(ast, e2_chunk);
+
+        Expr_ptr change = Assignment::build(e1_chunk_ast, e2_chunk_ast);
+        changes.push_back(change->simplify(ast));
+      }
+    }
+
     break;
   }
   case Type::TypeKind::POINTER:
@@ -322,13 +338,20 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::E
       assert(offset_value % array->get_elem_type()->get_size() == 0);
       assert(size % array->get_elem_type()->get_size() == 0);
 
-      auto new_size = size / array->get_elem_type()->get_size();
+      unsigned int new_size = size / array->get_elem_type()->get_size();
+      unsigned int old_idx = offset_value / array->get_elem_type()->get_size();
+      unsigned int new_idx = 0;
+
+      if (new_size == 1) {
+        Constant_ptr new_constant = Constant::build(array->get_elem_type());
+        new_constant->set_value(constant->get_value(old_idx));
+
+        save_result(new_constant);
+        return klee::ExprVisitor::Action::skipChildren();
+      }
 
       Array_ptr new_array = Array::build(array->get_elem_type(), new_size);
       Constant_ptr new_constant = Constant::build(new_array);
-
-      unsigned int old_idx = offset_value / array->get_elem_type()->get_size();
-      unsigned int new_idx = 0;
 
       while (size > 0) {
         new_constant->set_value(constant->get_value(old_idx), new_idx);
