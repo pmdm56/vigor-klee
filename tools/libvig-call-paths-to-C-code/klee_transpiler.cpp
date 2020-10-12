@@ -21,7 +21,7 @@ Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
     Array* array = static_cast<Array*>(type.get());
 
     for (unsigned int offset = 0; offset < array->get_n_elems(); offset++) {
-      auto byte = ast_builder_assistant_t::exprBuilder->Extract(constant, offset, 8);
+      auto byte = ast_builder_assistant_t::exprBuilder->Extract(constant, offset * 8, 8);
       auto value = ast_builder_assistant_t::value_from_expr(byte);
       constant_node->set_value(value, offset);
     }
