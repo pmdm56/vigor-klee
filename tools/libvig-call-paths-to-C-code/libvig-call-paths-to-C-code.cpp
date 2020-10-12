@@ -206,7 +206,14 @@ struct call_paths_group_t {
         continue;
       }
 
-      if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
+      // comparison between modifications to the received packet
+      if (c1.function_name == "packet_return_chunk" && arg_name == "the_chunk") {
+        if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.in, c2_arg.in)) {
+          return false;
+        }
+      }
+
+      else if (!ast_builder_assistant_t::are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
         return false;
       }
     }
