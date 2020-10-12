@@ -439,14 +439,38 @@ public:
 };
 
 klee::expr::ExprHandle get_arg_expr_from_call(const call_t& call, const std::string& arg_name) {
-  std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr> > target;
+  klee::expr::ExprHandle target;
 
   if (call.extra_vars.count(arg_name)) {
-    target = call.extra_vars.at(arg_name);
+    auto target_pair = call.extra_vars.at(arg_name);
+
+    if (!target_pair.second.isNull()) {
+      target = target_pair.second;
+    }
+
+    else if (!target_pair.first.isNull()) {
+      target = target_pair.first;
+    }
+
+    else {
+      assert(false && "Both in and out values of extra_var are null");
+    }
   }
 
   else if (call.args.count(arg_name)) {
-    target = call.args.at(arg_name);
+    arg_t target_arg = call.args.at(arg_name);
+
+    if (!target_arg.out.isNull()) {
+      target = target_arg.out;
+    }
+
+    else if (!target_arg.in.isNull()) {
+      target = target_arg.in;
+    }
+
+    else {
+      target = target_arg.expr;
+    }
   }
 
   else {
@@ -463,7 +487,7 @@ klee::expr::ExprHandle get_arg_expr_from_call(const call_t& call, const std::str
     assert(call.args.count(arg_name) && "Argument not present on this call");
   }
 
-  return target.second.get() ? target.second : target.first;
+  return target;
 }
 
 struct packet_chunk_t {
@@ -746,8 +770,6 @@ private:
   // Handlers
   void packet_receive(const call_t& call) {
     assert(call.args.count("src_devices") && "packet_receive handler without argument \"src_devices\"");
-    assert(!call.args.at("src_devices").first.isNull() && "packet_receive handler with invalid value on argument \"src_devices\"");
-
     auto src_device_expr = get_arg_expr_from_call(call, "src_devices");
 
     auto solutions = klee_interface->evaluate_expr(src_device_expr, call_path_filename);
@@ -758,8 +780,6 @@ private:
 
   void packet_send(const call_t& call) {
     assert(call.args.count("dst_device") && "packet_send handler without argument \"dst_device\"");
-    assert(!call.args.at("dst_device").first.isNull() && "packet_send handler with invalid value on argument \"dst_device\"");
-
     auto dst_device_expr = get_arg_expr_from_call(call, "dst_device");
 
     auto solutions = klee_interface->evaluate_expr(dst_device_expr, call_path_filename);
@@ -773,10 +793,10 @@ private:
     assert(!call.extra_vars.at("the_chunk").second.isNull() && "packet_borrow_next_chunk with invalid \"the_chunk\" expression");
 
     assert(call.args.find("length") != call.args.end() && "packet_borrow_next_chunk without \"length\" variable");
-    assert(!call.args.at("length").first.isNull() && "packet_borrow_next_chunk with invalid \"length\" expression");
+    assert(!call.args.at("length").expr.isNull() && "packet_borrow_next_chunk with invalid \"length\" expression");
 
     auto the_chunk_expr = call.extra_vars.at("the_chunk").second;
-    auto length_expr = call.args.at("length").first;
+    auto length_expr = call.args.at("length").expr;
     auto offset = klee_interface->readLSB_parse(the_chunk_expr, call_path_filename);
 
     packet_chunk_t packet_chunk(offset, length_expr, the_chunk_expr, klee_interface, call_path_filename);
@@ -808,8 +828,6 @@ private:
     klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
 
     assert(call.args.count("the_chunk") && "packet_return_chunk handler without argument \"the_chunk\"");
-    assert(!call.args.at("the_chunk").first.isNull() && "packet_return_chunk handler with invalid value on argument \"the_chunk\"");
-
     auto the_chunk_expr = get_arg_expr_from_call(call, "the_chunk");
     auto borrowed_expr = borrowed_chunk_layer_pairs.top().first;
     auto borrowed_layer = borrowed_chunk_layer_pairs.top().second;
