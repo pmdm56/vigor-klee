@@ -1044,6 +1044,15 @@ public:
     expr = std::make_pair(true, get_arg_expr_from_call(call, name.second));
   }
 
+  void set_expr(klee::expr::ExprHandle _expr) {
+    expr.first = true;
+    expr.second = _expr;
+  }
+
+  void set_packet_dependencies_force(const PacketManager& _packet_dependencies) {
+    packet_dependencies = _packet_dependencies;
+  }
+
   void set_packet_dependencies(const PacketManager& _packet_dependencies) {
     if (!name.first || !expr.first) return;
     packet_dependencies = _packet_dependencies;
@@ -1212,6 +1221,29 @@ public:
     }
   }
 
+  void replace_arg(LibvigAccessExpressionArgument::Type type, LibvigAccessExpressionArgument arg) {
+    switch (type) {
+    case LibvigAccessExpressionArgument::Type::READ: {
+      read_arg.set_name(arg.get_name());
+      read_arg.set_expr(arg.get_expr());
+      read_arg.set_packet_dependencies_force(arg.get_packet_dependencies());
+      break;
+    };
+    case LibvigAccessExpressionArgument::Type::WRITE: {
+      write_arg.set_name(arg.get_name());
+      write_arg.set_expr(arg.get_expr());
+      write_arg.set_packet_dependencies_force(arg.get_packet_dependencies());
+      break;
+    };
+    case LibvigAccessExpressionArgument::Type::RESULT: {
+      result_arg.set_name(arg.get_name());
+      result_arg.set_expr(arg.get_expr());
+      result_arg.set_packet_dependencies_force(arg.get_packet_dependencies());
+      break;
+    };
+    }
+  }
+
   void reset() {
     id.first = false;
     src_device.first = false;
@@ -1280,9 +1312,35 @@ public:
 
   const std::string& get_interface() const { return interface; }
 
+  bool has_write_arg() const {
+    return write_arg.is_name_set() && write_arg.is_expr_set();
+  }
+
   const LibvigAccessExpressionArgument& get_write_argument() const {
-    assert(op == WRITE);
+    assert(write_arg.is_name_set() && write_arg.is_expr_set());
     return write_arg;
+  }
+
+  bool has_result_arg() const {
+    return result_arg.is_name_set() && result_arg.is_expr_set();
+  }
+
+  const LibvigAccessExpressionArgument& get_result_argument() const {
+    assert(result_arg.is_name_set() && result_arg.is_expr_set());
+    return result_arg;
+  }
+
+  bool has_read_arg() const {
+    return read_arg.is_name_set() && read_arg.is_expr_set();
+  }
+
+  const LibvigAccessExpressionArgument& get_read_argument() const {
+    assert(read_arg.is_name_set() && read_arg.is_expr_set());
+    return read_arg;
+  }
+
+  const std::pair<std::string, unsigned int>& get_obj() const {
+    return obj;
   }
 
   void print() const {
@@ -1493,6 +1551,10 @@ public:
   LibvigAccessesManager() {
     fill_access_lookup_table();
     klee_interface = std::make_shared<KleeInterface>();
+  }
+
+  void set_accesses(std::vector<LibvigAccess> _accesses) {
+    accesses = _accesses;
   }
 
   void analyse_call_path(const std::string& call_path_filename, const call_path_t *call_path) {
@@ -1865,11 +1927,175 @@ public:
   }
 };
 
+// replace symbols being used as alias for results of another accesses
+class AccessesStitcher {
+private:
+  klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
+  LibvigAccessesManager* accesses_manager;
+
+  std::map<std::string, std::vector<LibvigAccessExpressionArgument>> alias_replacements;
+  std::vector<std::string> alias_list;
+
+public:
+  AccessesStitcher() {
+    alias_list = std::vector<std::string> { "vector_data_reset" };
+  }
+
+  void set_accesses_manager(LibvigAccessesManager* _accesses_manager) {
+    accesses_manager = _accesses_manager;
+  }
+
+  void stitch_accesses() {
+    std::vector<LibvigAccess> current_accesses = accesses_manager->get_accesses();
+    std::vector<LibvigAccess> new_accesses;
+
+    unsigned int id = current_accesses.size();
+
+    for (auto access : current_accesses) {
+      if (access.has_read_arg() && get_alias(access.get_read_argument().get_expr()).first) {
+        auto replacements = get_replacements(access.get_read_argument());
+
+        for (auto rep : replacements) {
+          auto new_access = access;
+
+          new_access.set_id(id++);
+          new_access.replace_arg(LibvigAccessExpressionArgument::Type::READ, rep);
+
+          new_accesses.push_back(new_access);
+        }
+
+        continue;
+      }
+
+      new_accesses.push_back(access);
+    }
+
+    accesses_manager->set_accesses(new_accesses);
+  }
+
+private:
+  std::pair<bool, std::string> get_alias(klee::expr::ExprHandle expr) {
+    std::pair<bool, std::string> result;
+    result.first = false;
+
+    RetrieveUniqueSymbolsNames retriever;
+    retriever.visit(expr);
+    auto symbols = retriever.get_retrieved();
+
+    for (auto symbol : symbols) {
+      for (auto alias : alias_list) {
+        if (symbol.find(alias) != std::string::npos) {
+          assert(symbols.size() == 1);
+          result.first = true;
+          result.second = symbol;
+          return result;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  std::vector<LibvigAccessExpressionArgument> get_replacements(LibvigAccessExpressionArgument arg) {
+    std::vector<LibvigAccessExpressionArgument> replacements;
+    auto expr = arg.get_expr();
+    auto found_alias_pair = get_alias(expr);
+
+    if (!found_alias_pair.first) {
+      return replacements;
+    }
+
+    auto found_alias = found_alias_pair.second;
+    auto alias_expr_pair = alias_replacements.find(found_alias);
+
+    if (alias_expr_pair == alias_replacements.end()) {
+      find_alias_replacement(found_alias);
+    }
+
+    replacements = alias_replacements[found_alias];
+
+    for (auto replacement : replacements)
+      assert(expr->getWidth() == replacement.get_expr()->getWidth());
+
+    return replacements;
+  }
+
+  unsigned int find_obj(std::string alias) {
+    for (auto& access : accesses_manager->get_accesses()) {
+      if (!access.has_result_arg()) {
+        continue;
+      }
+
+      access.print();
+
+      RetrieveUniqueSymbolsNames retriever;
+      retriever.visit(access.get_result_argument().get_expr());
+      auto symbols = retriever.get_retrieved();
+
+      auto found_symbol = std::find(symbols.begin(), symbols.end(), alias);
+
+      if (found_symbol != symbols.end()) {
+        continue;
+      }
+
+      return access.get_obj().second;
+    }
+
+    assert(false);
+    return 0;
+  }
+
+  void find_alias_replacement(std::string alias) {
+    std::vector<LibvigAccessExpressionArgument> replacements;
+    unsigned int obj = find_obj(alias);
+
+    for (auto& access : accesses_manager->get_accesses()) {
+      if (access.get_obj().second != obj) {
+        continue;
+      }
+
+      if (!access.has_write_arg()) {
+        continue;
+      }
+
+      RetrieveUniqueSymbolsNames retriever;
+      retriever.visit(access.get_write_argument().get_expr());
+      auto symbols = retriever.get_retrieved();
+
+      auto found_symbol = std::find(symbols.begin(), symbols.end(), alias);
+
+      if (found_symbol != symbols.end()) {
+        continue;
+      }
+
+      auto is_stored = [&](klee::expr::ExprHandle expr) -> bool {
+        for (auto inserted : replacements) {
+          // hack
+          auto replacement_expr = inserted.get_expr();
+          if (expr_to_string(replacement_expr) == expr_to_string(expr)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      auto expr = access.get_write_argument().get_expr();
+      if (!is_stored(expr)) {
+        replacements.push_back(access.get_write_argument());
+      }
+    }
+
+    assert(replacements.size());
+    alias_replacements[alias] = replacements;
+  }
+};
+
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   LibvigAccessesManager libvig_manager;
   ConstraintsAnalyser constraints_analyser;
+  AccessesStitcher accesses_stitcher;
 
   for (auto file : InputCallPathFiles) {
     std::cerr << "Loading: " << file << std::endl;
@@ -1885,6 +2111,9 @@ int main(int argc, char **argv) {
 
   constraints_analyser.set_accesses_manager(libvig_manager);
   constraints_analyser.analyse_constraints();
+
+  accesses_stitcher.set_accesses_manager(&libvig_manager);
+  accesses_stitcher.stitch_accesses();
 
   libvig_manager.print();
   constraints_analyser.print();
