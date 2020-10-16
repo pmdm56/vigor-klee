@@ -1534,7 +1534,7 @@ private:
     add_access_lookup_table(LibvigAccess("ether_addr_hash"));
 
     add_access_lookup_table(LibvigAccess("cht_fill_cht"));
-    add_access_lookup_table(LibvigAccess("cht_find_preferred_available_backend"));
+    add_access_lookup_table(LibvigAccess("cht_find_preferred_available_backend", "cht", "hash", "chosen_backend", LibvigAccess::WRITE));
 
     add_access_lookup_table(LibvigAccess("loop_invariant_consume"));
     add_access_lookup_table(LibvigAccess("loop_invariant_produce"));
