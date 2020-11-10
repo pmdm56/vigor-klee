@@ -99,8 +99,6 @@ std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
   std::vector<Expr_ptr> changes;
 
   Expr_ptr before_expr = transpile(ast, before);
-  Expr_ptr after_expr = transpile(ast, after);
-
   Type_ptr type = before_expr->get_type();
 
   while (type->get_type_kind() == Type::TypeKind::POINTER) {
@@ -311,12 +309,24 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::E
     Expr_ptr right = concat->get_right();
 
     auto right_size = right->get_type()->get_size();
+    auto left_size = left->get_type()->get_size();
 
-    if (offset_value < right_size && offset_value < right_size + size) {
+    if (offset_value == right_size && size == left_size) {
+      ast_expr = left;
+      offset_value = 0;
+      break;
+    }
+
+    if (offset_value == 0 && size == right_size) {
+      ast_expr = right;
+      break;
+    }
+
+    if (offset_value + size <= right_size) {
       ast_expr = right;
     }
 
-    else if (offset_value >= right_size && offset_value >= right_size + size) {
+    else if (offset_value > right_size) {
       ast_expr = left;
       offset_value -= right_size;
     }
@@ -383,10 +393,10 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::E
     }
   }
 
-  Expr_ptr mask = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, (1 << size) - 1, true);
   Expr_ptr extract;
 
   if (offset_value > 0) {
+    Expr_ptr mask = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, (1 << size) - 1, true);
     Expr_ptr offset = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, offset_value);
     ShiftRight_ptr shift = ShiftRight::build(ast_expr, offset);
     extract = And::build(shift, mask);
@@ -399,7 +409,6 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::E
   Cast_ptr cast = Cast::build(extract, type);
 
   save_result(cast);
-
   return klee::ExprVisitor::Action::skipChildren();
 }
 
@@ -412,56 +421,34 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitZExt(const klee::ZExt
   Expr_ptr ast_expr = transpile(ast, expr);
   assert(ast_expr);
 
+  if (type->get_size() > ast_expr->get_type()->get_size()) {
+    save_result(ast_expr);
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
   Cast_ptr cast = Cast::build(ast_expr, type);
 
   save_result(cast);
-
   return klee::ExprVisitor::Action::skipChildren();
 }
 
 klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitSExt(const klee::SExtExpr& e) {
   assert(e.getNumKids() == 1);
 
-  auto size = e.getWidth();
-  auto expr_size = e.getKid(0)->getWidth();
-
   Type_ptr type = klee_width_to_type(e.getWidth());
-  Expr_ptr expr = transpile(ast, e.getKid(0));
-  assert(expr);
+  auto expr = e.getKid(0);
 
-  unsigned int mask = 0;
-  for (unsigned int i = 0; i < size; i++) {
-    if (i < (size - expr_size)) {
-      mask = (mask << 1) | 1;
-    } else {
-      mask = (mask << 1);
-    }
+  Expr_ptr ast_expr = SignedExpression::build(transpile(ast, expr));
+  assert(ast_expr);
+
+  if (type->get_size() > ast_expr->get_type()->get_size()) {
+    save_result(ast_expr);
+    return klee::ExprVisitor::Action::skipChildren();
   }
 
-  Expr_ptr result;
+  Cast_ptr cast = Cast::build(ast_expr, type);
 
-  if (size > expr_size) {
-    assert(type->get_type_kind() == Type::TypeKind::PRIMITIVE);
-
-    PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
-    Expr_ptr mask_expr = Constant::build(primitive->get_primitive_kind(), mask, true);
-
-    Expr_ptr shift_value = Constant::build(primitive->get_primitive_kind(), size - 1);
-    ShiftRight_ptr msb = ShiftRight::build(expr, shift_value);
-
-    Expr_ptr if_msb_one = Or::build(mask_expr, expr);
-    Expr_ptr if_msb_not_one = Cast::build(expr, type);
-
-    result = Select::build(msb, if_msb_one, if_msb_not_one);
-  } else if (size == expr_size) {
-    result = expr;
-  } else {
-    result = Cast::build(expr, type);
-
-  }
-
-  save_result(result);
-
+  save_result(cast);
   return klee::ExprVisitor::Action::skipChildren();
 }
 

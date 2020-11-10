@@ -1,6 +1,11 @@
 #include "nodes.h"
 #include "ast.h"
 
+Expr_ptr SignedExpression::simplify(AST* ast) const {
+  Expr_ptr signed_expr_simplified = expr->simplify(ast);
+  return SignedExpression::build(signed_expr_simplified);
+}
+
 Expr_ptr Cast::simplify(AST* ast) const {
   Expr_ptr expr_simplified = expr->simplify(ast);
   return Cast::build(expr_simplified, type);
@@ -273,6 +278,12 @@ Expr_ptr Select::simplify(AST* ast) const {
 Expr_ptr Assignment::simplify(AST* ast) const {
   Expr_ptr variable_simplified = variable->simplify(ast);
   Expr_ptr value_simplified = value->simplify(ast);
+
+  if (value_simplified->get_kind() == CAST) {
+    Cast* cast = static_cast<Cast*>(value_simplified.get());
+    value_simplified = cast->get_expression()->clone();
+  }
+
   return Assignment::build(variable_simplified, value_simplified);
 }
 

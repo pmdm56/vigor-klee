@@ -13,6 +13,7 @@ class Node {
 public:
   enum NodeKind {
     COMMENT,
+    SIGNED_EXPRESSION,
     TYPE,
     CAST,
     IMPORT,
@@ -184,6 +185,50 @@ public:
 
 typedef std::shared_ptr<Expression> Expr_ptr;
 
+class SignedExpression : public Expression {
+private:
+  Expr_ptr expr;
+
+  SignedExpression(Expr_ptr _expr)
+    : Expression(SIGNED_EXPRESSION, _expr->get_type()), expr(_expr) {}
+
+public:
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    expr->synthesize(ofs, lvl);
+  }
+
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+
+    ofs << "<signed-expression>" << "\n";
+
+    expr->debug(ofs, lvl+2);
+
+    indent(ofs, lvl);
+    ofs << "</cast>" << "\n";
+  }
+
+  Expr_ptr get_expression() const { return expr; }
+
+  Expr_ptr simplify(AST* ast) const override;
+
+  void set_wrap(bool _wrap) override {
+    expr->set_wrap(_wrap);
+  }
+
+  Expr_ptr clone() const override {
+    Expression* signed_expr = new SignedExpression(expr);
+    return Expr_ptr(signed_expr);
+  }
+
+  static std::shared_ptr<SignedExpression> build(Expr_ptr _expr) {
+    SignedExpression* signed_expr = new SignedExpression(_expr);
+    return std::shared_ptr<SignedExpression>(signed_expr);
+  }
+};
+
+typedef std::shared_ptr<SignedExpression> SignedExpr_ptr;
+
 class PrimitiveType : public Type {
 public:
   enum PrimitiveKind {
@@ -254,6 +299,25 @@ public:
 
   const std::string& get_name() const override {
     return name;
+  }
+
+  void sign() {
+    switch (primitive_kind) {
+    case UINT8_T:
+      primitive_kind = INT8_T;
+      break;
+    case UINT16_T:
+      primitive_kind = INT16_T;
+      break;
+    case UINT32_T:
+      primitive_kind = INT32_T;
+      break;
+    case UINT64_T:
+      primitive_kind = INT64_T;
+      break;
+    default:
+      break;
+    }
   }
 
   std::shared_ptr<Type> clone() const override {
@@ -640,6 +704,23 @@ private:
         if (values[0] == 0) ofs << "false";
         else ofs << "true";
         break;
+      case PrimitiveType::PrimitiveKind::INT8_T:
+        if (hex) ofs << "0x";
+        ofs << ((int8_t) values[0]);
+        break;
+      case PrimitiveType::PrimitiveKind::INT16_T:
+        if (hex) ofs << "0x";
+        ofs << ((int16_t) values[0]);
+        break;
+      case PrimitiveType::PrimitiveKind::INT32_T:
+      case PrimitiveType::PrimitiveKind::INT:
+        if (hex) ofs << "0x";
+        ofs << ((int) values[0]);
+        break;
+      case PrimitiveType::PrimitiveKind::INT64_T:
+        if (hex) ofs << "0x";
+        ofs << ((int64_t) values[0]);
+        break;
       default:
         if (hex) ofs << "0x";
         ofs << values[0];
@@ -673,6 +754,15 @@ public:
   void set_value(uint64_t value, unsigned int idx) {
     assert(values.size() > idx);
     values[idx] = value;
+  }
+
+  void sign() {
+    if (type->get_type_kind() != Type::TypeKind::PRIMITIVE) {
+      return;
+    }
+
+    PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
+    primitive->sign();
   }
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -1295,6 +1385,14 @@ private:
     : Expression(ADD, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
     lhs->set_wrap(true);
     rhs->set_wrap(true);
+
+    if (rhs->get_kind() == NodeKind::SIGNED_EXPRESSION && lhs->get_kind() == NodeKind::CONSTANT) {
+      Constant* lhs_const = static_cast<Constant*>(lhs.get());
+      SignedExpression* rhs_signed_expr = static_cast<SignedExpression*>(rhs.get());
+
+      lhs_const->sign();
+      rhs = rhs_signed_expr->get_expression();
+    }
   }
 
 public:
@@ -2527,7 +2625,7 @@ private:
   Assignment(Expr_ptr _variable, Expr_ptr _value)
     : Expression(ASSIGNMENT, _variable->get_type()),
       variable(_variable->clone()), value(_value->clone()) {
-    value->set_wrap(true);
+    value->set_wrap(false);
   }
 
 public:
