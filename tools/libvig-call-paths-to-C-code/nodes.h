@@ -818,8 +818,6 @@ private:
   NotEquals(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(NOT_EQUALS, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    // TODO: track the type of data the vectors store
-    // assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
     rhs->set_wrap(true);
   }
@@ -1188,7 +1186,6 @@ private:
   Greater(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(GREATER, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
     rhs->set_wrap(true);
   }
@@ -1237,7 +1234,6 @@ private:
   GreaterEq(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(GREATER_EQ, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
     rhs->set_wrap(true);
   }
@@ -1286,7 +1282,6 @@ private:
   Less(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(LESS, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
     rhs->set_wrap(true);
   }
@@ -1335,7 +1330,6 @@ private:
   LessEq(Expr_ptr _lhs, Expr_ptr _rhs)
     : Expression(LESS_EQ, PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL)),
       lhs(_lhs->clone()), rhs(_rhs->clone()) {
-    assert(lhs->get_type()->get_size() == rhs->get_type()->get_size());
     lhs->set_wrap(true);
     rhs->set_wrap(true);
   }
@@ -2008,7 +2002,6 @@ private:
 
   AddressOf(Expr_ptr _expr)
     : Expression(ADDRESSOF, PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T)) {
-    assert(_expr->get_kind() == Node::NodeKind::VARIABLE);
     expr = _expr->clone();
   }
 
@@ -2042,7 +2035,6 @@ public:
   }
 
   static std::shared_ptr<AddressOf> build(Expr_ptr _expr) {
-    assert(_expr->get_kind() == VARIABLE);
     AddressOf* address_of = new AddressOf(_expr);
     return std::shared_ptr<AddressOf>(address_of);
   }
@@ -2249,7 +2241,7 @@ private:
     Type_ptr lt = left->get_type();
     Type_ptr rt = right->get_type();
 
-    assert(type->get_size() == (lt->get_size() + rt->get_size()));
+    assert(type->get_size() >= (lt->get_size() + rt->get_size()));
     left->set_wrap(true);
     right->set_wrap(true);
   }

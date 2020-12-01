@@ -684,7 +684,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
 
-    Expr_ptr key = transpile(this, call.args["key"].expr);
+    Expr_ptr key = transpile(this, call.args["key"].in);
     assert(key);
     Expr_ptr map = get_from_state(map_addr);
 
@@ -697,7 +697,7 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     VariableDecl_ptr value_out_decl = VariableDecl::build(value_out);
     exprs.push_back(value_out_decl);
 
-    args = std::vector<Expr_ptr>{ map, key, AddressOf::build(value_out) };
+    args = std::vector<Expr_ptr>{ map, AddressOf::build(key), AddressOf::build(value_out) };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "map_has_this_key";
     ret_expr = call.ret;
