@@ -640,7 +640,12 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     VariableDecl_ptr chunk_decl = VariableDecl::build(chunk);
     exprs.push_back(chunk_decl);
 
-    args = std::vector<Expr_ptr>{ p, pkt_len, chunk };
+    Type_ptr _void = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+    Type_ptr void_ptr = Pointer::build(_void);
+    Type_ptr void_ptr_ptr = Pointer::build(void_ptr);
+    Expr_ptr chunk_arg = Cast::build(AddressOf::build(chunk), void_ptr_ptr);
+
+    args = std::vector<Expr_ptr>{ p, pkt_len, chunk_arg };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 

@@ -353,7 +353,6 @@ private:
   std::vector<std::string> commit_functions;
   std::map<std::string, std::string> callpath_var_translation;
 
-  std::vector<Import_ptr> imports;
   std::vector<Variable_ptr> state;
   stack_t local_variables;
 
@@ -405,16 +404,6 @@ private:
 public:
   AST() {
     context_switch(INIT);
-
-    imports = std::vector<Import_ptr> {
-      Import::build("stdint", false),
-      Import::build("nf.h", true),
-      Import::build("nf-util.h", true),
-      Import::build("nf-log.h", true),
-      Import::build("libvig/verified/double-chain.h", true),
-      Import::build("libvig/verified/map.h", true),
-      Import::build("libvig/verified/vector.h", true),
-    };
 
     skip_functions = std::vector<std::string> {
       "loop_invariant_consume",
@@ -473,11 +462,6 @@ public:
   }
 
   void print(std::ostream &os) const {
-
-    for (auto import : imports) {
-      import->synthesize(os);
-      os << "\n";
-    }
 
     if (state.size()) {
       os << "\n";

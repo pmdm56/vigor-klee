@@ -442,6 +442,12 @@ private:
 
 public:
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    if (type->get_type_kind() == Type::TypeKind::POINTER) {
+      ofs << "(";
+      type->synthesize(ofs, 0);
+      ofs << ")";
+    }
+
     expr->synthesize(ofs, lvl);
   }
 
