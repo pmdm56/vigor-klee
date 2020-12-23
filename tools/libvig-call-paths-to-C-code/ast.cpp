@@ -776,12 +776,12 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
 
     Expr_ptr map = get_from_state(map_addr);
-    Expr_ptr key = transpile(this, call.args["key"].expr);
+    Expr_ptr key = transpile(this, call.args["key"].in);
     assert(key);
     Expr_ptr value = transpile(this, call.args["value"].expr);
     assert(key);
 
-    args = std::vector<Expr_ptr>{ map, key, value };
+    args = std::vector<Expr_ptr>{ map, AddressOf::build(key), value };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 

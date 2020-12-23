@@ -2151,30 +2151,29 @@ private:
     // assert(!is_ptr);
     unsigned int size = type->get_size();
 
+
     if (idx->get_kind() == CONSTANT) {
       Constant *idx_const = static_cast<Constant*>(idx.get());
       unsigned int idx_val = idx_const->get_value();
 
-      if (idx_val == size || !offset) {
+      assert(idx_val != size && "weird case :/");
+
+      if (!offset || idx_val == 0) {
         expr->synthesize(ofs);
         return;
       }
-    }
 
-    assert(offset);
+      assert(offset);
 
-    if (idx->get_kind() == CONSTANT) {
-      Constant* constant = static_cast<Constant*>(idx.get());
-
-      if (constant->get_value() != 0) {
+      if (idx_val != 0) {
         ofs << "(";
       }
 
       expr->synthesize(ofs);
 
-      if (constant->get_value() != 0) {
+      if (idx_val != 0) {
         ofs << " >> ";
-        ofs << (constant->get_value() * size);
+        ofs << (idx_val * size);
         ofs << ")";
       }
     } else {
@@ -2187,7 +2186,7 @@ private:
       ofs << ")";
     }
 
-    ofs << " & 0x";
+    ofs << " & ";
     ofs << std::hex;
     ofs << ((1 << size) - 1);
     ofs << std::dec;
