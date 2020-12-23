@@ -548,11 +548,12 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   std::vector<Expr_ptr> exprs;
   std::vector<Expr_ptr> args;
 
-  PrimitiveType_ptr ret_type;
+  Type_ptr ret_type;
   std::string ret_symbol;
   klee::ref<klee::Expr> ret_expr;
-  int counter_begins = 0;
+  std::pair<bool, uint64_t> ret_addr;
 
+  int counter_begins = 0;
   bool ignore = false;
 
   if (fname == "current_time") {
@@ -561,14 +562,16 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   }
 
   else if (fname == "packet_borrow_next_chunk") {
+    // rename fname
+    fname = "nf_borrow_next_chunk";
+
     Expr_ptr chunk_expr = transpile(this, call.args["chunk"].out);
     assert(chunk_expr->get_kind() == Node::NodeKind::CONSTANT);
-    uint64_t chunk_addr = (static_cast<Constant*>(chunk_expr.get()))->get_value();
+    ret_addr = std::pair<bool, uint64_t>(true, static_cast<Constant*>(chunk_expr.get())->get_value());
 
     Variable_ptr p = get_from_local("p");
     assert(p);
     Expr_ptr pkt_len = transpile(this, call.args["length"].expr);
-    Variable_ptr chunk;
 
     switch (assistant.layer) {
     case 2: {
@@ -588,7 +591,9 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
       Struct_ptr ether_hdr = Struct::build("ether_hdr", ether_hdr_fields);
 
-      chunk = Variable::build(AST::CHUNK_LAYER_2, Pointer::build(ether_hdr));
+      ret_type = Pointer::build(ether_hdr);
+      ret_symbol = CHUNK_LAYER_2;
+
       assistant.layer++;
       break;
     }
@@ -608,13 +613,16 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
       Struct_ptr ipv4_hdr = Struct::build("ipv4_hdr", ipv4_hdr_fields);
 
-      chunk = Variable::build(CHUNK_LAYER_3, Pointer::build(ipv4_hdr));
+      ret_type = Pointer::build(ipv4_hdr);
+      ret_symbol = CHUNK_LAYER_3;
+
       assistant.layer++;
       break;
     }
     case 4: {
       if (pkt_len->get_kind() != Node::NodeKind::CONSTANT) {
-        chunk = Variable::build("ip_options", Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T)));
+        ret_type = Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T));
+        ret_symbol = "ip_options";
         break;
       }
 
@@ -625,7 +633,9 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
 
       Struct_ptr tcpudp_hdr = Struct::build("tcpudp_hdr", tcpudp_hdr_fields);
 
-      chunk = Variable::build(CHUNK_LAYER_4, Pointer::build(tcpudp_hdr));
+      ret_type = Pointer::build(tcpudp_hdr);
+      ret_symbol = CHUNK_LAYER_4;
+
       assistant.layer++;
       break;
     }
@@ -634,19 +644,8 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
     }
     }
 
-    chunk->set_addr(chunk_addr);
-    push_to_local(chunk, call.extra_vars["the_chunk"].second);
-
-    VariableDecl_ptr chunk_decl = VariableDecl::build(chunk);
-    exprs.push_back(chunk_decl);
-
-    Type_ptr _void = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
-    Type_ptr void_ptr = Pointer::build(_void);
-    Type_ptr void_ptr_ptr = Pointer::build(void_ptr);
-    Expr_ptr chunk_arg = Cast::build(AddressOf::build(chunk), void_ptr_ptr);
-
-    args = std::vector<Expr_ptr>{ p, pkt_len, chunk_arg };
-    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+    ret_expr = call.extra_vars["the_chunk"].second;
+    args = std::vector<Expr_ptr>{ p, pkt_len };
   }
 
   else if (fname == "packet_get_unread_length") {
@@ -980,10 +979,17 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
   }
 
   if (!ignore) {
-    assert(args.size() == call.args.size());
+    assert(call.function_name != fname || args.size() == call.args.size());
     FunctionCall_ptr fcall = FunctionCall::build(fname, args, ret_type);
 
-    if (ret_type->get_primitive_kind() != PrimitiveType::PrimitiveKind::VOID) {
+    bool is_void = false;
+
+    if (ret_type->get_type_kind() == Type::TypeKind::PRIMITIVE) {
+      PrimitiveType* primitive = static_cast<PrimitiveType*>(ret_type.get());
+      is_void = primitive->get_primitive_kind() == PrimitiveType::PrimitiveKind::VOID;
+    }
+
+    if (!is_void) {
       assert(ret_symbol.size());
 
       Variable_ptr ret_var;
@@ -998,6 +1004,10 @@ Node_ptr AST::process_state_node_from_call(ast_builder_assistant_t& assistant, b
         push_to_local(ret_var, ret_expr);
       } else {
         push_to_local(ret_var);
+      }
+
+      if (ret_addr.first) {
+        ret_var->set_addr(ret_addr.second);
       }
 
       VariableDecl_ptr ret = VariableDecl::build(ret_var);
