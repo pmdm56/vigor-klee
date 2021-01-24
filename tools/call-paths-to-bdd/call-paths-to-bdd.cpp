@@ -124,9 +124,6 @@ bool solver_toolbox_t::are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee:
 void CallPathsGroup::group_call_paths() {
   assert(call_paths.size());
 
-  std::cerr << "\n";
-  std::cerr << "[*] Grouping call paths" << "\n";
-
   for (unsigned int i = 0; i < call_paths.size(); i++) {
     on_true.clear();
     on_false.clear();
@@ -154,7 +151,6 @@ void CallPathsGroup::group_call_paths() {
     discriminating_constraint = find_discriminating_constraint();
 
     if (!discriminating_constraint.isNull()) {
-      std::cerr << "\n";
       return;
     }
   }
@@ -214,7 +210,6 @@ klee::ref<klee::Expr> CallPathsGroup::find_discriminating_constraint() {
   auto possible_discriminating_constraints = get_possible_discriminating_constraints();
 
   for (auto constraint : possible_discriminating_constraints) {
-    std::cerr << ".";
     if (check_discriminating_constraint(constraint)) {
       return constraint;
     }
@@ -307,27 +302,9 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
   Node* local_leaf = nullptr;
 
   while (call_paths.size()) {
-    std::cerr << "call paths " << call_paths.size() << "\n";
+    std::cerr << ".";
 
     CallPathsGroup group(call_paths, solver_toolbox);
-
-    std::cerr << "on true:" << "\n";
-    for (auto cp : group.get_on_true()) {
-      if (cp->calls.size()) {
-        std::cerr << "  " << cp->file_name << " : " << cp->calls[0].function_name << "\n";
-      } else {
-        std::cerr << "  " << cp->file_name << "\n";
-      }
-    }
-
-    std::cerr << "on false:" << "\n";
-    for (auto cp : group.get_on_false()) {
-      if (cp->calls.size()) {
-        std::cerr << "  " << cp->file_name << " : " << cp->calls[0].function_name << "\n";
-      } else {
-        std::cerr << "  " << cp->file_name << "\n";
-      }
-    }
 
     auto on_true  = group.get_on_true();
     auto on_false = group.get_on_false();
@@ -374,14 +351,17 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
       node->add_on_false(on_false_root);
 
       if (local_root == nullptr) {
+        std::cerr << "\n";
         return node;
       }
 
+      std::cerr << "\n";
       local_leaf->add_next(node);
       return local_root;
     }
   }
 
+  std::cerr << "\n";
   return local_root;
 }
 
