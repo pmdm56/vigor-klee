@@ -151,33 +151,11 @@ void CallPathsGroup::group_call_paths() {
       return;
     }
 
-    unsigned max_on_true_group_size = on_true.size();
+    discriminating_constraint = find_discriminating_constraint();
 
-    // grabbing combinations of the in group
-    for (unsigned int group_size = max_on_true_group_size; group_size >= 1; group_size--) {
-      auto combinations = comb(call_paths.size(), group_size);
-
-      for (auto comb : combinations) {
-        on_true.clear();
-        on_false.clear();
-
-        for (unsigned int idx = 0; idx < call_paths.size(); idx++) {
-          auto found_it = std::find(comb.begin(), comb.end(), idx);
-
-          if (found_it != comb.end()) {
-            on_true.push_back(call_paths[idx]);
-          } else {
-            on_false.push_back(call_paths[idx]);
-          }
-        }
-
-        discriminating_constraint = find_discriminating_constraint();
-
-        if (!discriminating_constraint.isNull()) {
-          std::cerr << "\n";
-          return;
-        }
-      }
+    if (!discriminating_constraint.isNull()) {
+      std::cerr << "\n";
+      return;
     }
   }
 
@@ -231,24 +209,44 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
 }
 
 klee::ref<klee::Expr> CallPathsGroup::find_discriminating_constraint() {
-  klee::ref<klee::Expr> chosen_constraint;
-
   assert(on_true.size());
 
-  for (auto constraint : on_true[0]->constraints) {
+  auto possible_discriminating_constraints = get_possible_discriminating_constraints();
+
+  for (auto constraint : possible_discriminating_constraints) {
     std::cerr << ".";
     if (check_discriminating_constraint(constraint)) {
       return constraint;
     }
   }
 
-  return chosen_constraint;
+  return klee::ref<klee::Expr>();
 }
 
-bool CallPathsGroup::check_discriminating_constraint(klee::ref<klee::Expr> constraint) {
+std::vector<klee::ref<klee::Expr>> CallPathsGroup::get_possible_discriminating_constraints() const {
+  std::vector<klee::ref<klee::Expr>> possible_discriminating_constraints;
   assert(on_true.size());
-  assert(on_false.size());
 
+  for (auto constraint : on_true[0]->constraints) {
+    if (satisfies_constraint(on_true, constraint)) {
+      possible_discriminating_constraints.push_back(constraint);
+    }
+  }
+
+  return possible_discriminating_constraints;
+}
+
+bool CallPathsGroup::satisfies_constraint(std::vector<call_path_t*> call_paths,
+                                          klee::ref<klee::Expr> constraint) const {
+  for (const auto& call_path : call_paths) {
+    if (!satisfies_constraint(call_path, constraint)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CallPathsGroup::satisfies_constraint(call_path_t* call_path, klee::ref<klee::Expr> constraint) const {
   RetrieveSymbols symbol_retriever;
   symbol_retriever.visit(constraint);
   std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
@@ -256,19 +254,52 @@ bool CallPathsGroup::check_discriminating_constraint(klee::ref<klee::Expr> const
   ReplaceSymbols symbol_replacer(symbols);
   auto not_constraint = solver_toolbox.exprBuilder->Not(constraint);
 
-  for (call_path_t* call_path : on_true) {
-    if (!solver_toolbox.is_expr_always_false(call_path->constraints, not_constraint, symbol_replacer)) {
+  return solver_toolbox.is_expr_always_false(call_path->constraints, not_constraint, symbol_replacer);
+}
+
+bool CallPathsGroup::satisfies_not_constraint(std::vector<call_path_t*> call_paths,
+                                              klee::ref<klee::Expr> constraint) const {
+  for (const auto& call_path : call_paths) {
+    if (!satisfies_not_constraint(call_path, constraint)) {
       return false;
     }
   }
-
-  for (call_path_t* call_path : on_false) {
-    if (!solver_toolbox.is_expr_always_true(call_path->constraints, not_constraint, symbol_replacer)) {
-      return false;
-    }
-  }
-
   return true;
+}
+
+bool CallPathsGroup::satisfies_not_constraint(call_path_t* call_path, klee::ref<klee::Expr> constraint) const {
+  RetrieveSymbols symbol_retriever;
+  symbol_retriever.visit(constraint);
+  std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
+
+  ReplaceSymbols symbol_replacer(symbols);
+  auto not_constraint = solver_toolbox.exprBuilder->Not(constraint);
+
+  return solver_toolbox.is_expr_always_true(call_path->constraints, not_constraint, symbol_replacer);
+}
+
+bool CallPathsGroup::check_discriminating_constraint(klee::ref<klee::Expr> constraint) {
+  assert(on_true.size());
+  assert(on_false.size());
+
+  std::vector<call_path*> _on_true = on_true;
+  std::vector<call_path*> _on_false;
+
+  for (auto call_path : on_false) {
+    if (satisfies_constraint(call_path, constraint)) {
+      _on_true.push_back(call_path);
+    } else {
+      _on_false.push_back(call_path);
+    }
+  }
+
+  if (_on_false.size() && satisfies_not_constraint(_on_false, constraint)) {
+    on_true  = _on_true;
+    on_false = _on_false;
+    return true;
+  }
+
+  return false;
 }
 
 Node* BDD::populate(std::vector<call_path_t*> call_paths) {
@@ -320,6 +351,7 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
       }
 
       for (auto& cp : call_paths) {
+        assert(cp->calls.size());
         cp->calls.erase(cp->calls.begin());
       }
     } else {
