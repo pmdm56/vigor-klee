@@ -100,16 +100,6 @@ void CallPathsGroup::group_call_paths() {
     call_t call = cp->calls[0];
 
     for (auto _cp : call_paths) {
-      /*
-      if (_cp->calls.size() && _cp->calls[0].function_name == "packet_get_unread_length") {
-        std::cerr << "first  " << cp->file_name << "\n";
-        std::cerr << "second " << _cp->file_name << "\n";
-        std::cerr << "comparing packet_get_unread_length with " << call.function_name << "\n";
-        std::cerr << "eq: " << are_calls_equal(_cp->calls[0], call) << "\n";
-        if (!are_calls_equal(_cp->calls[0], call))
-        {char c; std::cin >> c;}
-      }
-      */
       if (_cp->calls.size() && are_calls_equal(_cp->calls[0], call)) {
         on_true.push_back(_cp);
         continue;
