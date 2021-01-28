@@ -346,6 +346,8 @@ private:
   std::vector<call_path_t*> call_paths;
   solver_toolbox_t& solver_toolbox;
 
+  std::vector<std::string> skip_functions;
+
 private:
   void group_call_paths();
   bool check_discriminating_constraint(klee::ref<klee::Expr> constraint);
@@ -358,10 +360,24 @@ private:
   bool are_calls_equal(call_t c1, call_t c2);
   call_t pop_call();
 
+  bool is_skip_function(const std::string& fname) const {
+    auto found = std::find(skip_functions.begin(), skip_functions.end(), fname);
+    return found != skip_functions.end();
+  }
+
 public:
   CallPathsGroup(const std::vector<call_path_t*>& _call_paths,
                  solver_toolbox_t& _solver_toolbox)
     : call_paths(_call_paths), solver_toolbox(_solver_toolbox) {
+    skip_functions = std::vector<std::string> {
+      "loop_invariant_consume",
+      "loop_invariant_produce",
+      "packet_receive",
+      "packet_state_total_length",
+      "packet_free",
+      "start_time"
+    };
+
     group_call_paths();
   }
 

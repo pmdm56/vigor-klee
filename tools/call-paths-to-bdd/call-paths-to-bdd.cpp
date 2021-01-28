@@ -89,27 +89,37 @@ uint64_t solver_toolbox_t::value_from_expr(klee::ref<klee::Expr> expr) const {
 void CallPathsGroup::group_call_paths() {
   assert(call_paths.size());
 
-  for (unsigned int i = 0; i < call_paths.size(); i++) {
+  for (const auto& cp : call_paths) {
     on_true.clear();
     on_false.clear();
 
-    if (call_paths[i]->calls.size() == 0) {
+    if (cp->calls.size() == 0) {
       continue;
     }
 
-    call_t call = call_paths[i]->calls[0];
+    call_t call = cp->calls[0];
 
-    for (auto cp : call_paths) {
-      if (cp->calls.size() && are_calls_equal(cp->calls[0], call)) {
-        on_true.push_back(cp);
+    for (auto _cp : call_paths) {
+      /*
+      if (_cp->calls.size() && _cp->calls[0].function_name == "packet_get_unread_length") {
+        std::cerr << "first  " << cp->file_name << "\n";
+        std::cerr << "second " << _cp->file_name << "\n";
+        std::cerr << "comparing packet_get_unread_length with " << call.function_name << "\n";
+        std::cerr << "eq: " << are_calls_equal(_cp->calls[0], call) << "\n";
+        if (!are_calls_equal(_cp->calls[0], call))
+        {char c; std::cin >> c;}
+      }
+      */
+      if (_cp->calls.size() && are_calls_equal(_cp->calls[0], call)) {
+        on_true.push_back(_cp);
         continue;
       }
 
-      on_false.push_back(cp);
+      on_false.push_back(_cp);
     }
 
     // all calls are equal, no need do discriminate
-    if (on_true.size() == call_paths.size()) {
+    if (on_false.size() == 0) {
       return;
     }
 
@@ -134,15 +144,14 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
     return false;
   }
 
-  //if (!solver_toolbox.are_exprs_always_equal(c1.ret, c2.ret)) {
-  //  ret_diff = true;
-  //  return false;
-  //}
+  if (is_skip_function(c1.function_name)) {
+    return true;
+  }
 
   for (auto arg_name_value_pair : c1.args) {
     auto arg_name = arg_name_value_pair.first;
 
-    // exception: we don't care about 'p' differences (arg of packet_borrow_next_chunk)
+    // exception: we don't care about 'p' differences
     if (arg_name == "p") {
       continue;
     }
@@ -155,13 +164,15 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
     }
 
     // comparison between modifications to the received packet
-    if (c1.function_name == "packet_return_chunk" && arg_name == "the_chunk") {
-      if (!solver_toolbox.are_exprs_always_equal(c1_arg.in, c2_arg.in)) {
+    if (c1.function_name == "packet_return_chunk" && arg_name == "the_chunk" &&
+        !solver_toolbox.are_exprs_always_equal(c1_arg.in, c2_arg.in))
         return false;
-      }
-    }
 
-    else if (!solver_toolbox.are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
+    if (!solver_toolbox.are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
+      if (c1.function_name == "packet_receive") {
+        std::cerr << arg_name << " diff" << "\n";
+        char c; std::cin >> c;
+      }
       return false;
     }
   }

@@ -67,7 +67,10 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, bool process, const BDD::Nod
           assert(on_false_size <= 1);
         } else {
           root = on_false_bdd;
-          assert(on_true_size <= 1);
+          // TODO: I'm assuming that the branch with the least amount
+          // of call_paths is the one connected to failed instances
+          // of nf_init. I should really check this.
+          // assert(on_true_size <= 1);
         }
 
         break;
