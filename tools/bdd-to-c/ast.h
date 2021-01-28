@@ -105,7 +105,6 @@ public:
       "packet_receive",
       "packet_state_total_length",
       "packet_free",
-      "packet_send",
       "start_time"
     };
 

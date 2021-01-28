@@ -101,7 +101,6 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, bool process, const BDD::Nod
         process = true;
       } else if (action == AST::ContextActions::STOP) {
         root = nullptr;
-        break;
       }
 
       if (process) {
@@ -112,7 +111,8 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, bool process, const BDD::Nod
         }
       }
 
-      root = root->get_next();
+      if (root)
+        root = root->get_next();
       break;
     };
     }

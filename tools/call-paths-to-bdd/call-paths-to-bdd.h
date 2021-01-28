@@ -93,8 +93,7 @@ public:
     std::string ext_delim = ".";
 
     for (const auto& cp : call_paths) {
-      missing_calls.push_back(cp->calls);
-
+      missing_calls.emplace_back(cp->calls);
       std::string filename = cp->file_name;
 
       auto dir_found = filename.find_last_of(dir_delim);
@@ -130,12 +129,12 @@ public:
     std::cerr << "===========================================" << "\n";
     std::cerr << "type:      call" << "\n";
     std::cerr << "callpaths: ";
-    int i = 1;
+    int i = 0;
     for (const auto& filename : call_paths_filenames) {
-      if (i % 5 == 0)  {
+      if (i > 0 && i % 5 == 0)  {
         std::cerr << "\n" << "           ";
       }
-      if (i > 1 && i % 5 != 0) std::cerr << ", ";
+      if (i > 0 && i % 5 != 0) std::cerr << ", ";
       std::cerr << filename;
       i++;
     }

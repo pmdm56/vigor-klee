@@ -542,7 +542,11 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
   int counter_begins = 0;
   bool ignore = false;
 
-  if (fname == "current_time") {
+  if (fname == "packet_send") {
+    return get_return_from_process(call);
+  }
+
+  else if (fname == "current_time") {
     associate_expr_to_local("now", call.ret);
     ignore = true;
   }
@@ -1032,12 +1036,6 @@ Node_ptr AST::get_return_from_init(call_t call) {
 
 Node_ptr AST::get_return_from_process(calls_t calls) {
   assert(calls.size());
-  call_t packet_send;
-
-  std::cerr << "calls " << calls.size() << "\n";
-  for (const auto& call : calls) {
-    std::cerr << "  * " << call.function_name << "\n";
-  }
 
   auto packet_send_finder = [](call_t call) -> bool {
     return call.function_name == "packet_send";
@@ -1047,11 +1045,13 @@ Node_ptr AST::get_return_from_process(calls_t calls) {
   auto found = (packet_send_it != calls.end());
 
   if (found) {
-    packet_send = *packet_send_it;
+    return get_return_from_process(*packet_send_it);
   }
 
-  assert(found);
-  return get_return_from_process(packet_send);
+  Expr_ptr device = get_from_local("device");
+  Return_ptr ret = Return::build(device);
+  Comment_ptr comm = Comment::build("dropping");
+  return Block::build(std::vector<Node_ptr>{ comm, ret }, false);
 }
 
 Node_ptr AST::get_return_from_process(call_t packet_send) {
