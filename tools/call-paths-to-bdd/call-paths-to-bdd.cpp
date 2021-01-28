@@ -1,58 +1,12 @@
 #include "call-paths-to-bdd.h"
 
-std::vector<std::string> filenames_from_call_paths(std::vector<call_path_t*> call_paths) {
-  std::vector<std::string> filenames;
-  std::string dir_delim = "/";
-  std::string ext_delim = ".";
-
-  for (const auto& cp : call_paths) {
-    std::string filename = cp->file_name;
-
-    auto dir_found = filename.find_last_of(dir_delim);
-    if (dir_found != std::string::npos) {
-      filename = filename.substr(dir_found+1, filename.size());
-    }
-
-    auto ext_found = filename.find_last_of(ext_delim);
-    if (ext_found != std::string::npos) {
-      filename = filename.substr(0, ext_found);
-    }
-
-    filenames.push_back(filename);
-  }
-
-  return filenames;
-}
-
-std::vector<std::vector<unsigned int>> comb(unsigned int n, unsigned int k) {
-  std::vector<std::vector<unsigned int>> result;
-
-  if (k == 1) {
-    for (unsigned int idx = 0; idx < n; idx++) {
-      std::vector<unsigned int> curr_comb { idx };
-      result.push_back(curr_comb);
-    }
-    return result;
-  }
-
-  for (unsigned int idx = 0; idx + k <= n; idx++) {
-    auto sub_comb = comb(n-idx-1, k-1);
-    for (auto c : sub_comb) {
-      std::vector<unsigned int> curr_comb {n-idx-1};
-      curr_comb.insert(curr_comb.end(), c.begin(), c.end());
-      result.push_back(curr_comb);
-    }
-  }
-
-  return result;
-}
-
-bool solver_toolbox_t::is_expr_always_true(klee::ref<klee::Expr> expr) {
+namespace BDD {
+bool solver_toolbox_t::is_expr_always_true(klee::ref<klee::Expr> expr) const {
   klee::ConstraintManager no_constraints;
   return is_expr_always_true(no_constraints, expr);
 }
 
-bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr) {
+bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr) const {
   klee::Query sat_query(constraints, expr);
 
   bool result;
@@ -64,7 +18,7 @@ bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints, 
 
 bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints,
                                            klee::ref<klee::Expr> expr,
-                                           ReplaceSymbols& symbol_replacer) {
+                                           ReplaceSymbols& symbol_replacer) const {
     klee::ConstraintManager replaced_constraints;
 
     for (auto constr : constraints) {
@@ -74,13 +28,13 @@ bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints,
     return is_expr_always_true(replaced_constraints, expr);
   }
 
-bool solver_toolbox_t::is_expr_always_false(klee::ref<klee::Expr> expr) {
+bool solver_toolbox_t::is_expr_always_false(klee::ref<klee::Expr> expr) const {
   klee::ConstraintManager no_constraints;
   return is_expr_always_false(no_constraints, expr);
 }
 
 bool solver_toolbox_t::is_expr_always_false(klee::ConstraintManager constraints,
-                                            klee::ref<klee::Expr> expr) {
+                                            klee::ref<klee::Expr> expr) const {
   klee::Query sat_query(constraints, expr);
 
   bool result;
@@ -92,7 +46,7 @@ bool solver_toolbox_t::is_expr_always_false(klee::ConstraintManager constraints,
 
 bool solver_toolbox_t::is_expr_always_false(klee::ConstraintManager constraints,
                                             klee::ref<klee::Expr> expr,
-                                            ReplaceSymbols& symbol_replacer) {
+                                            ReplaceSymbols& symbol_replacer) const {
     klee::ConstraintManager replaced_constraints;
 
     for (auto constr : constraints) {
@@ -102,7 +56,7 @@ bool solver_toolbox_t::is_expr_always_false(klee::ConstraintManager constraints,
     return is_expr_always_false(replaced_constraints, expr);
   }
 
-bool solver_toolbox_t::are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee::ref<klee::Expr> expr2) {
+bool solver_toolbox_t::are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee::ref<klee::Expr> expr2) const {
   if (expr1.isNull() != expr2.isNull()) {
     return false;
   }
@@ -119,6 +73,17 @@ bool solver_toolbox_t::are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee:
   klee::ref<klee::Expr> replaced = symbol_replacer.visit(expr2);
 
   return is_expr_always_true(exprBuilder->Eq(expr1, replaced));
+}
+
+uint64_t solver_toolbox_t::value_from_expr(klee::ref<klee::Expr> expr) const {
+  klee::ConstraintManager no_constraints;
+  klee::Query sat_query(no_constraints, expr);
+
+  klee::ref<klee::ConstantExpr> value_expr;
+  bool success = solver->getValue(sat_query, value_expr);
+
+  assert(success);
+  return value_expr->getZExtValue();
 }
 
 void CallPathsGroup::group_call_paths() {
@@ -297,13 +262,35 @@ bool CallPathsGroup::check_discriminating_constraint(klee::ref<klee::Expr> const
   return false;
 }
 
+call_t BDD::get_successful_call(std::vector<call_path_t*> call_paths) const {
+  assert(call_paths.size());
+
+  for (const auto& cp : call_paths) {
+    assert(cp->calls.size());
+    call_t call = cp->calls[0];
+
+    if (call.ret.isNull()) {
+      return call;
+    }
+
+    auto zero = solver_toolbox.exprBuilder->Constant(0, call.ret->getWidth());
+    auto eq_zero = solver_toolbox.exprBuilder->Eq(call.ret, zero);
+    auto is_ret_success = solver_toolbox.is_expr_always_false(eq_zero);
+
+    if (is_ret_success) {
+      return call;
+    }
+  }
+
+  // no function with successful return
+  return call_paths[0]->calls[0];
+}
+
 Node* BDD::populate(std::vector<call_path_t*> call_paths) {
   Node* local_root = nullptr;
   Node* local_leaf = nullptr;
 
   while (call_paths.size()) {
-    std::cerr << ".";
-
     CallPathsGroup group(call_paths, solver_toolbox);
 
     auto on_true  = group.get_on_true();
@@ -316,7 +303,7 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
         return local_root;
       }
 
-      Call* node = new Call(on_true[0]->calls[0], filenames_from_call_paths(on_true));
+      Call* node = new Call(get_successful_call(on_true), on_true);
 
       // root node
       if (local_root == nullptr) {
@@ -324,6 +311,7 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
         local_leaf = node;
       } else {
         local_leaf->add_next(node);
+        node->add_prev(local_leaf);
         local_leaf = node;
       }
 
@@ -334,15 +322,7 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
     } else {
       auto discriminating_constraint = group.get_discriminating_constraint();
 
-      auto on_true_filenames = filenames_from_call_paths(on_true);
-      auto on_false_filenames = filenames_from_call_paths(on_false);
-
-      std::vector<std::string> filenames;
-      filenames.reserve(on_true_filenames.size() + on_false_filenames.size());
-      filenames.insert(filenames.end(), on_true_filenames.begin(), on_true_filenames.end());
-      filenames.insert(filenames.end(), on_false_filenames.begin(), on_false_filenames.end());
-
-      Branch* node = new Branch(discriminating_constraint, filenames);
+      Branch* node = new Branch(discriminating_constraint, call_paths);
 
       Node* on_true_root  = populate(on_true);
       Node* on_false_root = populate(on_false);
@@ -351,17 +331,16 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
       node->add_on_false(on_false_root);
 
       if (local_root == nullptr) {
-        std::cerr << "\n";
         return node;
       }
 
-      std::cerr << "\n";
       local_leaf->add_next(node);
+      node->add_prev(local_leaf);
+
       return local_root;
     }
   }
 
-  std::cerr << "\n";
   return local_root;
 }
 
@@ -374,27 +353,23 @@ void BDD::dump(int lvl, const Node* node) const {
   std::string sep = std::string(lvl*2, ' ');
 
   if (node) {
+    std::cerr << "\n";
     for (auto filename : node->get_call_paths_filenames()) {
-      std::cerr << sep << filename << "\n";
+      std::cerr << sep << "[" << filename << "]" << "\n";
     }
   }
 
   while (node) {
-    switch (node->get_type()) {
-    case Node::NodeType::CALL: {
-      const Call* call_node = static_cast<const Call*>(node);
-      call_t call = call_node->get_call();
-      std::cerr << sep << call.function_name << "\n";
-      break;
-    };
-    case Node::NodeType::BRANCH: {
+    node->dump_compact(lvl);
+
+    if (node->get_type() == Node::NodeType::BRANCH) {
       const Branch* branch_node = static_cast<const Branch*>(node);
       dump(lvl+1, branch_node->get_on_true());
       dump(lvl+1, branch_node->get_on_false());
       return;
-    };
     }
 
     node = node->get_next();
   }
+}
 }

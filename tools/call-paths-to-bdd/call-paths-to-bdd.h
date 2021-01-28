@@ -23,6 +23,7 @@
 
 #include "load-call-paths.h"
 
+namespace BDD {
 class Node {
 public:
   enum NodeType {
@@ -31,23 +32,39 @@ public:
 
 protected:
   Node *next;
+  Node *prev;
   NodeType type;
-  std::vector<std::string> call_paths_filenames;
+
+  std::vector<std::string>  call_paths_filenames;
+  std::vector<calls_t> missing_calls;
 
 public:
-  Node(NodeType _type, const std::vector<std::string>& _call_paths_filenames)
-    : next(nullptr), type(_type), call_paths_filenames(_call_paths_filenames) {}
+  Node(NodeType _type, const std::vector<call_path_t*>& _call_paths)
+    : next(nullptr), prev(nullptr), type(_type) {
+    process_call_paths(_call_paths);
+  }
 
-  Node(Node *_next, NodeType _type, const std::vector<std::string>& _call_paths_filenames)
-    : next(_next), type(_type), call_paths_filenames(_call_paths_filenames) {}
+  Node(Node *_next, Node *_prev, NodeType _type, const std::vector<call_path_t*>& _call_paths)
+    : next(_next), prev(_prev), type(_type) {
+    process_call_paths(_call_paths);
+  }
 
   void add_next(Node* _next) {
     assert(next == nullptr);
     next = _next;
   }
 
+  void add_prev(Node* _prev) {
+    assert(prev == nullptr);
+    prev = _prev;
+  }
+
   const Node* get_next() const {
     return next;
+  }
+
+  const Node* get_prev() const {
+    return prev;
   }
 
   NodeType get_type() const {
@@ -58,9 +75,39 @@ public:
     return call_paths_filenames;
   }
 
+  const std::vector<calls_t>& get_missing_calls() const {
+    return missing_calls;
+  }
+
   virtual ~Node() {
     if (next) {
       delete next;
+    }
+  }
+
+  virtual void dump() const = 0;
+  virtual void dump_compact(int lvl=0) const = 0;
+
+  void process_call_paths(std::vector<call_path_t*> call_paths) {
+    std::string dir_delim = "/";
+    std::string ext_delim = ".";
+
+    for (const auto& cp : call_paths) {
+      missing_calls.push_back(cp->calls);
+
+      std::string filename = cp->file_name;
+
+      auto dir_found = filename.find_last_of(dir_delim);
+      if (dir_found != std::string::npos) {
+        filename = filename.substr(dir_found+1, filename.size());
+      }
+
+      auto ext_found = filename.find_last_of(ext_delim);
+      if (ext_found != std::string::npos) {
+        filename = filename.substr(0, ext_found);
+      }
+
+      call_paths_filenames.push_back(filename);
     }
   }
 };
@@ -70,13 +117,46 @@ private:
   call_t call;
 
 public:
-  Call(call_t _call, const std::vector<std::string>& _call_paths_filenames)
-    : Node(Node::NodeType::CALL, _call_paths_filenames), call(_call) {}
-  Call(call_t _call, Node *_next, const std::vector<std::string>& _call_paths_filenames)
-    : Node(_next, Node::NodeType::CALL, _call_paths_filenames), call(_call) {}
+  Call(call_t _call, const std::vector<call_path_t*>& _call_paths)
+    : Node(Node::NodeType::CALL, _call_paths), call(_call) {}
+  Call(call_t _call, Node *_next, Node *_prev, const std::vector<call_path_t*>& _call_paths)
+    : Node(_next, _prev, Node::NodeType::CALL, _call_paths), call(_call) {}
 
   call_t get_call() const {
     return call;
+  }
+
+  virtual void dump() const override {
+    std::cerr << "===========================================" << "\n";
+    std::cerr << "type:      call" << "\n";
+    std::cerr << "callpaths: ";
+    int i = 1;
+    for (const auto& filename : call_paths_filenames) {
+      if (i % 5 == 0)  {
+        std::cerr << "\n" << "           ";
+      }
+      if (i > 1 && i % 5 != 0) std::cerr << ", ";
+      std::cerr << filename;
+      i++;
+    }
+    std::cerr << "\n";
+    std::cerr << "function:  " << call.function_name << "\n";
+    std::cerr << "args:      ";
+    bool indent = false;
+    for (const auto& arg : call.args) {
+      if (indent) std::cerr << "           ";
+      std::cerr << arg.first << " : "; arg.second.expr->dump();
+      indent = true;
+    }
+    if (!call.ret.isNull()) {
+      std::cerr << "ret:       "; call.ret->dump();
+    }
+    std::cerr << "===========================================" << "\n";
+  }
+
+  virtual void dump_compact(int lvl) const override {
+    std::string sep = std::string(lvl*2, ' ');
+    std::cerr << sep << call.function_name << "\n";
   }
 };
 
@@ -86,13 +166,13 @@ private:
   Node *on_false;
 
 public:
-  Branch(klee::ref<klee::Expr> _condition, const std::vector<std::string>& _call_paths_filenames)
-    : Node(Node::NodeType::BRANCH, _call_paths_filenames),
+  Branch(klee::ref<klee::Expr> _condition, const std::vector<call_path_t*>& _call_paths)
+    : Node(Node::NodeType::BRANCH, _call_paths),
       condition(_condition), on_false(nullptr) {}
 
-  Branch(klee::ref<klee::Expr> _condition, Node *_on_true, Node *_on_false,
-         const std::vector<std::string>& _call_paths_filenames)
-    : Node(_on_true, Node::NodeType::BRANCH, _call_paths_filenames),
+  Branch(klee::ref<klee::Expr> _condition, Node *_on_true, Node *_on_false, Node *_prev,
+         const std::vector<call_path_t*>& _call_paths)
+    : Node(_on_true, _prev, Node::NodeType::BRANCH, _call_paths),
       condition(_condition), on_false(_on_false) {}
 
   klee::ref<klee::Expr> get_condition() const {
@@ -121,6 +201,15 @@ public:
       delete on_false;
     }
   }
+
+  virtual void dump() const override {
+    std::cerr << "===========================================" << "\n";
+    std::cerr << "type:      branch" << "\n";
+    std::cerr << "condition: "; condition->dump();
+    std::cerr << "===========================================" << "\n";
+  }
+
+  virtual void dump_compact(int lvl) const override {}
 };
 
 class RetrieveSymbols : public klee::ExprVisitor::ExprVisitor {
@@ -233,15 +322,20 @@ struct solver_toolbox_t {
     exprBuilder = klee::createDefaultExprBuilder();
   }
 
-  bool is_expr_always_true(klee::ref<klee::Expr> expr);
-  bool is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr);
-  bool is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr, ReplaceSymbols& symbol_replacer);
+  solver_toolbox_t(const solver_toolbox_t& _other)
+    : solver(_other.solver), exprBuilder(_other.exprBuilder) {}
 
-  bool is_expr_always_false(klee::ref<klee::Expr> expr);
-  bool is_expr_always_false(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr);
-  bool is_expr_always_false(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr, ReplaceSymbols& symbol_replacer);
+  bool is_expr_always_true(klee::ref<klee::Expr> expr) const;
+  bool is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr) const;
+  bool is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr, ReplaceSymbols& symbol_replacer) const;
 
-  bool are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee::ref<klee::Expr> expr2);
+  bool is_expr_always_false(klee::ref<klee::Expr> expr) const;
+  bool is_expr_always_false(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr) const;
+  bool is_expr_always_false(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr, ReplaceSymbols& symbol_replacer) const;
+
+  bool are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee::ref<klee::Expr> expr2) const;
+
+  uint64_t value_from_expr(klee::ref<klee::Expr> expr) const;
 };
 
 class CallPathsGroup {
@@ -291,6 +385,7 @@ private:
   solver_toolbox_t solver_toolbox;
 
 private:
+  call_t get_successful_call(std::vector<call_path_t*> call_paths) const;
   Node* populate(std::vector<call_path_t*> call_paths);
   void add_node(call_t call);
   void dump(int lvl, const Node* node) const;
@@ -301,5 +396,7 @@ public:
   }
 
   const Node* get_root() const { return root.get(); }
+  const solver_toolbox_t& get_solver_toolbox() const { return solver_toolbox; }
   void dump() const;
 };
+}

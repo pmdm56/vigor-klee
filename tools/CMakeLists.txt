@@ -19,3 +19,5 @@ add_subdirectory(load-call-paths)
 add_subdirectory(analyse-libvig-call-paths)
 add_subdirectory(libvig-call-paths-to-C-code)
 add_subdirectory(call-paths-to-bdd)
+add_subdirectory(bdd-to-c)
+

@@ -19,10 +19,12 @@ typedef struct {
   klee::ref<klee::Expr> ret;
 } call_t;
 
+typedef std::vector<call_t> calls_t;
+
 typedef struct call_path {
   std::string file_name;
   klee::ConstraintManager constraints;
-  std::vector<call_t> calls;
+  calls_t calls;
   std::map<std::string, const klee::Array *> arrays;
 } call_path_t;
 

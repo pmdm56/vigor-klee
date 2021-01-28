@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
     call_paths.push_back(call_path);
   }
 
-  BDD bdd(call_paths);
+  BDD::BDD bdd(call_paths);
 
   bdd.dump();
   for (auto call_path : call_paths) {
