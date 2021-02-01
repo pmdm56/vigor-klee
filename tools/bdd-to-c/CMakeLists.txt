@@ -10,7 +10,6 @@ add_executable(bdd-to-c
   bdd-to-c.cpp
   nodes.cpp
   ast.cpp
-  misc.cpp
   klee_transpiler.cpp
   ../load-call-paths/load-call-paths.cpp
   ../call-paths-to-bdd/call-paths-to-bdd.cpp

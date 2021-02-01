@@ -14,7 +14,6 @@
 #include "call-paths-to-bdd.h"
 #include "load-call-paths.h"
 #include "nodes.h"
-#include "misc.h"
 #include "klee_transpiler.h"
 
 class AST {

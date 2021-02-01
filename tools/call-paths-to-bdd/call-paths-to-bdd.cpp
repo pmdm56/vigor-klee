@@ -1,5 +1,26 @@
 #include "call-paths-to-bdd.h"
 
+std::string expr_to_string(klee::ref<klee::Expr> expr, bool one_liner) {
+  std::string expr_str;
+  if (expr.isNull())
+    return expr_str;
+  llvm::raw_string_ostream os(expr_str);
+  expr->print(os);
+  os.str();
+
+  if (one_liner) {
+    // remove new lines
+    expr_str.erase(std::remove(expr_str.begin(), expr_str.end(), '\n'), expr_str.end());
+
+    // remove duplicated whitespaces
+    auto bothAreSpaces = [](char lhs, char rhs) -> bool { return (lhs == rhs) && (lhs == ' '); };
+    std::string::iterator new_end = std::unique(expr_str.begin(), expr_str.end(), bothAreSpaces);
+    expr_str.erase(new_end, expr_str.end());
+  }
+
+  return expr_str;
+}
+
 namespace BDD {
 bool solver_toolbox_t::is_expr_always_true(klee::ref<klee::Expr> expr) const {
   klee::ConstraintManager no_constraints;
@@ -304,7 +325,7 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
         return local_root;
       }
 
-      Call* node = new Call(get_successful_call(on_true), on_true);
+      Call* node = new Call(get_and_inc_id(), get_successful_call(on_true), on_true);
 
       // root node
       if (local_root == nullptr) {
@@ -323,7 +344,7 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
     } else {
       auto discriminating_constraint = group.get_discriminating_constraint();
 
-      Branch* node = new Branch(discriminating_constraint, call_paths);
+      Branch* node = new Branch(get_and_inc_id(), discriminating_constraint, call_paths);
 
       Node* on_true_root  = populate(on_true);
       Node* on_false_root = populate(on_false);

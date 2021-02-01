@@ -744,8 +744,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
 
-    // FIXME: track the type going in the vector
-    Type_ptr val_out_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+    Type_ptr val_out_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
     Variable_ptr val_out = generate_new_symbol("val_out", val_out_type, 1, 0);
     val_out->set_addr(val_out_addr);
 
@@ -756,7 +755,11 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
     exprs.push_back(Assignment::build(val_out_decl, zero));
 
-    args = std::vector<Expr_ptr>{ vector, index, AddressOf::build(val_out) };
+    Type_ptr val_out_type_arg = Pointer::build(Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID)));
+    Expr_ptr val_out_arg = AddressOf::build(val_out);
+    Cast_ptr val_out_cast = Cast::build(val_out_arg, val_out_type_arg);
+
+    args = std::vector<Expr_ptr>{ vector, index, val_out_cast };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 

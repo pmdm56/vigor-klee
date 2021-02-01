@@ -6,17 +6,12 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::OneOrMore);
 
 
-llvm::cl::OptionCategory SynthesizerCat("Synthesizer specific options");
+llvm::cl::OptionCategory BDDGeneratorCat("BDD generator specific options");
 
-llvm::cl::opt<std::string> Out(
-    "out",
-    llvm::cl::desc("Output file of the syntethized code. If omited, code will be dumped to stdout."),
-    llvm::cl::cat(SynthesizerCat));
-
-llvm::cl::opt<std::string> XML(
-    "xml",
-    llvm::cl::desc("Output file of the syntethized code's XML. If omited, XML will not be dumped."),
-    llvm::cl::cat(SynthesizerCat));
+llvm::cl::opt<std::string> Dot(
+    "dot",
+    llvm::cl::desc("Dot file of graph visualization."),
+    llvm::cl::cat(BDDGeneratorCat));
 }
 
 int main(int argc, char **argv) {
@@ -38,6 +33,12 @@ int main(int argc, char **argv) {
   bdd.dump();
   for (auto call_path : call_paths) {
     delete call_path;
+  }
+
+  if (Dot.size()) {
+    auto file = std::ofstream(Dot);
+    assert(file.is_open());
+    file << bdd.dump_gv();
   }
 
   return 0;

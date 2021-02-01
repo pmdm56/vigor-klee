@@ -20,8 +20,11 @@
 #include <memory>
 #include <stack>
 #include <utility>
+#include <sstream>
 
 #include "load-call-paths.h"
+
+std::string expr_to_string(klee::ref<klee::Expr> expr, bool one_liner=false);
 
 namespace BDD {
 class Node {
@@ -31,21 +34,32 @@ public:
   };
 
 protected:
+  friend class Call;
+  friend class Branch;
+
   Node *next;
   Node *prev;
   NodeType type;
 
+  uint64_t id;
+
   std::vector<std::string>  call_paths_filenames;
   std::vector<calls_t> missing_calls;
 
+  std::string get_gv_name() const {
+    std::stringstream ss;
+    ss << id;
+    return ss.str();
+  }
+
 public:
-  Node(NodeType _type, const std::vector<call_path_t*>& _call_paths)
-    : next(nullptr), prev(nullptr), type(_type) {
+  Node(uint64_t _id, NodeType _type, const std::vector<call_path_t*>& _call_paths)
+    : next(nullptr), prev(nullptr), type(_type), id(_id) {
     process_call_paths(_call_paths);
   }
 
-  Node(Node *_next, Node *_prev, NodeType _type, const std::vector<call_path_t*>& _call_paths)
-    : next(_next), prev(_prev), type(_type) {
+  Node(uint64_t _id, Node *_next, Node *_prev, NodeType _type, const std::vector<call_path_t*>& _call_paths)
+    : next(_next), prev(_prev), type(_type), id(_id) {
     process_call_paths(_call_paths);
   }
 
@@ -87,6 +101,7 @@ public:
 
   virtual void dump() const = 0;
   virtual void dump_compact(int lvl=0) const = 0;
+  virtual std::string dump_gv() const = 0;
 
   void process_call_paths(std::vector<call_path_t*> call_paths) {
     std::string dir_delim = "/";
@@ -116,10 +131,10 @@ private:
   call_t call;
 
 public:
-  Call(call_t _call, const std::vector<call_path_t*>& _call_paths)
-    : Node(Node::NodeType::CALL, _call_paths), call(_call) {}
-  Call(call_t _call, Node *_next, Node *_prev, const std::vector<call_path_t*>& _call_paths)
-    : Node(_next, _prev, Node::NodeType::CALL, _call_paths), call(_call) {}
+  Call(uint64_t _id, call_t _call, const std::vector<call_path_t*>& _call_paths)
+    : Node(_id, Node::NodeType::CALL, _call_paths), call(_call) {}
+  Call(uint64_t _id, call_t _call, Node *_next, Node *_prev, const std::vector<call_path_t*>& _call_paths)
+    : Node(_id, _next, _prev, Node::NodeType::CALL, _call_paths), call(_call) {}
 
   call_t get_call() const {
     return call;
@@ -157,6 +172,47 @@ public:
     std::string sep = std::string(lvl*2, ' ');
     std::cerr << sep << call.function_name << "\n";
   }
+
+  virtual std::string dump_gv() const override {
+    std::stringstream ss;
+
+    if (next) {
+      ss << next->dump_gv();
+    }
+
+    ss << get_gv_name();
+    ss << " [label=";
+    ss << "\"";
+    ss << call.function_name;
+    ss << "(";
+
+    bool first = true;
+    for (const auto& pair : call.args) {
+      if (!first) {
+        ss << ", ";
+      } else {
+        first = false;
+      }
+
+      arg_t arg  = pair.second;
+      ss << expr_to_string(arg.expr, true);
+    }
+    ss << ")";
+    ss << "\"";
+    ss << "]";
+    ss << "\n";
+
+    ss << get_gv_name();
+    ss << " -> ";
+    if (next) {
+      ss << next->get_gv_name();
+    } else {
+      ss << "return";
+    }
+    ss << "\n";
+
+    return ss.str();
+  }
 };
 
 class Branch : public Node {
@@ -165,13 +221,13 @@ private:
   Node *on_false;
 
 public:
-  Branch(klee::ref<klee::Expr> _condition, const std::vector<call_path_t*>& _call_paths)
-    : Node(Node::NodeType::BRANCH, _call_paths),
+  Branch(uint64_t _id, klee::ref<klee::Expr> _condition, const std::vector<call_path_t*>& _call_paths)
+    : Node(_id, Node::NodeType::BRANCH, _call_paths),
       condition(_condition), on_false(nullptr) {}
 
-  Branch(klee::ref<klee::Expr> _condition, Node *_on_true, Node *_on_false, Node *_prev,
+  Branch(uint64_t _id, klee::ref<klee::Expr> _condition, Node *_on_true, Node *_on_false, Node *_prev,
          const std::vector<call_path_t*>& _call_paths)
-    : Node(_on_true, _prev, Node::NodeType::BRANCH, _call_paths),
+    : Node(_id, _on_true, _prev, Node::NodeType::BRANCH, _call_paths),
       condition(_condition), on_false(_on_false) {}
 
   klee::ref<klee::Expr> get_condition() const {
@@ -209,6 +265,46 @@ public:
   }
 
   virtual void dump_compact(int lvl) const override {}
+
+  virtual std::string dump_gv() const override {
+    std::stringstream ss;
+
+    if (next) {
+      ss << next->dump_gv();
+    }
+
+    if (on_false) {
+      ss << on_false->dump_gv();
+    }
+
+    ss << get_gv_name();
+    ss << " [shape=Mdiamond, label=\"";
+    ss << expr_to_string(condition, true);
+    ss << "\"]\n";
+
+
+    ss << get_gv_name();
+    ss << " -> ";
+    if (next) {
+      ss << next->get_gv_name();
+    } else {
+      ss << "return";
+    }
+    ss << " [label=\"True\"]";
+    ss << "\n";
+
+    ss << get_gv_name();
+    ss << " -> ";
+    if (on_false) {
+      ss << on_false->get_gv_name();
+    } else {
+      ss << "return";
+    }
+    ss << " [label=\"False\"]";
+    ss << "\n";
+
+    return ss.str();
+  }
 };
 
 class RetrieveSymbols : public klee::ExprVisitor::ExprVisitor {
@@ -398,6 +494,7 @@ class BDD {
 private:
   std::shared_ptr<Node> root;
   solver_toolbox_t solver_toolbox;
+  uint64_t id;
 
 private:
   call_t get_successful_call(std::vector<call_path_t*> call_paths) const;
@@ -405,13 +502,30 @@ private:
   void add_node(call_t call);
   void dump(int lvl, const Node* node) const;
 
+  uint64_t get_and_inc_id() { uint64_t _id = id; id++; return _id; }
+
 public:
-  BDD(std::vector<call_path_t*> call_paths) : root(nullptr) {
+  BDD(std::vector<call_path_t*> call_paths) : root(nullptr), id(0) {
     root = std::shared_ptr<Node>(populate(call_paths));
   }
 
   const Node* get_root() const { return root.get(); }
   const solver_toolbox_t& get_solver_toolbox() const { return solver_toolbox; }
   void dump() const;
+  std::string dump_gv() const {
+    std::stringstream ss;
+    ss << "digraph mygraph {";
+    ss << "\n";
+    ss << "node [shape=box];";
+    ss << "\n";
+
+    ss << "return" << "\n";
+    ss << root->dump_gv();
+
+    ss << "}";
+    ss << "\n";
+
+    return ss.str();
+  }
 };
 }
