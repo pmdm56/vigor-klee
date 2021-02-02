@@ -23,8 +23,7 @@
 #include <sstream>
 
 #include "load-call-paths.h"
-
-std::string expr_to_string(klee::ref<klee::Expr> expr, bool one_liner=false);
+#include "printer.h"
 
 namespace BDD {
 class Node {
@@ -43,6 +42,7 @@ protected:
 
   uint64_t id;
 
+  std::vector<call_path_t*> call_paths;
   std::vector<std::string>  call_paths_filenames;
   std::vector<calls_t> missing_calls;
 
@@ -54,13 +54,17 @@ protected:
 
 public:
   Node(uint64_t _id, NodeType _type, const std::vector<call_path_t*>& _call_paths)
-    : next(nullptr), prev(nullptr), type(_type), id(_id) {
+    : next(nullptr), prev(nullptr), type(_type), id(_id), call_paths(_call_paths) {
     process_call_paths(_call_paths);
   }
 
   Node(uint64_t _id, Node *_next, Node *_prev, NodeType _type, const std::vector<call_path_t*>& _call_paths)
-    : next(_next), prev(_prev), type(_type), id(_id) {
+    : next(_next), prev(_prev), type(_type), id(_id), call_paths(_call_paths) {
     process_call_paths(_call_paths);
+  }
+
+  void replace_next(Node* _next) {
+    next = _next;
   }
 
   void add_next(Node* _next) {
@@ -99,6 +103,7 @@ public:
     }
   }
 
+  virtual Node* clone() const = 0;
   virtual void dump() const = 0;
   virtual void dump_compact(int lvl=0) const = 0;
   virtual std::string dump_gv() const = 0;
@@ -133,11 +138,17 @@ private:
 public:
   Call(uint64_t _id, call_t _call, const std::vector<call_path_t*>& _call_paths)
     : Node(_id, Node::NodeType::CALL, _call_paths), call(_call) {}
+
   Call(uint64_t _id, call_t _call, Node *_next, Node *_prev, const std::vector<call_path_t*>& _call_paths)
     : Node(_id, _next, _prev, Node::NodeType::CALL, _call_paths), call(_call) {}
 
   call_t get_call() const {
     return call;
+  }
+
+  virtual Node* clone() const override {
+    Call* clone = new Call(id, call, next, prev, call_paths);
+    return clone;
   }
 
   virtual void dump() const override {
@@ -180,9 +191,8 @@ public:
       ss << next->dump_gv();
     }
 
-    ss << get_gv_name();
-    ss << " [label=";
-    ss << "\"";
+    ss << "\t\t" << get_gv_name();
+    ss << " [label=\"";
     ss << call.function_name;
     ss << "(";
 
@@ -195,21 +205,16 @@ public:
       }
 
       arg_t arg  = pair.second;
-      ss << expr_to_string(arg.expr, true);
+      ss << pretty_print_expr(arg.expr);
     }
-    ss << ")";
-    ss << "\"";
-    ss << "]";
-    ss << "\n";
+    ss << ")\"]\n";
 
-    ss << get_gv_name();
-    ss << " -> ";
     if (next) {
+      ss << "\t\t" << get_gv_name();
+      ss << " -> ";
       ss << next->get_gv_name();
-    } else {
-      ss << "return";
+      ss << "\n";
     }
-    ss << "\n";
 
     return ss.str();
   }
@@ -234,12 +239,20 @@ public:
     return condition;
   }
 
+  void replace_on_true(Node* _on_true) {
+    replace_next(_on_true);
+  }
+
   void add_on_true(Node* _on_true) {
     add_next(_on_true);
   }
 
   const Node* get_on_true() const {
     return next;
+  }
+
+  void replace_on_false(Node* _on_false) {
+    on_false = _on_false;
   }
 
   void add_on_false(Node* _on_false) {
@@ -255,6 +268,11 @@ public:
     if (on_false) {
       delete on_false;
     }
+  }
+
+  virtual Node* clone() const override {
+    Branch* clone = new Branch(id, condition, next, on_false, prev, call_paths);
+    return clone;
   }
 
   virtual void dump() const override {
@@ -277,31 +295,26 @@ public:
       ss << on_false->dump_gv();
     }
 
-    ss << get_gv_name();
+    ss << "\t\t" << get_gv_name();
     ss << " [shape=Mdiamond, label=\"";
-    ss << expr_to_string(condition, true);
+    ss << pretty_print_expr(condition);
     ss << "\"]\n";
 
-
-    ss << get_gv_name();
-    ss << " -> ";
     if (next) {
+      ss << "\t\t" << get_gv_name();
+      ss << " -> ";
       ss << next->get_gv_name();
-    } else {
-      ss << "return";
+      ss << " [label=\"True\"]\n";
     }
-    ss << " [label=\"True\"]";
-    ss << "\n";
 
-    ss << get_gv_name();
-    ss << " -> ";
     if (on_false) {
+      ss << "\t\t" << get_gv_name();
+      ss << " -> ";
       ss << on_false->get_gv_name();
-    } else {
-      ss << "return";
+      ss << " [label=\"False\"]";
+      ss << "\n";
     }
-    ss << " [label=\"False\"]";
-    ss << "\n";
+
 
     return ss.str();
   }
@@ -492,38 +505,86 @@ public:
 
 class BDD {
 private:
-  std::shared_ptr<Node> root;
   solver_toolbox_t solver_toolbox;
   uint64_t id;
+
+  std::shared_ptr<Node> nf_init;
+  std::shared_ptr<Node> nf_process;
+
+  std::vector<std::string> skip_conditions_with_symbol;
+  std::vector<std::string> skip_functions;
+
+  static constexpr char INIT_CONTEXT_MARKER[] = "start_time";
+  static constexpr char PROCESS_CONTEXT_MARKER[] = "packet_send";
 
 private:
   call_t get_successful_call(std::vector<call_path_t*> call_paths) const;
   Node* populate(std::vector<call_path_t*> call_paths);
+
+  std::string get_fname(const Node* node) const;
+  bool is_skip_function(const Node* node) const;
+  bool is_skip_condition(const Node* node) const;
+
+  Node* populate_init(const Node* root);
+  Node* populate_process(const Node* root, bool store=false);
+
   void add_node(call_t call);
   void dump(int lvl, const Node* node) const;
 
   uint64_t get_and_inc_id() { uint64_t _id = id; id++; return _id; }
 
 public:
-  BDD(std::vector<call_path_t*> call_paths) : root(nullptr), id(0) {
-    root = std::shared_ptr<Node>(populate(call_paths));
+  BDD(std::vector<call_path_t*> call_paths) : id(0) {
+    skip_functions = std::vector<std::string> {
+      "loop_invariant_consume",
+      "loop_invariant_produce",
+      "packet_receive",
+      "packet_state_total_length",
+      "packet_free",
+      "start_time"
+    };
+
+    skip_conditions_with_symbol = std::vector<std::string> {
+      "received_a_packet",
+      "loop_termination"
+    };
+
+    Node* root = populate(call_paths);
+
+    nf_init = std::shared_ptr<Node>(populate_init(root));
+    nf_process = std::shared_ptr<Node>(populate_process(root));
+
+    delete root;
   }
 
-  const Node* get_root() const { return root.get(); }
+  const Node* get_init()    const { return nf_init.get(); }
+  const Node* get_process() const { return nf_process.get(); }
+
   const solver_toolbox_t& get_solver_toolbox() const { return solver_toolbox; }
   void dump() const;
+
   std::string dump_gv() const {
     std::stringstream ss;
-    ss << "digraph mygraph {";
-    ss << "\n";
-    ss << "node [shape=box];";
-    ss << "\n";
+    ss << "digraph mygraph {\n";
+    ss << "\tnode [shape=box];\n";
 
-    ss << "return" << "\n";
-    ss << root->dump_gv();
+    ss << "\tsubgraph clusterinit {\n";
+    ss << "\t\tstyle=filled;\n";
+    ss << "\t\tlabel=\"nf_init\";\n";
+    ss << "node [style=filled,color=white];\n";
+
+    if (nf_init) ss << nf_init->dump_gv();
+    ss << "\t}\n";
+
+    ss << "\tsubgraph clusterprocess {\n";
+    ss << "\t\tstyle=filled;\n";
+    ss << "\t\tlabel=\"nf_process\"\n";
+    ss << "node [style=filled,color=white];\n";
+
+    if (nf_process) ss << nf_process->dump_gv();
+    ss << "\t}\n";
 
     ss << "}";
-    ss << "\n";
 
     return ss.str();
   }

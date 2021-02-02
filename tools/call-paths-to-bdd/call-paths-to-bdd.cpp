@@ -1,27 +1,10 @@
 #include "call-paths-to-bdd.h"
 
-std::string expr_to_string(klee::ref<klee::Expr> expr, bool one_liner) {
-  std::string expr_str;
-  if (expr.isNull())
-    return expr_str;
-  llvm::raw_string_ostream os(expr_str);
-  expr->print(os);
-  os.str();
-
-  if (one_liner) {
-    // remove new lines
-    expr_str.erase(std::remove(expr_str.begin(), expr_str.end(), '\n'), expr_str.end());
-
-    // remove duplicated whitespaces
-    auto bothAreSpaces = [](char lhs, char rhs) -> bool { return (lhs == rhs) && (lhs == ' '); };
-    std::string::iterator new_end = std::unique(expr_str.begin(), expr_str.end(), bothAreSpaces);
-    expr_str.erase(new_end, expr_str.end());
-  }
-
-  return expr_str;
-}
-
 namespace BDD {
+
+constexpr char BDD::INIT_CONTEXT_MARKER[];
+constexpr char BDD::PROCESS_CONTEXT_MARKER[];
+
 bool solver_toolbox_t::is_expr_always_true(klee::ref<klee::Expr> expr) const {
   klee::ConstraintManager no_constraints;
   return is_expr_always_true(no_constraints, expr);
@@ -366,9 +349,159 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
   return local_root;
 }
 
+std::string BDD::get_fname(const Node* node) const {
+  assert(node->get_type() == Node::NodeType::CALL);
+  const Call* call = static_cast<const Call*>(node);
+  return call->get_call().function_name;
+}
+
+bool BDD::is_skip_function(const Node* node) const {
+  auto fname = get_fname(node);
+  auto found_it = std::find(skip_functions.begin(), skip_functions.end(), fname);
+  return found_it != skip_functions.end();
+}
+
+bool BDD::is_skip_condition(const Node* node) const {
+  assert(node->get_type() == Node::NodeType::BRANCH);
+  const Branch* branch = static_cast<const Branch*>(node);
+  auto cond = branch->get_condition();
+
+  RetrieveSymbols retriever;
+  retriever.visit(cond);
+
+  auto symbols = retriever.get_retrieved_strings();
+  for (const auto& symbol : symbols) {
+    auto found_it = std::find(skip_conditions_with_symbol.begin(),
+                              skip_conditions_with_symbol.end(), symbol);
+    if (found_it != skip_conditions_with_symbol.end()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+Node* BDD::populate_init(const Node* root) {
+  Node* local_root = nullptr;
+  Node* local_leaf = nullptr;
+  Node* new_node;
+
+  while (root != nullptr) {
+    new_node = nullptr;
+
+    switch (root->get_type()) {
+    case Node::NodeType::CALL: {
+      if (get_fname(root) == BDD::INIT_CONTEXT_MARKER) {
+        root = nullptr;
+        break;
+      }
+
+      if (!is_skip_function(root)) {
+        new_node = root->clone();
+        new_node->replace_next(nullptr);
+      }
+
+      root = root->get_next();
+      break;
+    };
+    case Node::NodeType::BRANCH: {
+      const Branch* root_branch = static_cast<const Branch*>(root);
+
+      Node* on_true_node  = populate_init(root_branch->get_on_true());
+      Node* on_false_node = populate_init(root_branch->get_on_false());
+
+      Branch* branch = static_cast<Branch*>(root->clone());
+
+      branch->replace_on_true(on_true_node);
+      branch->replace_on_false(on_false_node);
+
+      new_node = branch;
+      root = nullptr;
+
+      break;
+    };
+    }
+
+    if (new_node && local_leaf == nullptr) {
+      local_root = new_node;
+      local_leaf = local_root;
+    } else if (new_node) {
+      local_leaf->replace_next(new_node);
+      local_leaf = new_node;
+    }
+  }
+
+  return local_root;
+}
+
+Node* BDD::populate_process(const Node* root, bool store) {
+  Node* local_root = nullptr;
+  Node* local_leaf = nullptr;
+  Node* new_node;
+
+  while (root != nullptr) {
+    new_node = nullptr;
+
+    switch (root->get_type()) {
+    case Node::NodeType::CALL: {
+      store |= (get_fname(root) == BDD::INIT_CONTEXT_MARKER);
+
+      if (store && !is_skip_function(root)) {
+        new_node = root->clone();
+        new_node->replace_next(nullptr);
+      }
+
+      if (get_fname(root) == BDD::PROCESS_CONTEXT_MARKER) {
+        root = nullptr;
+      } else {
+        root = root->get_next();
+      }
+
+      break;
+    };
+    case Node::NodeType::BRANCH: {
+      const Branch* root_branch = static_cast<const Branch*>(root);
+
+      Node* on_true_node  = populate_process(root_branch->get_on_true(), store);
+      Node* on_false_node = populate_process(root_branch->get_on_false(), store);
+
+      if (store && !is_skip_condition(root)) {
+        Branch* branch = static_cast<Branch*>(root->clone());
+
+        branch->replace_on_true(on_true_node);
+        branch->replace_on_false(on_false_node);
+
+        new_node = branch;
+      }
+
+      else {
+        assert(on_true_node == nullptr || on_false_node == nullptr);
+        new_node = on_true_node ? on_true_node : on_false_node;
+      }
+
+      root = nullptr;
+      break;
+    };
+    }
+
+    if (new_node && local_leaf == nullptr) {
+      local_root = new_node;
+      local_leaf = new_node;
+    } else if (new_node) {
+      local_leaf->replace_next(new_node);
+      local_leaf = new_node;
+    }
+  }
+
+  return local_root;
+}
+
 void BDD::dump() const {
-  Node* node = root.get();
-  dump(0, node);
+  std::cerr << "\n================== INIT ==================\n";
+  dump(0, nf_init.get());
+
+  std::cerr << "\n================== PROCESS ==================\n";
+  dump(0, nf_process.get());
 }
 
 void BDD::dump(int lvl, const Node* node) const {
