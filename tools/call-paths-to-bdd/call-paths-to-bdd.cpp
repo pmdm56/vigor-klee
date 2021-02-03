@@ -391,6 +391,7 @@ Node* BDD::populate_init(const Node* root) {
       if (!is_skip_function(root)) {
         new_node = root->clone();
         new_node->replace_next(nullptr);
+        new_node->replace_prev(nullptr);
       }
 
       root = root->get_next();
@@ -419,6 +420,7 @@ Node* BDD::populate_init(const Node* root) {
       local_leaf = local_root;
     } else if (new_node) {
       local_leaf->replace_next(new_node);
+      new_node->replace_prev(local_leaf);
       local_leaf = new_node;
     }
   }
@@ -441,6 +443,7 @@ Node* BDD::populate_process(const Node* root, bool store) {
       if (store && !is_skip_function(root)) {
         new_node = root->clone();
         new_node->replace_next(nullptr);
+        new_node->replace_prev(nullptr);
       }
 
       if (get_fname(root) == BDD::PROCESS_CONTEXT_MARKER) {
@@ -481,6 +484,7 @@ Node* BDD::populate_process(const Node* root, bool store) {
       local_leaf = new_node;
     } else if (new_node) {
       local_leaf->replace_next(new_node);
+      new_node->replace_prev(local_leaf);
       local_leaf = new_node;
     }
   }

@@ -18,9 +18,7 @@ set(KLEE_LIBS
   kleeCore
 )
 
-target_include_directories(call-paths-to-bdd PRIVATE ../load-call-paths)
-target_include_directories(call-paths-to-bdd PRIVATE ../printer)
-
+target_include_directories(call-paths-to-bdd PRIVATE ../load-call-paths ../printer)
 target_link_libraries(call-paths-to-bdd ${KLEE_LIBS})
 
 install(TARGETS call-paths-to-bdd RUNTIME DESTINATION bin)

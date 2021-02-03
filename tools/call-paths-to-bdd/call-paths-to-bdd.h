@@ -36,14 +36,13 @@ protected:
   friend class Call;
   friend class Branch;
 
-  Node *next;
-  Node *prev;
+  uint64_t id;
   NodeType type;
 
-  uint64_t id;
+  Node *next;
+  Node *prev;
 
-  std::vector<call_path_t*> call_paths;
-  std::vector<std::string>  call_paths_filenames;
+  std::vector<std::string> call_paths_filenames;
   std::vector<calls_t> missing_calls;
 
   std::string get_gv_name() const {
@@ -54,14 +53,21 @@ protected:
 
 public:
   Node(uint64_t _id, NodeType _type, const std::vector<call_path_t*>& _call_paths)
-    : next(nullptr), prev(nullptr), type(_type), id(_id), call_paths(_call_paths) {
+    : id(_id), type(_type), next(nullptr), prev(nullptr) {
     process_call_paths(_call_paths);
   }
 
-  Node(uint64_t _id, Node *_next, Node *_prev, NodeType _type, const std::vector<call_path_t*>& _call_paths)
-    : next(_next), prev(_prev), type(_type), id(_id), call_paths(_call_paths) {
+  Node(uint64_t _id, NodeType _type, Node *_next, Node *_prev, const std::vector<call_path_t*>& _call_paths)
+    : id(_id), type(_type), next(_next), prev(_prev) {
     process_call_paths(_call_paths);
   }
+
+  Node(uint64_t _id, NodeType _type, Node *_next, Node *_prev,
+       const std::vector<std::string>& _call_paths_filenames,
+       const std::vector<calls_t>& _missing_calls)
+    : id(_id), type(_type), next(_next), prev(_prev),
+      call_paths_filenames(_call_paths_filenames),
+      missing_calls(_missing_calls) {}
 
   void replace_next(Node* _next) {
     next = _next;
@@ -70,6 +76,10 @@ public:
   void add_next(Node* _next) {
     assert(next == nullptr);
     next = _next;
+  }
+
+  void replace_prev(Node* _prev) {
+    prev = _prev;
   }
 
   void add_prev(Node* _prev) {
@@ -140,14 +150,19 @@ public:
     : Node(_id, Node::NodeType::CALL, _call_paths), call(_call) {}
 
   Call(uint64_t _id, call_t _call, Node *_next, Node *_prev, const std::vector<call_path_t*>& _call_paths)
-    : Node(_id, _next, _prev, Node::NodeType::CALL, _call_paths), call(_call) {}
+    : Node(_id, Node::NodeType::CALL, _next, _prev, _call_paths), call(_call) {}
+
+  Call(uint64_t _id, call_t _call, Node *_next, Node *_prev,
+       const std::vector<std::string>& _call_paths_filenames,
+       const std::vector<calls_t>& _missing_calls)
+    : Node(_id, Node::NodeType::CALL, _next, _prev, _call_paths_filenames, _missing_calls), call(_call) {}
 
   call_t get_call() const {
     return call;
   }
 
   virtual Node* clone() const override {
-    Call* clone = new Call(id, call, next, prev, call_paths);
+    Call* clone = new Call(id, call, next, prev, call_paths_filenames, missing_calls);
     return clone;
   }
 
@@ -207,7 +222,7 @@ public:
       arg_t arg  = pair.second;
       ss << pretty_print_expr(arg.expr);
     }
-    ss << ")\"]\n";
+    ss << ")\", color=cornflowerblue]\n";
 
     ss << "\t\t" << get_gv_name();
     ss << " -> ";
@@ -234,7 +249,13 @@ public:
 
   Branch(uint64_t _id, klee::ref<klee::Expr> _condition, Node *_on_true, Node *_on_false, Node *_prev,
          const std::vector<call_path_t*>& _call_paths)
-    : Node(_id, _on_true, _prev, Node::NodeType::BRANCH, _call_paths),
+    : Node(_id, Node::NodeType::BRANCH, _on_true, _prev, _call_paths),
+      condition(_condition), on_false(_on_false) {}
+
+  Branch(uint64_t _id, klee::ref<klee::Expr> _condition, Node *_on_true, Node *_on_false, Node *_prev,
+         const std::vector<std::string>& _call_paths_filenames,
+         const std::vector<calls_t>& _missing_calls)
+    : Node(_id, Node::NodeType::BRANCH, _on_true, _prev, _call_paths_filenames, _missing_calls),
       condition(_condition), on_false(_on_false) {}
 
   klee::ref<klee::Expr> get_condition() const {
@@ -273,7 +294,7 @@ public:
   }
 
   virtual Node* clone() const override {
-    Branch* clone = new Branch(id, condition, next, on_false, prev, call_paths);
+    Branch* clone = new Branch(id, condition, next, on_false, prev, call_paths_filenames, missing_calls);
     return clone;
   }
 
@@ -300,7 +321,7 @@ public:
     ss << "\t\t" << get_gv_name();
     ss << " [shape=Mdiamond, label=\"";
     ss << pretty_print_expr(condition);
-    ss << "\"]\n";
+    ss << "\", color=yellow]\n";
 
     ss << "\t\t" << get_gv_name();
     ss << " -> ";

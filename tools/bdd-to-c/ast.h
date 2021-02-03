@@ -50,11 +50,6 @@ public:
   static constexpr char CHUNK_LAYER_3[] = "ipv4_header";
   static constexpr char CHUNK_LAYER_4[] = "tcpudp_header";
 
-  static constexpr char INIT_CONTEXT_MARKER[] = "start_time";
-  static constexpr char PROCESS_CONTEXT_MARKER[] = "packet_send";
-
-  enum ContextActions { START, STOP, NONE};
-
   struct chunk_t {
     Variable_ptr var;
     unsigned int start_index;
@@ -98,20 +93,6 @@ public:
 
     context_switch(INIT);
 
-    skip_functions = std::vector<std::string> {
-      "loop_invariant_consume",
-      "loop_invariant_produce",
-      "packet_receive",
-      "packet_state_total_length",
-      "packet_free",
-      "start_time"
-    };
-
-    skip_conditions_with_symbol = std::vector<std::string> {
-      "received_a_packet",
-      "loop_termination"
-    };
-
     callpath_var_translation = {
       { "src_devices", "device" },
       { "p", "buffer" },
@@ -123,15 +104,12 @@ public:
   }
 
   void context_switch(Context ctx);
-  ContextActions get_context_action(const std::string& fname) const;
   void commit(Node_ptr body);
-
-  bool is_skip_function(const std::string& fname) const;
-  bool is_skip_condition(klee::ref<klee::Expr> cond) const;
 
   void push();
   void pop();
 
+  Node_ptr get_return(const BDD::Node* node);
   Node_ptr get_return(const std::vector<calls_t>& calls);
   Node_ptr get_return(bool success);
   Node_ptr get_return(call_t call);

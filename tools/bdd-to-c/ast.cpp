@@ -1,16 +1,14 @@
 #include "ast.h"
+#include "printer.h"
 
 constexpr char AST::CHUNK_LAYER_2[];
 constexpr char AST::CHUNK_LAYER_3[];
 constexpr char AST::CHUNK_LAYER_4[];
 
-constexpr char AST::INIT_CONTEXT_MARKER[];
-constexpr char AST::PROCESS_CONTEXT_MARKER[];
-
 Variable_ptr AST::generate_new_symbol(klee::ref<klee::Expr> expr) {
   Type_ptr type = type_from_size(expr->getWidth());
 
-  BDD::RetrieveSymbols retriever;
+  RetrieveSymbols retriever;
   retriever.visit(expr);
   auto symbols = retriever.get_retrieved_strings();
   assert(symbols.size() == 1);
@@ -1084,49 +1082,6 @@ Node_ptr AST::get_return_from_process(call_t packet_send) {
   return final;
 }
 
-bool AST::is_skip_condition(klee::ref<klee::Expr> cond) const {
-  BDD::RetrieveSymbols retriever;
-  retriever.visit(cond);
-
-  auto symbols = retriever.get_retrieved_strings();
-  for (const auto& symbol : symbols) {
-    auto found_it = std::find(skip_conditions_with_symbol.begin(),
-                              skip_conditions_with_symbol.end(), symbol);
-    if (found_it != skip_conditions_with_symbol.end()) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool AST::is_skip_function(const std::string& fname) const {
-  auto found_it = std::find(skip_functions.begin(), skip_functions.end(), fname);
-  return found_it != skip_functions.end();
-}
-
-AST::ContextActions AST::get_context_action(const std::string& fname) const {
-  switch (context) {
-  case INIT: {
-    return fname == AST::INIT_CONTEXT_MARKER ? AST::ContextActions::STOP : AST::ContextActions::NONE;
-  };
-  case PROCESS: {
-    if (fname == AST::INIT_CONTEXT_MARKER) {
-      return AST::ContextActions::START;
-    }
-
-    if (fname == AST::PROCESS_CONTEXT_MARKER) {
-      return AST::ContextActions::STOP;
-    }
-
-    return AST::ContextActions::NONE;
-  };
-  case DONE: {}
-  }
-
-  return AST::ContextActions::NONE;
-}
-
 void AST::push() {
   local_variables.emplace_back();
   layer.push_back(layer.back());
@@ -1141,7 +1096,7 @@ void AST::pop() {
 }
 
 Node_ptr AST::get_return(const std::vector<calls_t>& calls_list) {
-  assert(calls_list.size());
+  assert(calls_list.size() || context == INIT);
   assert(context == INIT || context == PROCESS);
   return (context == INIT) ? get_return(false) : get_return_from_process(calls_list[0]);
 }
@@ -1150,6 +1105,16 @@ Node_ptr AST::get_return(bool success) {
   assert(context == INIT);
   Expr_ptr ret_const = Constant::build(PrimitiveType::PrimitiveKind::INT, success ? 1 : 0);
   return Return::build(ret_const);
+}
+
+Node_ptr AST::get_return(const BDD::Node* node) {
+  assert(node);
+
+  while (node->get_missing_calls().size() == 0) {
+    node = node->get_prev();
+  }
+
+  return get_return(node->get_missing_calls());
 }
 
 Node_ptr AST::get_return(call_t call) {
@@ -1163,10 +1128,6 @@ Node_ptr AST::get_return(call_t call) {
 }
 
 Node_ptr AST::node_from_call(call_t call) {
-  if (is_skip_function(call.function_name)) {
-    return nullptr;
-  }
-
   switch (context) {
   case INIT: return init_state_node_from_call(call);
   case PROCESS: return process_state_node_from_call(call);

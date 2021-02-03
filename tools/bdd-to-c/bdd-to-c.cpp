@@ -43,7 +43,7 @@ llvm::cl::opt<std::string> XML(
     llvm::cl::cat(SynthesizerCat));
 }
 
-Node_ptr build_ast(AST& ast, const BDD::Node* root, bool process, const BDD::Node* prev=nullptr) {
+Node_ptr build_ast(AST& ast, const BDD::Node* root, const BDD::Node* prev=nullptr) {
   std::vector<Node_ptr> nodes;
 
   while (root != nullptr) {
@@ -58,30 +58,12 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, bool process, const BDD::Nod
 
       auto cond = branch_node->get_condition();
 
-      if (ast.is_skip_condition(cond) || !process) {
-        auto on_true_size  = on_true_bdd  ? on_true_bdd->get_call_paths_filenames().size() : 0;
-        auto on_false_size = on_false_bdd ? on_false_bdd->get_call_paths_filenames().size() : 0;
-
-        // TODO: I'm assuming that the branch with the least amount
-        // of call_paths is the one connected to failed instances
-        // of nf_init. I should really check this.
-        if (on_true_size > on_false_size) {
-          root = on_true_bdd;
-          assert(on_false_size <= 1);
-        } else {
-          root = on_false_bdd;
-          // assert(on_true_size <= 1);
-        }
-
-        break;
-      }
-
       ast.push();
-      auto then_node = build_ast(ast, on_true_bdd, process, root);
+      auto then_node = build_ast(ast, on_true_bdd, root);
       ast.pop();
 
       ast.push();
-      auto else_node = build_ast(ast, on_false_bdd, process, root);
+      auto else_node = build_ast(ast, on_false_bdd, root);
       ast.pop();
 
       auto cond_node = transpile(&ast, cond);
@@ -95,34 +77,25 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, bool process, const BDD::Nod
       root = nullptr;
       break;
     };
+
     case BDD::Node::NodeType::CALL: {
       auto call_bdd = static_cast<const BDD::Call*>(root);
       auto call = call_bdd->get_call();
-      auto action = ast.get_context_action(call.function_name);
 
-      if (action == AST::ContextActions::START) {
-        process = true;
-      } else if (action == AST::ContextActions::STOP) {
-        root = nullptr;
+      auto call_node = ast.node_from_call(call);
+
+      if (call_node) {
+        nodes.push_back(call_node);
       }
 
-      if (process) {
-        auto call_node = ast.node_from_call(call);
-
-        if (call_node) {
-          nodes.push_back(call_node);
-        }
-      }
-
-      if (root)
-        root = root->get_next();
+      root = root->get_next();
       break;
     };
     }
   }
 
-  if (nodes.size() == 0 && process) {
-    Node_ptr ret = ast.get_return(prev->get_missing_calls());
+  if (nodes.size() == 0) {
+    Node_ptr ret = ast.get_return(prev);
     assert(ret);
     nodes.push_back(ret);
   }
@@ -130,11 +103,11 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, bool process, const BDD::Nod
   return Block::build(nodes);
 }
 
-void build_ast(AST& ast, const BDD::Node* root) {
-  auto init_root = build_ast(ast, root, true);
+void build_ast(AST& ast, const BDD::BDD& bdd) {
+  auto init_root = build_ast(ast, bdd.get_init());
   ast.commit(init_root);
 
-  auto process_root = build_ast(ast, root, false);
+  auto process_root = build_ast(ast, bdd.get_process());
   ast.commit(process_root);
 }
 
@@ -155,7 +128,7 @@ int main(int argc, char **argv) {
   BDD::BDD bdd(call_paths);
   AST ast;
 
-  build_ast(ast, bdd.get_root());
+  build_ast(ast, bdd);
 
   if (Out.size()) {
     auto file = std::ofstream(Out);

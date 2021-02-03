@@ -1,5 +1,6 @@
 #include "klee_transpiler.h"
 #include "call-paths-to-bdd.h"
+#include "printer.h"
 
 Type_ptr klee_width_to_type(klee::Expr::Width width) {
   assert(width != klee::Expr::InvalidWidth);
@@ -276,7 +277,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::Co
 
   Concat_ptr concat = Concat::build(left, right, type);
 
-  BDD::RetrieveSymbols retriever;
+  RetrieveSymbols retriever;
   retriever.visit(klee::ref<klee::Expr>(const_cast<klee::ConcatExpr *>(&e)));
   auto symbols = retriever.get_retrieved_strings();
 
