@@ -1,5 +1,68 @@
 #include "printer.h"
 
+#include <regex>
+
+bool get_bytes_read(klee::ref<klee::Expr> expr, std::vector<unsigned>& bytes) {
+  switch (expr->getKind()) {
+  case klee::Expr::Kind::Read: {
+    klee::ReadExpr *read = dyn_cast<klee::ReadExpr>(expr);
+    auto index = read->index;
+
+    if (index->getKind() != klee::Expr::Kind::Constant) {
+      return false;
+    }
+
+    klee::ConstantExpr* index_const = static_cast<klee::ConstantExpr *>(index.get());
+    bytes.push_back(index_const->getZExtValue());
+
+    return true;
+  };
+  case klee::Expr::Kind::Concat: {
+    klee::ConcatExpr *concat = dyn_cast<klee::ConcatExpr>(expr);
+
+    auto left  = concat->getLeft();
+    auto right = concat->getRight();
+
+    if (!get_bytes_read(left,  bytes)) return false;
+    if (!get_bytes_read(right, bytes)) return false;
+
+    return true;
+  };
+  default: {}
+  }
+
+  return false;
+}
+
+bool is_readLSB_complete(klee::ref<klee::Expr> expr) {
+  auto size = expr->getWidth();
+  assert(size % 8 == 0);
+  size /= 8;
+
+  RetrieveSymbols retriever;
+  retriever.visit(expr);
+
+  if (retriever.get_retrieved_strings().size() > 1) {
+    return false;
+  }
+
+  std::vector<unsigned> bytes_read;
+  if (!get_bytes_read(expr, bytes_read)) {
+    return false;
+  }
+
+  unsigned expected_byte = size - 1;
+  for (const auto& byte : bytes_read) {
+    if (byte != expected_byte) {
+      return false;
+    }
+
+    expected_byte -= 1;
+  }
+
+  return true;
+}
+
 class ExprPrettyPrinter : public klee::ExprVisitor::ExprVisitor {
 private:
   std::string result;
@@ -114,7 +177,15 @@ public:
 
   klee::ExprVisitor::Action visitConcat(const klee::ConcatExpr& e) {
     klee::ref<klee::Expr> eref = const_cast<klee::ConcatExpr *>(&e);
-    result = expr_to_string(eref, true);
+
+    if (is_readLSB_complete(eref)) {
+      RetrieveSymbols retriever;
+      retriever.visit(eref);
+      result = retriever.get_retrieved_strings()[0];
+    } else {
+      result = expr_to_string(eref, true);
+    }
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -319,9 +390,23 @@ public:
     auto left  = ExprPrettyPrinter::print(e.getKid(0), use_signed);
     auto right = ExprPrettyPrinter::print(e.getKid(1), use_signed);
 
-    ss << "(" << left << " == " << right << ")";
-    result = ss.str();
+    auto p0 = std::regex(R"(\(0 == (.+)\))");
+    auto p1 = std::regex(R"(!(.+))");
+    std::smatch m;
 
+    if (left == "0" && (std::regex_match(right, m, p0) || std::regex_match(right, m, p1))) {
+      ss << m.str(1);
+    }
+
+    else if (left == "0") {
+      ss << "!" << right;
+    }
+
+    else {
+      ss << "(" << left << " == " << right << ")";
+    }
+
+    result = ss.str();
     return klee::ExprVisitor::Action::skipChildren();
   }
 

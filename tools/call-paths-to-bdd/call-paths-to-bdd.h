@@ -106,7 +106,7 @@ public:
   virtual Node* clone() const = 0;
   virtual void dump() const = 0;
   virtual void dump_compact(int lvl=0) const = 0;
-  virtual std::string dump_gv() const = 0;
+  virtual std::string dump_gv(std::string sink) const = 0;
 
   void process_call_paths(std::vector<call_path_t*> call_paths) {
     std::string dir_delim = "/";
@@ -184,11 +184,11 @@ public:
     std::cerr << sep << call.function_name << "\n";
   }
 
-  virtual std::string dump_gv() const override {
+  virtual std::string dump_gv(std::string sink) const override {
     std::stringstream ss;
 
     if (next) {
-      ss << next->dump_gv();
+      ss << next->dump_gv(sink);
     }
 
     ss << "\t\t" << get_gv_name();
@@ -209,12 +209,14 @@ public:
     }
     ss << ")\"]\n";
 
+    ss << "\t\t" << get_gv_name();
+    ss << " -> ";
     if (next) {
-      ss << "\t\t" << get_gv_name();
-      ss << " -> ";
       ss << next->get_gv_name();
-      ss << "\n";
+    } else {
+      ss << sink;
     }
+    ss << "\n";
 
     return ss.str();
   }
@@ -284,15 +286,15 @@ public:
 
   virtual void dump_compact(int lvl) const override {}
 
-  virtual std::string dump_gv() const override {
+  virtual std::string dump_gv(std::string sink) const override {
     std::stringstream ss;
 
     if (next) {
-      ss << next->dump_gv();
+      ss << next->dump_gv(sink);
     }
 
     if (on_false) {
-      ss << on_false->dump_gv();
+      ss << on_false->dump_gv(sink);
     }
 
     ss << "\t\t" << get_gv_name();
@@ -300,53 +302,26 @@ public:
     ss << pretty_print_expr(condition);
     ss << "\"]\n";
 
+    ss << "\t\t" << get_gv_name();
+    ss << " -> ";
     if (next) {
-      ss << "\t\t" << get_gv_name();
-      ss << " -> ";
       ss << next->get_gv_name();
-      ss << " [label=\"True\"]\n";
+    } else {
+      ss << sink;
     }
+    ss << " [label=\"True\"]\n";
 
+    ss << "\t\t" << get_gv_name();
+    ss << " -> ";
     if (on_false) {
-      ss << "\t\t" << get_gv_name();
-      ss << " -> ";
       ss << on_false->get_gv_name();
-      ss << " [label=\"False\"]";
-      ss << "\n";
+    } else {
+      ss << sink;
     }
+    ss << " [label=\"False\"]\n";
 
 
     return ss.str();
-  }
-};
-
-class RetrieveSymbols : public klee::ExprVisitor::ExprVisitor {
-private:
-  std::vector<klee::ref<klee::ReadExpr>> retrieved;
-  std::vector<std::string> retrieved_strings;
-
-public:
-  RetrieveSymbols() : ExprVisitor(true) {}
-
-  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
-    klee::UpdateList ul = e.updates;
-    const klee::Array *root = ul.root;
-
-    auto found_it = std::find(retrieved_strings.begin(), retrieved_strings.end(), root->name);
-    if (found_it == retrieved_strings.end()) {
-      retrieved_strings.push_back(root->name);
-    }
-
-    retrieved.emplace_back((const_cast<klee::ReadExpr *>(&e)));
-    return klee::ExprVisitor::Action::doChildren();
-  }
-
-  std::vector<klee::ref<klee::ReadExpr>> get_retrieved() {
-    return retrieved;
-  }
-
-  std::vector<std::string> get_retrieved_strings() {
-    return retrieved_strings;
   }
 };
 
@@ -455,8 +430,6 @@ private:
   std::vector<call_path_t*> call_paths;
   solver_toolbox_t& solver_toolbox;
 
-  std::vector<std::string> skip_functions;
-
 private:
   void group_call_paths();
   bool check_discriminating_constraint(klee::ref<klee::Expr> constraint);
@@ -468,25 +441,10 @@ private:
   bool satisfies_not_constraint(call_path_t* call_path, klee::ref<klee::Expr> constraint) const;
   bool are_calls_equal(call_t c1, call_t c2);
   call_t pop_call();
-
-  bool is_skip_function(const std::string& fname) const {
-    auto found = std::find(skip_functions.begin(), skip_functions.end(), fname);
-    return found != skip_functions.end();
-  }
-
 public:
   CallPathsGroup(const std::vector<call_path_t*>& _call_paths,
                  solver_toolbox_t& _solver_toolbox)
     : call_paths(_call_paths), solver_toolbox(_solver_toolbox) {
-    skip_functions = std::vector<std::string> {
-      "loop_invariant_consume",
-      "loop_invariant_produce",
-      "packet_receive",
-      "packet_state_total_length",
-      "packet_free",
-      "start_time"
-    };
-
     group_call_paths();
   }
 
@@ -571,17 +529,19 @@ public:
     ss << "\tsubgraph clusterinit {\n";
     ss << "\t\tstyle=filled;\n";
     ss << "\t\tlabel=\"nf_init\";\n";
-    ss << "node [style=filled,color=white];\n";
+    ss << "\t\tnode [style=filled,color=white];\n";
+    ss << "\t\treturn_init [label=\"return\"];\n";
 
-    if (nf_init) ss << nf_init->dump_gv();
+    if (nf_init) ss << nf_init->dump_gv("return_init");
     ss << "\t}\n";
 
     ss << "\tsubgraph clusterprocess {\n";
     ss << "\t\tstyle=filled;\n";
     ss << "\t\tlabel=\"nf_process\"\n";
-    ss << "node [style=filled,color=white];\n";
+    ss << "\t\tnode [style=filled,color=white];\n";
+    ss << "\t\treturn_process [label=\"return\"];\n";
 
-    if (nf_process) ss << nf_process->dump_gv();
+    if (nf_process) ss << nf_process->dump_gv("return_process");
     ss << "\t}\n";
 
     ss << "}";

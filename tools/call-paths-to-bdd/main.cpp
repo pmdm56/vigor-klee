@@ -8,9 +8,9 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 
 llvm::cl::OptionCategory BDDGeneratorCat("BDD generator specific options");
 
-llvm::cl::opt<std::string> Dot(
-    "dot",
-    llvm::cl::desc("Dot file of graph visualization."),
+llvm::cl::opt<std::string> Gv(
+    "gv",
+    llvm::cl::desc("GraphViz file for BDD visualization."),
     llvm::cl::cat(BDDGeneratorCat));
 }
 
@@ -35,8 +35,8 @@ int main(int argc, char **argv) {
     delete call_path;
   }
 
-  if (Dot.size()) {
-    auto file = std::ofstream(Dot);
+  if (Gv.size()) {
+    auto file = std::ofstream(Gv);
     assert(file.is_open());
     file << bdd.dump_gv();
   }

@@ -138,10 +138,6 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
     return false;
   }
 
-  if (is_skip_function(c1.function_name)) {
-    return true;
-  }
-
   for (auto arg_name_value_pair : c1.args) {
     auto arg_name = arg_name_value_pair.first;
 
@@ -163,10 +159,6 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
         return false;
 
     if (!solver_toolbox.are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
-      if (c1.function_name == "packet_receive") {
-        std::cerr << arg_name << " diff" << "\n";
-        char c; std::cin >> c;
-      }
       return false;
     }
   }
