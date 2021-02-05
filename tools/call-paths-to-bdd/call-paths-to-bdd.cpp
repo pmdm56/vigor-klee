@@ -517,7 +517,24 @@ Node* BDD::populate_process(const Node* root, bool store) {
       assert(on_true_node);
       assert(on_false_node);
 
-      if (store && !is_skip_condition(root)) {
+      auto skip = is_skip_condition(root);
+      auto equal = false;
+
+      if (on_true_node->get_type() == Node::NodeType::RETURN_PROCESS &&
+          on_false_node->get_type() == Node::NodeType::RETURN_PROCESS) {
+
+        ReturnProcess* on_true_ret_process  = static_cast<ReturnProcess*>(on_true_node);
+        ReturnProcess* on_false_ret_process = static_cast<ReturnProcess*>(on_false_node);
+
+        equal |= (on_true_ret_process->get_return_operation() == on_false_ret_process->get_return_operation());
+        equal |= (on_true_ret_process->get_return_value() == on_false_ret_process->get_return_value());
+      }
+
+      if (store && equal) {
+        new_node = on_true_node;
+      }
+
+      else if (store && !skip) {
         Branch* branch = static_cast<Branch*>(root->clone());
 
         branch->replace_on_true(on_true_node);
@@ -532,6 +549,16 @@ Node* BDD::populate_process(const Node* root, bool store) {
 
         auto on_false_empty = on_false_node->get_type() == Node::NodeType::RETURN_INIT ||
                               on_false_node->get_type() == Node::NodeType::RETURN_PROCESS;
+
+        if (on_true_node->get_type() == Node::NodeType::RETURN_PROCESS) {
+          ReturnProcess* on_true_return_process = static_cast<ReturnProcess*>(on_true_node);
+          on_true_empty |= (on_true_return_process->get_return_operation() == ReturnProcess::Operation::ERR);
+        }
+
+        if (on_false_node->get_type() == Node::NodeType::RETURN_PROCESS) {
+          ReturnProcess* on_false_return_process = static_cast<ReturnProcess*>(on_false_node);
+          on_false_empty |= (on_false_return_process->get_return_operation() == ReturnProcess::Operation::ERR);
+        }
 
         assert(on_true_empty || on_false_empty);
         new_node = on_false_empty ? on_true_node : on_false_node;
