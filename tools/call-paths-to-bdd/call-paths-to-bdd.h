@@ -27,6 +27,50 @@
 
 namespace BDD {
 
+class BDD;
+
+typedef std::pair<call_path_t*, calls_t> call_path_pair_t;
+
+struct call_paths_t {
+  std::vector<call_path_t*> cp;
+  std::vector<calls_t> backup;
+
+  static std::vector<std::string> skip_functions;
+
+  call_paths_t() {}
+  call_paths_t(const call_paths_t& other) : cp(other.cp), backup(other.backup) {}
+
+  call_paths_t(std::vector<call_path_t*> _call_paths)
+    : cp(_call_paths) {
+    for (const auto& _cp : cp) {
+      backup.emplace_back(_cp->calls);
+    }
+
+    assert(cp.size() == backup.size());
+  }
+
+  size_t size() const {
+    return cp.size();
+  }
+
+  call_path_pair_t get(unsigned int i) {
+    assert(i < size());
+    return call_path_pair_t(cp[i], backup[i]);
+  }
+
+  void clear() {
+    cp.clear();
+    backup.clear();
+  }
+
+  void push_back(call_path_pair_t pair) {
+    cp.push_back(pair.first);
+    backup.push_back(pair.second);
+  }
+
+  static bool is_skip_function(const std::string& fname);
+};
+
 class ReplaceSymbols: public klee::ExprVisitor::ExprVisitor {
 private:
   std::vector<klee::ref<klee::ReadExpr>> reads;
@@ -135,7 +179,7 @@ protected:
   friend class Branch;
   friend class ReturnRaw;
   friend class ReturnInit;
-  //friend class ReturnProcess;
+  friend class ReturnProcess;
 
   uint64_t id;
   NodeType type;
@@ -326,13 +370,13 @@ public:
       arg_t arg  = pair.second;
       ss << pretty_print_expr(arg.expr);
     }
-    ss << ")\", color=cornflowerblue]\n";
+    ss << ")\", color=cornflowerblue];\n";
 
     if (next) {
       ss << "\t\t" << get_gv_name();
       ss << " -> ";
       ss << next->get_gv_name();
-      ss << "\n";
+      ss << ";\n";
     }
 
     return ss.str();
@@ -423,20 +467,20 @@ public:
     ss << "\t\t" << get_gv_name();
     ss << " [shape=Mdiamond, label=\"";
     ss << pretty_print_expr(condition);
-    ss << "\", color=yellow]\n";
+    ss << "\", color=yellow];\n";
 
     if (next) {
       ss << "\t\t" << get_gv_name();
       ss << " -> ";
       ss << next->get_gv_name();
-      ss << " [label=\"True\"]\n";
+      ss << " [label=\"True\"];\n";
     }
 
     if (on_false) {
       ss << "\t\t" << get_gv_name();
       ss << " -> ";
       ss << on_false->get_gv_name();
-      ss << " [label=\"False\"]\n";
+      ss << " [label=\"False\"];\n";
     }
 
     return ss.str();
@@ -444,25 +488,32 @@ public:
 };
 
 class ReturnRaw : public Node {
-public:
-  ReturnRaw(uint64_t _id, const std::vector<call_path_t*> call_paths)
-    : Node(_id, Node::NodeType::RETURN_RAW, nullptr, nullptr, call_paths) {}
+private:
+  std::vector<calls_t> calls_list;
 
-  ReturnRaw(uint64_t _id, Node* _prev,
+public:
+  ReturnRaw(uint64_t _id, call_paths_t call_paths)
+    : Node(_id, Node::NodeType::RETURN_RAW, nullptr, nullptr, call_paths.cp),
+      calls_list(call_paths.backup) {}
+
+  ReturnRaw(uint64_t _id, Node* _prev, std::vector<calls_t> _calls_list,
             const std::vector<std::string>& _call_paths_filenames,
             const std::vector<calls_t>& _missing_calls)
-    : Node(_id, Node::NodeType::RETURN_RAW, nullptr, _prev, _call_paths_filenames, _missing_calls) {}
+    : Node(_id, Node::NodeType::RETURN_RAW, nullptr, _prev, _call_paths_filenames, _missing_calls),
+      calls_list(_calls_list) {}
 
   virtual Node* clone() const override {
-    ReturnRaw* clone = new ReturnRaw(id, prev, call_paths_filenames, missing_calls);
+    ReturnRaw* clone = new ReturnRaw(id, prev, calls_list, call_paths_filenames, missing_calls);
     return clone;
   }
+
+  std::vector<calls_t> get_calls() const { return calls_list; }
 
   virtual void dump() const override {
     std::cerr << "===========================================" << "\n";
     std::cerr << "type:      return raw" << "\n";
-    std::cerr << "lcalls:    " << missing_calls.size() << "\n";
-    for (const auto& calls : missing_calls) {
+    std::cerr << "lcalls:    " << calls_list.size() << "\n";
+    for (const auto& calls : calls_list) {
       std::cerr << "calls:     " << calls.size() << "\n";
       for (const auto& call : calls) {
         std::cerr << "call:      " << call.function_name << " " << expr_to_string(call.ret) << "\n";
@@ -493,9 +544,17 @@ public:
 private:
   ReturnType value;
 
-  void fill_return_value() {
-    assert(missing_calls.size());
-    value = (missing_calls[0].size() == 0) ? FAILURE : SUCCESS;
+  void fill_return_value(calls_t calls) {
+    assert(calls.size());
+
+    auto start_time_finder = [](call_t call) -> bool {
+      return call.function_name == "start_time";
+    };
+
+    auto start_time_it = std::find_if(calls.begin(), calls.end(), start_time_finder);
+    auto found = (start_time_it != calls.end());
+
+    value = found ? SUCCESS : FAILURE;
   }
 
 protected:
@@ -519,7 +578,9 @@ public:
 
   ReturnInit(uint64_t _id, const ReturnRaw* raw)
     : Node(_id, Node::NodeType::RETURN_INIT, nullptr, nullptr, raw->call_paths_filenames, raw->missing_calls) {
-    fill_return_value();
+    auto calls_list = raw->get_calls();
+    assert(calls_list.size());
+    fill_return_value(calls_list[0]);
   }
 
   ReturnInit(uint64_t _id, Node *_prev, ReturnType _value)
@@ -575,11 +636,159 @@ public:
 
     ss << "\t\t\"return ";
     switch (value) {
-    case SUCCESS: { ss << "1"; break; }
-    case FAILURE: { ss << "0"; break; }
+    case SUCCESS: { ss << "1\" [color=chartreuse2]"; break; }
+    case FAILURE: { ss << "0\" [color=brown1]"; break; }
     default: { assert(false); }
     }
-    ss << "\" [color=cornflowerblue]\n";
+    ss << ";\n";
+
+    return ss.str();
+  }
+};
+
+class ReturnProcess : public Node {
+public:
+  enum Operation { FWD, DROP, BCAST, ERR };
+
+private:
+  int value;
+  Operation operation;
+
+  std::pair<unsigned, unsigned> analyse_packet_sends(calls_t calls) const {
+    unsigned counter = 0;
+    unsigned dst_device = 0;
+
+    for (const auto& call : calls) {
+      if (call.function_name != "packet_send")
+        continue;
+
+      counter += 1;
+
+      if (counter == 1) {
+        auto dst_device_expr = call.args.at("dst_device").expr;
+        assert(dst_device_expr->getKind() == klee::Expr::Kind::Constant);
+
+        klee::ConstantExpr* dst_device_const = static_cast<klee::ConstantExpr*>(dst_device_expr.get());
+        dst_device = dst_device_const->getZExtValue();
+      }
+    }
+
+    return std::pair<unsigned, unsigned>(counter, dst_device);
+  }
+
+  void fill_return_value(calls_t calls) {
+    auto counter_dst_device_pair = analyse_packet_sends(calls);
+
+    if (counter_dst_device_pair.first == 1) {
+      value = counter_dst_device_pair.second;
+      operation = FWD;
+      return;
+    }
+
+    if (counter_dst_device_pair.first > 1) {
+      value = ((uint16_t) -1);
+      operation = BCAST;
+      return;
+    }
+
+    auto packet_receive_finder = [](call_t call) -> bool {
+      return call.function_name == "packet_receive";
+    };
+
+    auto packet_receive_it = std::find_if(calls.begin(), calls.end(), packet_receive_finder);
+
+    if(packet_receive_it == calls.end()) {
+      operation = ERR;
+      value = -1;
+      return;
+    }
+
+    auto packet_receive = *packet_receive_it;
+    auto src_device_expr = packet_receive.args["src_devices"].expr;
+    assert(src_device_expr->getKind() == klee::Expr::Kind::Constant);
+
+    klee::ConstantExpr* src_device_const = static_cast<klee::ConstantExpr*>(src_device_expr.get());
+    auto src_device = src_device_const->getZExtValue();
+
+    operation = DROP;
+    value = src_device;
+    return;
+  }
+
+public:
+  ReturnProcess(uint64_t _id, const ReturnRaw* raw)
+    : Node(_id, Node::NodeType::RETURN_PROCESS, nullptr, nullptr, raw->call_paths_filenames, raw->missing_calls) {
+    auto calls_list = raw->get_calls();
+    assert(calls_list.size());
+    fill_return_value(calls_list[0]);
+  }
+
+  ReturnProcess(uint64_t _id, Node *_prev, int _value, Operation _operation)
+    : Node(_id, Node::NodeType::RETURN_PROCESS, nullptr, _prev, _prev->call_paths_filenames, _prev->missing_calls),
+      value(_value), operation(_operation) {}
+
+  int get_return_value() const {
+    return value;
+  }
+
+  Operation get_return_operation() const {
+    return operation;
+  }
+
+  virtual Node* clone() const override {
+    ReturnProcess* clone = new ReturnProcess(id, prev, value, operation);
+    return clone;
+  }
+
+  virtual void dump() const override {
+    std::cerr << "===========================================" << "\n";
+    std::cerr << "type:      return process" << "\n";
+    std::cerr << "callpaths: ";
+    int i = 0;
+    for (const auto& filename : call_paths_filenames) {
+      if (i > 0 && i % 5 == 0)  {
+        std::cerr << "\n" << "           ";
+      }
+      if (i > 0 && i % 5 != 0) std::cerr << ", ";
+      std::cerr << filename;
+      i++;
+    }
+    std::cerr << "\n";
+    std::cerr << "operation: ";
+    switch (operation) {
+    case FWD:   { std::cerr << "fwd(" << value << ")"; break; }
+    case DROP:  { std::cerr << "drop()"; break; }
+    case BCAST: { std::cerr << "bcast()"; break; }
+    case ERR:   { std::cerr << "ERR"; break; }
+    }
+    std::cerr << "\n";
+    std::cerr << "===========================================" << "\n";
+  }
+
+  virtual void dump_compact(int lvl) const override {
+    std::string sep = std::string(lvl*2, ' ');
+    std::cerr << sep;
+    switch (operation) {
+    case FWD:   { std::cerr << "fwd(" << value << ")"; break; }
+    case DROP:  { std::cerr << "drop()"; break; }
+    case BCAST: { std::cerr << "bcast()"; break; }
+    case ERR:   { std::cerr << "ERR"; break; }
+    }
+    std::cerr << "\n";
+  }
+
+  virtual std::string dump_gv() const override {
+    std::stringstream ss;
+
+    ss << "\t\t" << get_gv_name();
+    ss << " [label=\"";
+    switch (operation) {
+    case FWD:   { ss << "fwd(" << value << ")\", color=chartreuse2]"; break; }
+    case DROP:  { ss << "drop()\", color=brown1]"; break; }
+    case BCAST: { ss << "bcast()\", color=cyan]"; break; }
+    default: { assert(false); }
+    }
+    ss << ";\n";
 
     return ss.str();
   }
@@ -588,10 +797,10 @@ public:
 class CallPathsGroup {
 private:
   klee::ref<klee::Expr> discriminating_constraint;
-  std::vector<call_path_t*> on_true;
-  std::vector<call_path_t*> on_false;
+  call_paths_t on_true;
+  call_paths_t on_false;
 
-  std::vector<call_path_t*> call_paths;
+  call_paths_t call_paths;
   solver_toolbox_t& solver_toolbox;
 
 private:
@@ -605,8 +814,9 @@ private:
   bool satisfies_not_constraint(call_path_t* call_path, klee::ref<klee::Expr> constraint) const;
   bool are_calls_equal(call_t c1, call_t c2);
   call_t pop_call();
+
 public:
-  CallPathsGroup(const std::vector<call_path_t*>& _call_paths,
+  CallPathsGroup(const call_paths_t& _call_paths,
                  solver_toolbox_t& _solver_toolbox)
     : call_paths(_call_paths), solver_toolbox(_solver_toolbox) {
     group_call_paths();
@@ -616,11 +826,11 @@ public:
     return discriminating_constraint;
   }
 
-  const std::vector<call_path_t*>& get_on_true() const {
+  call_paths_t get_on_true() const {
     return on_true;
   }
 
-  const std::vector<call_path_t*>& get_on_false() const {
+  call_paths_t get_on_false() const {
     return on_false;
   }
 };
@@ -637,17 +847,14 @@ private:
   std::shared_ptr<Node> nf_process;
 
   static std::vector<std::string> skip_conditions_with_symbol;
-  static std::vector<std::string> skip_functions;
 
   static constexpr char INIT_CONTEXT_MARKER[] = "start_time";
-  static constexpr char PROCESS_CONTEXT_MARKER[] = "packet_send";
 
 private:
   call_t get_successful_call(std::vector<call_path_t*> call_paths) const;
-  Node* populate(std::vector<call_path_t*> call_paths);
+  Node* populate(call_paths_t call_paths);
 
   static std::string get_fname(const Node* node);
-  static bool is_skip_function(const std::string& fname);
   static bool is_skip_function(const Node* node);
   static bool is_skip_condition(const Node* node);
 
@@ -661,7 +868,8 @@ private:
 
 public:
   BDD(std::vector<call_path_t*> call_paths) : id(0) {
-    Node* root = populate(call_paths);
+    call_paths_t cp(call_paths);
+    Node* root = populate(cp);
 
     nf_init = std::shared_ptr<Node>(populate_init(root));
     nf_process = std::shared_ptr<Node>(populate_process(root));
@@ -692,7 +900,6 @@ public:
     ss << "\t\tstyle=filled;\n";
     ss << "\t\tlabel=\"nf_process\"\n";
     ss << "\t\tnode [style=filled,color=white];\n";
-    ss << "\t\treturn_process [label=\"return\"];\n";
 
     if (nf_process) ss << nf_process->dump_gv();
     ss << "\t}\n";

@@ -3,15 +3,14 @@
 namespace BDD {
 
 constexpr char BDD::INIT_CONTEXT_MARKER[];
-constexpr char BDD::PROCESS_CONTEXT_MARKER[];
 
-std::vector<std::string> BDD::skip_functions {
+std::vector<std::string> call_paths_t::skip_functions {
   "loop_invariant_consume",
   "loop_invariant_produce",
   "packet_receive",
   "packet_state_total_length",
   "packet_free",
-  "start_time"
+  "packet_send"
 };
 
 std::vector<std::string> BDD::skip_conditions_with_symbol {
@@ -25,15 +24,14 @@ std::string BDD::get_fname(const Node* node) {
   return call->get_call().function_name;
 }
 
-bool BDD::is_skip_function(const std::string& fname) {
-  auto found_it = std::find(BDD::skip_functions.begin(), BDD::skip_functions.end(), fname);
-  return found_it != BDD::skip_functions.end();
+bool call_paths_t::is_skip_function(const std::string& fname) {
+  auto found_it = std::find(call_paths_t::skip_functions.begin(), call_paths_t::skip_functions.end(), fname);
+  return found_it != call_paths_t::skip_functions.end();
 }
 
 bool BDD::is_skip_function(const Node* node) {
   auto fname = BDD::get_fname(node);
-  auto found_it = std::find(BDD::skip_functions.begin(), BDD::skip_functions.end(), fname);
-  return found_it != BDD::skip_functions.end();
+  return call_paths_t::is_skip_function(fname);
 }
 
 bool BDD::is_skip_condition(const Node* node) {
@@ -144,7 +142,7 @@ uint64_t solver_toolbox_t::value_from_expr(klee::ref<klee::Expr> expr) const {
 void CallPathsGroup::group_call_paths() {
   assert(call_paths.size());
 
-  for (const auto& cp : call_paths) {
+  for (const auto& cp : call_paths.cp) {
     on_true.clear();
     on_false.clear();
 
@@ -154,13 +152,15 @@ void CallPathsGroup::group_call_paths() {
 
     call_t call = cp->calls[0];
 
-    for (auto _cp : call_paths) {
-      if (_cp->calls.size() && are_calls_equal(_cp->calls[0], call)) {
-        on_true.push_back(_cp);
+    for (unsigned int icp = 0; icp < call_paths.size(); icp++) {
+      auto pair = call_paths.get(icp);
+
+      if (pair.first->calls.size() && are_calls_equal(pair.first->calls[0], call)) {
+        on_true.push_back(pair);
         continue;
       }
 
-      on_false.push_back(_cp);
+      on_false.push_back(pair);
     }
 
     // all calls are equal, no need do discriminate
@@ -181,7 +181,7 @@ void CallPathsGroup::group_call_paths() {
     return;
   }
 
-  assert(!discriminating_constraint.isNull());
+  assert(false && "Could not group call paths");
 }
 
 bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
@@ -189,15 +189,11 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
     return false;
   }
 
-  if (BDD::is_skip_function(c1.function_name)) {
-    return true;
-  }
-
   for (auto arg_name_value_pair : c1.args) {
     auto arg_name = arg_name_value_pair.first;
 
     // exception: we don't care about 'p' differences
-    if (arg_name == "p") {
+    if (arg_name == "p" || arg_name == "src_devices") {
       continue;
     }
 
@@ -210,10 +206,18 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
 
     // comparison between modifications to the received packet
     if (c1.function_name == "packet_return_chunk" && arg_name == "the_chunk" &&
-        !solver_toolbox.are_exprs_always_equal(c1_arg.in, c2_arg.in))
-        return false;
+        !solver_toolbox.are_exprs_always_equal(c1_arg.in, c2_arg.in)) {
+      return false;
+    }
 
     if (!solver_toolbox.are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
+      if (c1.function_name == "packet_borrow_next_chunk") {
+        std::cerr << arg_name << "\n";
+        std::cerr << expr_to_string(c1_arg.expr) << "\n";
+        std::cerr << "diff" << "\n";
+        std::cerr << expr_to_string(c2_arg.expr) << "\n";
+        char c; std::cin >> c;
+      }
       return false;
     }
   }
@@ -239,8 +243,8 @@ std::vector<klee::ref<klee::Expr>> CallPathsGroup::get_possible_discriminating_c
   std::vector<klee::ref<klee::Expr>> possible_discriminating_constraints;
   assert(on_true.size());
 
-  for (auto constraint : on_true[0]->constraints) {
-    if (satisfies_constraint(on_true, constraint)) {
+  for (auto constraint : on_true.cp[0]->constraints) {
+    if (satisfies_constraint(on_true.cp, constraint)) {
       possible_discriminating_constraints.push_back(constraint);
     }
   }
@@ -294,18 +298,21 @@ bool CallPathsGroup::check_discriminating_constraint(klee::ref<klee::Expr> const
   assert(on_true.size());
   assert(on_false.size());
 
-  std::vector<call_path*> _on_true = on_true;
-  std::vector<call_path*> _on_false;
+  call_paths_t _on_true = on_true;
+  call_paths_t _on_false;
 
-  for (auto call_path : on_false) {
+  for (unsigned int i = 0; i < on_false.size(); i++) {
+    auto pair = on_false.get(i);
+    auto call_path = pair.first;
+
     if (satisfies_constraint(call_path, constraint)) {
-      _on_true.push_back(call_path);
+      _on_true.push_back(pair);
     } else {
-      _on_false.push_back(call_path);
+      _on_false.push_back(pair);
     }
   }
 
-  if (_on_false.size() && satisfies_not_constraint(_on_false, constraint)) {
+  if (_on_false.size() && satisfies_not_constraint(_on_false.cp, constraint)) {
     on_true  = _on_true;
     on_false = _on_false;
     return true;
@@ -338,26 +345,26 @@ call_t BDD::get_successful_call(std::vector<call_path_t*> call_paths) const {
   return call_paths[0]->calls[0];
 }
 
-Node* BDD::populate(std::vector<call_path_t*> call_paths) {
+Node* BDD::populate(call_paths_t call_paths) {
   Node* local_root = nullptr;
   Node* local_leaf = nullptr;
 
   ReturnRaw* return_raw = new ReturnRaw(get_and_inc_id(), call_paths);
 
-  while (call_paths.size()) {
+  while (call_paths.cp.size()) {
     CallPathsGroup group(call_paths, solver_toolbox);
 
     auto on_true  = group.get_on_true();
     auto on_false = group.get_on_false();
 
-    if (on_true.size() == call_paths.size()) {
-      assert(on_false.size() == 0);
+    if (on_true.cp.size() == call_paths.cp.size()) {
+      assert(on_false.cp.size() == 0);
 
-      if (on_true[0]->calls.size() == 0) {
+      if (on_true.cp[0]->calls.size() == 0) {
         break;
       }
 
-      Call* node = new Call(get_and_inc_id(), get_successful_call(on_true), on_true);
+      Call* node = new Call(get_and_inc_id(), get_successful_call(on_true.cp), on_true.cp);
 
       // root node
       if (local_root == nullptr) {
@@ -369,14 +376,14 @@ Node* BDD::populate(std::vector<call_path_t*> call_paths) {
         local_leaf = node;
       }
 
-      for (auto& cp : call_paths) {
+      for (auto& cp : call_paths.cp) {
         assert(cp->calls.size());
         cp->calls.erase(cp->calls.begin());
       }
     } else {
       auto discriminating_constraint = group.get_discriminating_constraint();
 
-      Branch* node = new Branch(get_and_inc_id(), discriminating_constraint, call_paths);
+      Branch* node = new Branch(get_and_inc_id(), discriminating_constraint, call_paths.cp);
 
       Node* on_true_root  = populate(on_true);
       Node* on_false_root = populate(on_false);
@@ -484,7 +491,11 @@ Node* BDD::populate_process(const Node* root, bool store) {
 
     switch (root->get_type()) {
     case Node::NodeType::CALL: {
-      store |= (get_fname(root) == BDD::INIT_CONTEXT_MARKER);
+      if (get_fname(root) == BDD::INIT_CONTEXT_MARKER) {
+        store = true;
+        root = root->get_next();
+        break;
+      }
 
       if (store && !is_skip_function(root)) {
         new_node = root->clone();
@@ -492,19 +503,19 @@ Node* BDD::populate_process(const Node* root, bool store) {
         new_node->replace_prev(nullptr);
       }
 
-      if (get_fname(root) == BDD::PROCESS_CONTEXT_MARKER) {
-        root = nullptr;
-      } else {
-        root = root->get_next();
-      }
-
+      root = root->get_next();
       break;
     };
     case Node::NodeType::BRANCH: {
       const Branch* root_branch = static_cast<const Branch*>(root);
+      assert(root_branch->get_on_true());
+      assert(root_branch->get_on_false());
 
       Node* on_true_node  = populate_process(root_branch->get_on_true(), store);
       Node* on_false_node = populate_process(root_branch->get_on_false(), store);
+
+      assert(on_true_node);
+      assert(on_false_node);
 
       if (store && !is_skip_condition(root)) {
         Branch* branch = static_cast<Branch*>(root->clone());
@@ -516,15 +527,23 @@ Node* BDD::populate_process(const Node* root, bool store) {
       }
 
       else {
-        assert(on_true_node == nullptr || on_false_node == nullptr);
-        new_node = on_true_node ? on_true_node : on_false_node;
+        auto on_true_empty = on_true_node->get_type() == Node::NodeType::RETURN_INIT ||
+                             on_true_node->get_type() == Node::NodeType::RETURN_PROCESS;
+
+        auto on_false_empty = on_false_node->get_type() == Node::NodeType::RETURN_INIT ||
+                              on_false_node->get_type() == Node::NodeType::RETURN_PROCESS;
+
+        assert(on_true_empty || on_false_empty);
+        new_node = on_false_empty ? on_true_node : on_false_node;
       }
 
       root = nullptr;
       break;
     };
     case Node::NodeType::RETURN_RAW: {
-      // TODO
+      const ReturnRaw* root_return_raw = static_cast<const ReturnRaw*>(root);
+      new_node = new ReturnProcess(get_and_inc_id(), root_return_raw);
+
       root = nullptr;
       break;
     };
@@ -543,6 +562,7 @@ Node* BDD::populate_process(const Node* root, bool store) {
     }
   }
 
+  assert(local_root);
   return local_root;
 }
 
