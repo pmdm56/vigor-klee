@@ -2068,6 +2068,18 @@ private:
     assert(expr->get_kind() == VARIABLE);
   }
 
+  void synthesize_pointer(std::ostream& ofs, unsigned int lvl) const {
+    Variable* var = static_cast<Variable*>(expr.get());
+    Type_ptr t = var->get_type();
+
+    assert(t->get_type_kind() == Type::TypeKind::POINTER);
+
+    expr->synthesize(ofs);
+    ofs << "[";
+    idx->synthesize(ofs);
+    ofs << "]";
+  }
+
   void synthesize_array(std::ostream& ofs, unsigned int lvl) const {
     Variable* var = static_cast<Variable*>(expr.get());
     Type_ptr t = var->get_type();
@@ -2137,14 +2149,11 @@ private:
     assert(expr->get_kind() == Node::NodeKind::VARIABLE);
 
     Variable* var = static_cast<Variable*>(expr.get());
-    // bool is_ptr = false;
-
     Type_ptr t = var->get_type();
 
     if (t->get_type_kind() == Type::TypeKind::POINTER) {
-      // is_ptr = true;
-      Pointer* ptr = static_cast<Pointer*>(var->get_type().get());
-      t = ptr->get_type();
+      synthesize_pointer(ofs, lvl);
+      return;
     }
 
     if (t->get_type_kind() == Type::TypeKind::ARRAY) {
@@ -2157,16 +2166,13 @@ private:
       return;
     }
 
-    // FIXME: this is a workaround for not knowing the type inside vector
-    // assert(!is_ptr);
     unsigned int size = type->get_size();
-
 
     if (idx->get_kind() == CONSTANT) {
       Constant *idx_const = static_cast<Constant*>(idx.get());
       unsigned int idx_val = idx_const->get_value();
 
-      assert(idx_val != size && "weird case :/");
+      assert(idx_val < size && "weird case :/");
 
       if (!offset || idx_val == 0) {
         expr->synthesize(ofs);

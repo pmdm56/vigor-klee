@@ -43,7 +43,7 @@ llvm::cl::opt<std::string> XML(
     llvm::cl::cat(SynthesizerCat));
 }
 
-Node_ptr build_ast(AST& ast, const BDD::Node* root, const BDD::Node* prev=nullptr) {
+Node_ptr build_ast(AST& ast, const BDD::Node* root) {
   std::vector<Node_ptr> nodes;
 
   while (root != nullptr) {
@@ -59,11 +59,11 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, const BDD::Node* prev=nullpt
       auto cond = branch_node->get_condition();
 
       ast.push();
-      auto then_node = build_ast(ast, on_true_bdd, root);
+      auto then_node = build_ast(ast, on_true_bdd);
       ast.pop();
 
       ast.push();
-      auto else_node = build_ast(ast, on_false_bdd, root);
+      auto else_node = build_ast(ast, on_false_bdd);
       ast.pop();
 
       auto cond_node = transpile(&ast, cond);
@@ -91,15 +91,60 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, const BDD::Node* prev=nullpt
       root = root->get_next();
       break;
     };
+
+    case BDD::Node::NodeType::RETURN_INIT: {
+      auto return_init = static_cast<const BDD::ReturnInit*>(root);
+      Expr_ptr ret_value;
+
+      switch (return_init->get_return_value()) {
+      case BDD::ReturnInit::ReturnType::SUCCESS: {
+        ret_value = Constant::build(PrimitiveType::PrimitiveKind::INT, 1);
+        break;
+      };
+      case BDD::ReturnInit::ReturnType::FAILURE: {
+        ret_value = Constant::build(PrimitiveType::PrimitiveKind::INT, 0);
+        break;
+      };
+      }
+
+      nodes.push_back(Return::build(ret_value));
+
+      root = nullptr;
+      break;
+    };
+
+    case BDD::Node::NodeType::RETURN_PROCESS: {
+      auto return_process = static_cast<const BDD::ReturnProcess*>(root);
+      Node_ptr new_node;
+
+      switch (return_process->get_return_operation()) {
+      case BDD::ReturnProcess::Operation::FWD:
+      case BDD::ReturnProcess::Operation::BCAST: {
+        Expr_ptr ret_value = Constant::build(PrimitiveType::PrimitiveKind::INT, return_process->get_return_value());
+        new_node = Return::build(ret_value);
+        break;
+      };
+      case BDD::ReturnProcess::Operation::DROP: {
+        Node_ptr ret = Return::build(ast.get_from_local("device"));
+        Comment_ptr comm = Comment::build("dropping");
+        new_node = Block::build(std::vector<Node_ptr>{ comm, ret }, false);
+        break;
+      };
+      default: { assert(false); }
+      }
+
+      nodes.push_back(new_node);
+
+      root = nullptr;
+      break;
+    };
+
+    default: { assert(false); }
     }
+
   }
 
-  if (nodes.size() == 0) {
-    Node_ptr ret = ast.get_return(prev);
-    assert(ret);
-    nodes.push_back(ret);
-  }
-
+  assert(nodes.size());
   return Block::build(nodes);
 }
 

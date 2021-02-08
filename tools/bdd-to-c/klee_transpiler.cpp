@@ -93,6 +93,39 @@ uint64_t get_last_concat_idx(const BDD::solver_toolbox_t& solver, const klee::re
   return idx_const->get_value();
 }
 
+std::vector<Expr_ptr> apply_changes(AST *ast, Expr_ptr variable,
+                                    klee::ref<klee::Expr> after) {
+  std::vector<Expr_ptr> changes;
+
+  Type_ptr var_type = variable->get_type();
+
+  switch (var_type->get_type_kind()) {
+  case Type::TypeKind::POINTER: {
+    Type_ptr byte_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
+
+    for (unsigned int byte = 0; byte < after->getWidth() / 8; byte++) {
+      Constant_ptr byte_const = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, byte);
+
+      Expr_ptr var_read = Read::build(variable, byte_type, byte_const);
+
+      auto extracted = ast->solver.exprBuilder->Extract(after, byte * 8, klee::Expr::Int8);
+      Expr_ptr val_read = transpile(ast, extracted);
+
+      changes.push_back(Assignment::build(var_read, val_read));
+    }
+    break;
+  };
+
+  case Type::TypeKind::STRUCT:
+  case Type::TypeKind::ARRAY:
+  case Type::TypeKind::PRIMITIVE: {
+    assert(false && "TODO");
+  };
+  }
+
+  return changes;
+}
+
 std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
                                              const klee::ref<klee::Expr> &before,
                                              const klee::ref<klee::Expr> &after) {

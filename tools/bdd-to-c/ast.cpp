@@ -540,11 +540,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
   int counter_begins = 0;
   bool ignore = false;
 
-  if (fname == "packet_send") {
-    return get_return_from_process(call);
-  }
-
-  else if (fname == "current_time") {
+  if (fname == "current_time") {
     associate_expr_to_local("now", call.ret);
     ignore = true;
   }
@@ -577,7 +573,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
         Variable::build("ether_type", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T))
       };
 
-      Struct_ptr ether_hdr = Struct::build("ether_hdr", ether_hdr_fields);
+      Struct_ptr ether_hdr = Struct::build("rte_ether_hdr", ether_hdr_fields);
 
       ret_type = Pointer::build(ether_hdr);
       ret_symbol = CHUNK_LAYER_2;
@@ -599,7 +595,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
         Variable::build("dst_addr", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T))
       };
 
-      Struct_ptr ipv4_hdr = Struct::build("ipv4_hdr", ipv4_hdr_fields);
+      Struct_ptr ipv4_hdr = Struct::build("rte_ipv4_hdr", ipv4_hdr_fields);
 
       ret_type = Pointer::build(ipv4_hdr);
       ret_symbol = CHUNK_LAYER_3;
@@ -791,13 +787,8 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr value = get_from_local_by_addr("val_out", value_addr);
     assert(value);
 
-    Expr_ptr value_by_expr = transpile(this, call.args["value"].in);
-
-    // changes to this value were made
-    if (value_by_expr == nullptr) {
-      Expr_ptr changes = transpile(this, call.args["value"].in);
-      exprs.push_back(Assignment::build(value, changes));
-    }
+    auto changes = apply_changes(this, value, call.args["value"].in);
+    exprs.insert(exprs.end(), changes.begin(), changes.end());
 
     args = std::vector<Expr_ptr>{ vector, index, value };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
@@ -932,7 +923,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     assert(l4_header_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t l4_header_addr = (static_cast<Constant*>(l4_header_expr.get()))->get_value();
 
-    Expr_ptr ip_header = get_from_local_by_addr("ipv4_hdr", ip_header_addr);
+    Expr_ptr ip_header = get_from_local_by_addr("rte_ipv4_hdr", ip_header_addr);
     assert(ip_header);
     Expr_ptr l4_header = get_from_local_by_addr("tcpudp_hdr", l4_header_addr);
     assert(l4_header);
@@ -1024,64 +1015,6 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
   return Block::build(exprs, false);
 }
 
-Node_ptr AST::get_return_from_init(call_t call) {
-  assert(!call.ret.isNull());
-
-  auto zero = solver.exprBuilder->Constant(0, call.ret->getWidth());
-  auto eq_zero = solver.exprBuilder->Eq(call.ret, zero);
-  auto is_ret_success = solver.is_expr_always_false(eq_zero);
-
-  Expr_ptr ret_const = Constant::build(PrimitiveType::PrimitiveKind::INT, is_ret_success ? 1 : 0);
-  return Return::build(ret_const);
-}
-
-Node_ptr AST::get_return_from_process(calls_t calls) {
-  assert(calls.size());
-
-  auto packet_send_finder = [](call_t call) -> bool {
-    return call.function_name == "packet_send";
-  };
-
-  auto packet_send_it = std::find_if(calls.begin(), calls.end(), packet_send_finder);
-  auto found = (packet_send_it != calls.end());
-
-  if (found) {
-    return get_return_from_process(*packet_send_it);
-  }
-
-  Expr_ptr device = get_from_local("device");
-  Return_ptr ret = Return::build(device);
-  Comment_ptr comm = Comment::build("dropping");
-  return Block::build(std::vector<Node_ptr>{ comm, ret }, false);
-}
-
-Node_ptr AST::get_return_from_process(call_t packet_send) {
-  assert(packet_send.function_name == "packet_send");
-
-  klee::ref<klee::Expr> dst_device_expr = packet_send.args["dst_device"].expr;
-  Expr_ptr dst_device = transpile(this, dst_device_expr);
-
-  assert(dst_device && "dst device is a complex expression");
-  assert(dst_device->get_kind() == Node::NodeKind::CONSTANT);
-
-  Constant* dst_device_const = static_cast<Constant*>(dst_device.get());
-  Node_ptr final;
-
-  // dropping
-  if (dst_device_const->get_value() == ((uint16_t) - 1)) {
-    Expr_ptr device = get_from_local("device");
-    Return_ptr ret = Return::build(device);
-    Comment_ptr comm = Comment::build("dropping");
-    final = Block::build(std::vector<Node_ptr>{ comm, ret }, false);
-  }
-
-  else {
-    final = Return::build(dst_device);
-  }
-
-  return final;
-}
-
 void AST::push() {
   local_variables.emplace_back();
   layer.push_back(layer.back());
@@ -1093,38 +1026,6 @@ void AST::pop() {
 
   assert(layer.size() > 1);
   layer.pop_back();
-}
-
-Node_ptr AST::get_return(const std::vector<calls_t>& calls_list) {
-  assert(calls_list.size() || context == INIT);
-  assert(context == INIT || context == PROCESS);
-  return (context == INIT) ? get_return(false) : get_return_from_process(calls_list[0]);
-}
-
-Node_ptr AST::get_return(bool success) {
-  assert(context == INIT);
-  Expr_ptr ret_const = Constant::build(PrimitiveType::PrimitiveKind::INT, success ? 1 : 0);
-  return Return::build(ret_const);
-}
-
-Node_ptr AST::get_return(const BDD::Node* node) {
-  assert(node);
-
-  while (node->get_missing_calls().size() == 0) {
-    node = node->get_prev();
-  }
-
-  return get_return(node->get_missing_calls());
-}
-
-Node_ptr AST::get_return(call_t call) {
-  switch (context) {
-    case INIT: return get_return_from_init(call);
-    case PROCESS: return get_return_from_process(call);
-    case DONE: assert(false);
-  }
-
-  return nullptr;
 }
 
 Node_ptr AST::node_from_call(call_t call) {

@@ -25,10 +25,6 @@ private:
 
 private:
   std::string output_path;
-
-  std::vector<std::string> skip_conditions_with_symbol;
-  std::vector<std::string> skip_functions;
-  std::vector<std::string> commit_functions;
   std::map<std::string, std::string> callpath_var_translation;
 
   std::vector<unsigned int> layer;
@@ -83,10 +79,6 @@ private:
   Node_ptr init_state_node_from_call(call_t call);
   Node_ptr process_state_node_from_call(call_t call);
 
-  Node_ptr get_return_from_init(call_t call);
-  Node_ptr get_return_from_process(calls_t calls);
-  Node_ptr get_return_from_process(call_t packet_send);
-
 public:
   AST() {
     layer.push_back(2);
@@ -95,8 +87,8 @@ public:
 
     callpath_var_translation = {
       { "src_devices", "device" },
-      { "p", "buffer" },
-      { "pkt_len", "buffer_length" },
+      { "p", "packet" },
+      { "pkt_len", "packet_length" },
       { "unmber_of_freed_flows", "number_of_freed_flows" },
       { "value_out", "map_value_out" },
       { "val_out", "vector_value_out" }
@@ -109,10 +101,6 @@ public:
   void push();
   void pop();
 
-  Node_ptr get_return(const BDD::Node* node);
-  Node_ptr get_return(const std::vector<calls_t>& calls);
-  Node_ptr get_return(bool success);
-  Node_ptr get_return(call_t call);
   Node_ptr node_from_call(call_t call);
 
   bool is_done() { return context == DONE; }

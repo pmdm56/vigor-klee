@@ -31,6 +31,7 @@ Expr_ptr transpile(AST* ast, const klee::ref<klee::Expr> &e);
 std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
                                              const klee::ref<klee::Expr> &e1,
                                              const klee::ref<klee::Expr> &e2);
+std::vector<Expr_ptr> apply_changes(AST *ast, Expr_ptr variable, klee::ref<klee::Expr> after);
 Constant_ptr const_to_ast_expr(const BDD::solver_toolbox_t& solver, const klee::ref<klee::Expr> &e);
 uint64_t get_first_concat_idx(const BDD::solver_toolbox_t& solver, const klee::ref<klee::Expr> &e);
 uint64_t get_last_concat_idx(const BDD::solver_toolbox_t& solver, const klee::ref<klee::Expr> &e);
