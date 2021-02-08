@@ -526,8 +526,8 @@ Node* BDD::populate_process(const Node* root, bool store) {
         ReturnProcess* on_true_ret_process  = static_cast<ReturnProcess*>(on_true_node);
         ReturnProcess* on_false_ret_process = static_cast<ReturnProcess*>(on_false_node);
 
-        equal |= (on_true_ret_process->get_return_operation() == on_false_ret_process->get_return_operation());
-        equal |= (on_true_ret_process->get_return_value() == on_false_ret_process->get_return_value());
+        equal |= (on_true_ret_process->get_return_operation() == on_false_ret_process->get_return_operation() &&
+                  on_true_ret_process->get_return_value() == on_false_ret_process->get_return_value());
       }
 
       if (store && equal) {

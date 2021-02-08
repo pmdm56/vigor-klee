@@ -662,7 +662,7 @@ private:
       if (call.function_name != "packet_send")
         continue;
 
-      counter += 1;
+      counter++;
 
       if (counter == 1) {
         auto dst_device_expr = call.args.at("dst_device").expr;
@@ -686,7 +686,7 @@ private:
     }
 
     if (counter_dst_device_pair.first > 1) {
-      value = ((uint16_t) -1);
+      value = ((uint16_t) - 1);
       operation = BCAST;
       return;
     }
