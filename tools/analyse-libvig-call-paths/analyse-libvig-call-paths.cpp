@@ -1531,7 +1531,7 @@ private:
     add_access_lookup_table(LibvigAccess("restart_time"));
     add_access_lookup_table(LibvigAccess("current_time"));
 
-    add_access_lookup_table(LibvigAccess("ether_addr_hash"));
+    add_access_lookup_table(LibvigAccess("rte_ether_addr_hash"));
 
     add_access_lookup_table(LibvigAccess("cht_fill_cht"));
     add_access_lookup_table(LibvigAccess("cht_find_preferred_available_backend", "cht", "hash", "chosen_backend", LibvigAccess::WRITE));
@@ -1542,7 +1542,7 @@ private:
     add_access_lookup_table(LibvigAccess("expire_items"));
     add_access_lookup_table(LibvigAccess("expire_items_single_map"));
 
-    add_access_lookup_table(LibvigAccess("nf_set_ipv4_udptcp_checksum"));
+    add_access_lookup_table(LibvigAccess("nf_set_rte_ipv4_udptcp_checksum"));
 
     add_access_lookup_table(LibvigAccess("LoadBalancedFlow_hash"));
   }

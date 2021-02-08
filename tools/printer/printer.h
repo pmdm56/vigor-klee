@@ -53,4 +53,12 @@ public:
   std::vector<std::string> get_retrieved_strings() {
     return retrieved_strings;
   }
+
+  static bool contains(klee::ref<klee::Expr> expr, const std::string& symbol) {
+    RetrieveSymbols retriever;
+    retriever.visit(expr);
+    auto symbols = retriever.get_retrieved_strings();
+    auto found_it = std::find(symbols.begin(), symbols.end(), symbol);
+    return found_it != symbols.end();
+  }
 };

@@ -786,8 +786,9 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     assert(index);
     Expr_ptr value = get_from_local_by_addr("val_out", value_addr);
     assert(value);
+    auto before_value = get_expr_from_local_by_addr(value_addr);
 
-    auto changes = apply_changes(this, value, call.args["value"].in);
+    auto changes = apply_changes(this, value, before_value, call.args["value"].in);
     exprs.insert(exprs.end(), changes.begin(), changes.end());
 
     args = std::vector<Expr_ptr>{ vector, index, value };
@@ -832,7 +833,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     }
   }
 
-  else if (fname == "ether_addr_hash") {
+  else if (fname == "rte_ether_addr_hash") {
     assert(solver.are_exprs_always_equal(call.args["obj"].in, call.args["obj"].out));
     Expr_ptr obj = transpile(this, call.args["obj"].in);
     assert(obj);
@@ -914,7 +915,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     ret_expr = call.ret;
   }
 
-  else if (fname == "nf_set_ipv4_udptcp_checksum") {
+  else if (fname == "nf_set_rte_ipv4_udptcp_checksum") {
     Expr_ptr ip_header_expr = transpile(this, call.args["ip_header"].expr);
     assert(ip_header_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t ip_header_addr = (static_cast<Constant*>(ip_header_expr.get()))->get_value();

@@ -94,8 +94,13 @@ uint64_t get_last_concat_idx(const BDD::solver_toolbox_t& solver, const klee::re
 }
 
 std::vector<Expr_ptr> apply_changes(AST *ast, Expr_ptr variable,
+                                    klee::ref<klee::Expr> before,
                                     klee::ref<klee::Expr> after) {
   std::vector<Expr_ptr> changes;
+
+  if (ast->solver.are_exprs_always_equal(before, after)) {
+    return changes;
+  }
 
   Type_ptr var_type = variable->get_type();
 
@@ -114,13 +119,13 @@ std::vector<Expr_ptr> apply_changes(AST *ast, Expr_ptr variable,
       changes.push_back(Assignment::build(var_read, val_read));
     }
     break;
-  };
+  }
 
   case Type::TypeKind::STRUCT:
   case Type::TypeKind::ARRAY:
   case Type::TypeKind::PRIMITIVE: {
     assert(false && "TODO");
-  };
+  }
   }
 
   return changes;
@@ -166,7 +171,9 @@ std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
     break;
   }
   case Type::TypeKind::PRIMITIVE: {
-    assert(false && "Not implemented");
+    Expr_ptr after_expr = transpile(ast, after);
+    Expr_ptr change = Assignment::build(before_expr, after_expr);
+    changes.push_back(change->simplify(ast));
     break;
   }
   case Type::TypeKind::ARRAY: {
