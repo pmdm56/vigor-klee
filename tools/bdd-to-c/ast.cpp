@@ -770,7 +770,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr key = transpile(this, call.args["key"].in);
     assert(key);
     Expr_ptr value = transpile(this, call.args["value"].expr);
-    assert(key);
+    assert(value);
 
     args = std::vector<Expr_ptr>{ map, AddressOf::build(key), value };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
@@ -939,6 +939,41 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     args = std::vector<Expr_ptr>{ ip_header, l4_header };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "checksum";
+  }
+
+  else if (fname == "map_erase") {
+    Expr_ptr map_expr = transpile(this, call.args["map"].expr);
+    assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
+
+    Expr_ptr map = get_from_state(map_addr);
+    Expr_ptr key = transpile(this, call.args["key"].in);
+    assert(key);
+    Expr_ptr trash = transpile(this, call.args["trash"].expr);
+    assert(trash);
+
+    Type_ptr trash_type_arg = Pointer::build(Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID)));
+    Expr_ptr trash_arg = AddressOf::build(trash);
+    Cast_ptr trash_cast = Cast::build(trash_arg, trash_type_arg);
+
+    args = std::vector<Expr_ptr>{ map, AddressOf::build(key), trash_cast };
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+  }
+
+  else if (fname == "dchain_free_index") {
+    Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
+    assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
+
+    Expr_ptr chain = get_from_state(chain_addr);
+    assert(chain);
+    Expr_ptr index = transpile(this, call.args["index"].expr);
+    assert(index);
+
+    args = std::vector<Expr_ptr>{ chain, index };
+
+    // actually this is an int, but we never use it in any call path...
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else {

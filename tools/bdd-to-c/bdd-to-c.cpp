@@ -170,7 +170,10 @@ int main(int argc, char **argv) {
     call_paths.push_back(call_path);
   }
 
+  std::cerr << "Building the BDD...\n";
   BDD::BDD bdd(call_paths);
+  std::cerr << "Done!\n";
+
   AST ast;
 
   build_ast(ast, bdd);
