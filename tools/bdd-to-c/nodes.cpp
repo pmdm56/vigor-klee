@@ -235,20 +235,24 @@ Expr_ptr Concat::simplify(AST* ast) const {
   auto concat_size = type->get_size();
 
   if (left_simplified->get_kind() == READ && right_simplified->get_kind() == READ) {
+    Read* lread = static_cast<Read*>(left_simplified.get());
     Read* rread = static_cast<Read*>(right_simplified.get());
 
-    if (rread->get_expr()->get_kind() == VARIABLE) {
-      Variable* var = static_cast<Variable*>(rread->get_expr().get());
+    if (lread->get_symbol() == rread->get_symbol()) {
+      if (rread->get_expr()->get_kind() == VARIABLE) {
+        Variable* var = static_cast<Variable*>(rread->get_expr().get());
 
-      auto var_size = var->get_type()->get_size();
+        auto var_size = var->get_type()->get_size();
 
-      if (var_size == concat_size) {
-        return var->clone();
+        if (var_size == concat_size) {
+          return var->clone();
+        }
       }
+
+      Read_ptr r = Read::build(rread->get_expr(), type, rread->get_idx());
+      return r->simplify(ast);
     }
 
-    Read_ptr r = Read::build(rread->get_expr(), type, rread->get_idx());
-    return r->simplify(ast);
   }
 
   if (left_simplified->get_kind() == READ && right_simplified->get_kind() == CONCAT) {
@@ -257,11 +261,16 @@ Expr_ptr Concat::simplify(AST* ast) const {
     Expr_ptr right_concat_right = right_concat->get_right();
 
     if (right_concat_left->get_kind() == READ) {
-      Concat* left_concat = new Concat(left_simplified, right_concat_left);
-      Expr_ptr left_concat_simplified = left_concat->simplify(ast);
+      Read* left_read = static_cast<Read*>(left_simplified.get());
+      Read* right_left_read = static_cast<Read*>(right_concat_left.get());
 
-      Concat* final_concat = new Concat(left_concat_simplified, right_concat_right);
-      return final_concat->simplify(ast);
+      if (left_read->get_symbol() == right_left_read->get_symbol()) {
+        Concat* left_concat = new Concat(left_simplified, right_concat_left);
+        Expr_ptr left_concat_simplified = left_concat->simplify(ast);
+        Concat* final_concat = new Concat(left_concat_simplified, right_concat_right);
+        return final_concat->simplify(ast);
+      }
+
     }
   }
 

@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "load-call-paths.h"
+#include "printer.h"
 
 class AST;
 
@@ -401,7 +402,7 @@ private:
   Type_ptr type;
 
   Pointer(Type_ptr _type)
-    : Type(POINTER, 64 /* we hope */), type(_type->clone()) {}
+    : Type(POINTER, _type->get_size()), type(_type->clone()) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -2152,8 +2153,14 @@ private:
     Type_ptr t = var->get_type();
 
     if (t->get_type_kind() == Type::TypeKind::POINTER) {
-      synthesize_pointer(ofs, lvl);
-      return;
+      Pointer* ptr = static_cast<Pointer*>(var->get_type().get());
+
+      if (ptr->get_type()->get_type_kind() == Type::TypeKind::PRIMITIVE) {
+        synthesize_pointer(ofs, lvl);
+        return;
+      } else {
+        t = ptr->get_type();
+      }
     }
 
     if (t->get_type_kind() == Type::TypeKind::ARRAY) {
@@ -2211,6 +2218,23 @@ private:
 public:
   Expr_ptr get_expr() const { return expr; }
   Expr_ptr get_idx() const { return idx; }
+
+  std::string get_symbol() const {
+    std::string symbol;
+
+    switch (expr->get_kind()) {
+    case VARIABLE: {
+      Variable* var = static_cast<Variable*>(expr.get());
+      symbol = var->get_symbol();
+      break;
+    }
+    default: {
+      assert(false && "Not implemented");
+    }
+    }
+
+    return symbol;
+  }
 
   void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
     synthesize_helper(ofs, lvl, true);
@@ -2271,7 +2295,10 @@ private:
     : Concat(_left, _right, type_from_concat_exprs(_left, _right)) {}
 
   static Type_ptr type_from_concat_exprs(Expr_ptr _left, Expr_ptr _right) {
-    uint64_t sz = _left->get_type()->get_size() + _right->get_type()->get_size();
+    Type_ptr lt = _left->get_type();
+    Type_ptr rt = _right->get_type();
+
+    uint64_t sz = lt->get_size() + rt->get_size();
     Type_ptr result;
 
     switch (sz) {
@@ -2361,8 +2388,38 @@ public:
   }
 
   bool is_concat_of_reads_and_concats() const {
-    return left->get_kind() == READ &&
-           (right->get_kind() == READ || right->get_kind() == CONCAT);
+    if (left->get_kind() != READ) {
+      return false;
+    }
+
+    Read* left_read = static_cast<Read*>(left.get());
+    std::string symbol = left_read->get_symbol();
+
+    return is_concat_of_reads_and_concats(symbol);
+  }
+
+  bool is_concat_of_reads_and_concats(const std::string& symbol) const {
+    if (left->get_kind() != READ) {
+      return false;
+    }
+
+    Read* left_read = static_cast<Read*>(left.get());
+
+    if (left_read->get_symbol() != symbol) {
+      return false;
+    }
+
+    if (right->get_kind() == READ) {
+      Read* right_read = static_cast<Read*>(right.get());
+      return right_read->get_symbol() == symbol;
+    }
+
+    else if (right->get_kind() != CONCAT) {
+      return false;
+    }
+
+    Concat* right_concat = static_cast<Concat*>(right.get());
+    return right_concat->is_concat_of_reads_and_concats(symbol);
   }
 
   Expr_ptr get_var() const {

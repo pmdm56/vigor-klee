@@ -211,13 +211,6 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
     }
 
     if (!solver_toolbox.are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
-      if (c1.function_name == "packet_borrow_next_chunk") {
-        std::cerr << arg_name << "\n";
-        std::cerr << expr_to_string(c1_arg.expr) << "\n";
-        std::cerr << "diff" << "\n";
-        std::cerr << expr_to_string(c2_arg.expr) << "\n";
-        char c; std::cin >> c;
-      }
       return false;
     }
   }

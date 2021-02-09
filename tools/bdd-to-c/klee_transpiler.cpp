@@ -299,22 +299,6 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::Co
   Expr_ptr right = transpile(ast, e.getKid(1));
   Type_ptr type = klee_width_to_type(e.getWidth());
 
-  if (left->get_kind() == Node::NodeKind::READ) {
-    Read* lread = static_cast<Read*>(left.get());
-
-    if (lread->get_idx()->get_kind() == Node::NodeKind::CONSTANT) {
-      Constant* lread_idx = static_cast<Constant*>(lread->get_idx().get());
-
-      auto left_byte_offset = lread->get_type()->get_size() * lread_idx->get_value();
-      auto left_size = lread->get_expr()->get_type()->get_size();
-
-      if (left_byte_offset >= left_size) {
-        save_result(right->simplify(ast));
-        return klee::ExprVisitor::Action::skipChildren();
-      }
-    }
-  }
-
   Concat_ptr concat = Concat::build(left, right, type);
 
   RetrieveSymbols retriever;

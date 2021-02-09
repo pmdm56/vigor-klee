@@ -521,16 +521,6 @@ public:
 
 std::string pretty_print_expr(klee::ref<klee::Expr> expr) {
   auto printed = ExprPrettyPrinter::print(expr);
-  /*
-  std::cerr << "NOT pretty printed:" << "\n";
-  std::cerr << expr_to_string(expr) << "\n";
-
-  std::cerr << "pretty printed:" << "\n";
-  std::cerr << printed << "\n";
-
-  char c; std::cin >> c;
-  */
-
   return printed;
 }
 

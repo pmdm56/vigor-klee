@@ -339,6 +339,10 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
       auto offset = find_matching_offset(it->second, expr, solver);
       assert(offset % 8 == 0 && "Found the local variable, but offset is not multiple of byte");
 
+      if (offset == 0 && it->second->getWidth() == expr->getWidth()) {
+        return it->first;
+      }
+
       Constant_ptr idx = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, offset / 8);
       Read_ptr extracted = Read::build(it->first, type_from_size(expr->getWidth()), idx);
 
@@ -931,9 +935,10 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr packet = get_from_local("p");
     assert(packet);
 
-    args = std::vector<Expr_ptr>{ ip_header, l4_header, packet };
-
-    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+    fname = "rte_ipv4_udptcp_cksum";
+    args = std::vector<Expr_ptr>{ ip_header, l4_header };
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    ret_symbol = "checksum";
   }
 
   else {
