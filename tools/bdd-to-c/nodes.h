@@ -754,8 +754,32 @@ private:
 
 public:
   uint64_t get_value() const {
+    uint64_t value = 0;
+
     assert(values.size());
-    return values[0];
+    switch (type->get_type_kind()) {
+    case Type::TypeKind::ARRAY: {
+      Array* array = static_cast<Array*>(type.get());
+      auto elem_sz = array->get_elem_type()->get_size();
+      assert(array->get_n_elems() == values.size());
+
+      unsigned int shift = 0;
+      for (const auto& stored : values) {
+        value |= (stored << shift);
+        shift += elem_sz;
+      }
+      break;
+    }
+    case Type::TypeKind::PRIMITIVE: {
+      value = values[0];
+      break;
+    }
+    case Type::TypeKind::POINTER:
+    case Type::TypeKind::STRUCT:
+      assert(false && "Not implemented");
+    };
+
+    return value;
   }
 
   uint64_t get_value(unsigned int idx) const {
@@ -765,7 +789,34 @@ public:
 
   void set_value(uint64_t value) {
     assert(values.size());
-    values[0] = value;
+
+    switch (type->get_type_kind()) {
+    case Type::TypeKind::ARRAY: {
+      Array* array = static_cast<Array*>(type.get());
+      auto elem_sz = array->get_elem_type()->get_size();
+      auto n_elems = array->get_n_elems();
+
+      uint64_t mask = 0;
+      for (unsigned int i = 0; i < elem_sz; i++) {
+        mask = mask << 1;
+        mask |= 1;
+      }
+
+      for (unsigned int i = 0; i < n_elems; i++) {
+        values[i] = value & mask;
+        value = value >> elem_sz;
+      }
+
+      break;
+    }
+    case Type::TypeKind::PRIMITIVE: {
+      values[0] = value;
+      break;
+    }
+    case Type::TypeKind::POINTER:
+    case Type::TypeKind::STRUCT:
+      assert(false && "Not implemented");
+    };
   }
 
   void set_value(uint64_t value, unsigned int idx) {

@@ -234,6 +234,33 @@ Expr_ptr Concat::simplify(AST* ast) const {
 
   auto concat_size = type->get_size();
 
+  if (left_simplified->get_kind() == CONSTANT && right_simplified->get_kind() == CONCAT) {
+    Concat* right_concat = static_cast<Concat*>(right_simplified.get());
+    Expr_ptr right_concat_left = right_concat->get_left();
+    Expr_ptr right_concat_right = right_concat->get_right();
+
+    if (right_concat_left->get_kind() == CONSTANT) {
+      Constant* left_const = static_cast<Constant*>(left_simplified.get());
+      Constant* right_left_const = static_cast<Constant*>(right_concat_left.get());
+
+      Type_ptr left_const_type = left_const->get_type();
+      Type_ptr right_left_const_type = right_left_const->get_type();
+
+      Type_ptr type = type_from_size(left_const_type->get_size() + right_left_const_type->get_size());
+
+      auto left_const_value = left_const->get_value();
+      auto right_left_const_value = right_left_const->get_value();
+
+      Constant_ptr new_const = Constant::build(type);
+      new_const->set_value(left_const_value << right_left_const_type->get_size() | right_left_const_value);
+
+      Expr_ptr left_concat_simplified = new_const->simplify(ast);
+      Concat* final_concat = new Concat(left_concat_simplified, right_concat_right);
+
+      return final_concat->simplify(ast);
+    }
+  }
+
   if (left_simplified->get_kind() == READ && right_simplified->get_kind() == READ) {
     Read* lread = static_cast<Read*>(left_simplified.get());
     Read* rread = static_cast<Read*>(right_simplified.get());
