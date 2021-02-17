@@ -2230,8 +2230,6 @@ private:
       Constant *idx_const = static_cast<Constant*>(idx.get());
       unsigned int idx_val = idx_const->get_value();
 
-      assert(idx_val < size && "weird case :/");
-
       if (!offset || idx_val == 0) {
         expr->synthesize(ofs);
         return;
