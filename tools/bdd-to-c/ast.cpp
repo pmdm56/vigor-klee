@@ -577,7 +577,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
         Variable::build("ether_type", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T))
       };
 
-      Struct_ptr ether_hdr = Struct::build("rte_ether_hdr", ether_hdr_fields);
+      Struct_ptr ether_hdr = Struct::build("ether_hdr", ether_hdr_fields);
 
       ret_type = Pointer::build(ether_hdr);
       ret_symbol = CHUNK_LAYER_2;
@@ -599,7 +599,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
         Variable::build("dst_addr", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T))
       };
 
-      Struct_ptr ipv4_hdr = Struct::build("rte_ipv4_hdr", ipv4_hdr_fields);
+      Struct_ptr ipv4_hdr = Struct::build("ipv4_hdr", ipv4_hdr_fields);
 
       ret_type = Pointer::build(ipv4_hdr);
       ret_symbol = CHUNK_LAYER_3;
@@ -837,7 +837,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     }
   }
 
-  else if (fname == "rte_ether_addr_hash") {
+  else if (fname == "ether_addr_hash") {
     assert(solver.are_exprs_always_equal(call.args["obj"].in, call.args["obj"].out));
     Expr_ptr obj = transpile(this, call.args["obj"].in);
     assert(obj);
@@ -919,7 +919,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     ret_expr = call.ret;
   }
 
-  else if (fname == "nf_set_rte_ipv4_udptcp_checksum") {
+  else if (fname == "nf_set_ipv4_udptcp_checksum") {
     Expr_ptr ip_header_expr = transpile(this, call.args["ip_header"].expr);
     assert(ip_header_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t ip_header_addr = (static_cast<Constant*>(ip_header_expr.get()))->get_value();
@@ -928,7 +928,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     assert(l4_header_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t l4_header_addr = (static_cast<Constant*>(l4_header_expr.get()))->get_value();
 
-    Expr_ptr ip_header = get_from_local_by_addr("rte_ipv4_hdr", ip_header_addr);
+    Expr_ptr ip_header = get_from_local_by_addr("ipv4_hdr", ip_header_addr);
     assert(ip_header);
     Expr_ptr l4_header = get_from_local_by_addr("tcpudp_hdr", l4_header_addr);
     assert(l4_header);
