@@ -662,7 +662,7 @@ bool dumpCallInfo(const CallInfo& ci, llvm::raw_ostream& file) {
             arg->pointee.fields.begin(),
             e = arg->pointee.fields.end();
           for (; i != e; ++i) {
-            file <<"[" <<i->second.name <<":";
+            file <<"[" <<i->second.name;
             if (i->second.doTraceValueIn ||
                 i->second.doTraceValueOut) {
               if (i->second.doTraceValueIn) {
@@ -963,6 +963,8 @@ void KleeHandler::dumpCallPath(const ExecutionState &state, llvm::raw_ostream *f
 
   for (auto ci : state.callPath) {
     for (auto a : ci.args) {
+      evalExprs.push_back(a.expr);
+
       if (a.isPtr) {
         if (a.pointee.doTraceValueIn) {
           evalExprs.push_back(a.pointee.inVal);
@@ -971,8 +973,6 @@ void KleeHandler::dumpCallPath(const ExecutionState &state, llvm::raw_ostream *f
         if (a.pointee.doTraceValueOut) {
           evalExprs.push_back(a.pointee.outVal);
         }
-      } else {
-        evalExprs.push_back(a.expr);
       }
     }
 
@@ -984,6 +984,11 @@ void KleeHandler::dumpCallPath(const ExecutionState &state, llvm::raw_ostream *f
         evalExprs.push_back(e.second.pointee.outVal);
       }
     }
+
+    if (!ci.ret.expr.isNull()) {
+      evalExprs.push_back(ci.ret.expr);
+    }
+
   }
 
   ExprBuilder *exprBuilder = createDefaultExprBuilder();

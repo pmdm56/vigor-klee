@@ -9,39 +9,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Support/MemoryBuffer.h"
 #include "klee/ExprBuilder.h"
 #include "klee/perf-contracts.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/MemoryBuffer.h"
+#include <klee/Constraints.h>
+#include <klee/Solver.h>
+
 #include <dlfcn.h>
 #include <expr/Parser.h>
 #include <fstream>
 #include <iostream>
-#include <klee/Constraints.h>
-#include <klee/Solver.h>
 #include <vector>
 
+#include "load-call-paths.h"
+
 #define DEBUG
-
-namespace {
-llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
-                                               llvm::cl::Positional,
-                                               llvm::cl::OneOrMore);
-}
-
-typedef struct {
-  std::string function_name;
-  std::map<std::string, std::pair<klee::ref<klee::Expr>,
-                                  klee::ref<klee::Expr> > > extra_vars;
-  std::map<std::string,
-           std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr> > > args;
-} call_t;
-
-typedef struct {
-  klee::ConstraintManager constraints;
-  std::vector<call_t> calls;
-  std::map<std::string, const klee::Array *> arrays;
-} call_path_t;
 
 call_path_t *load_call_path(std::string file_name,
                             std::vector<std::string> expressions_str,
@@ -50,6 +32,7 @@ call_path_t *load_call_path(std::string file_name,
   assert(call_path_file.is_open() && "Unable to open call path file.");
 
   call_path_t *call_path = new call_path_t;
+  call_path->file_name = file_name;
 
   enum {
     STATE_INIT,
@@ -190,6 +173,20 @@ call_path_t *load_call_path(std::string file_name,
           }
         }
 
+        if (current_exprs_str.size() && parenthesis_level == 0) {
+          auto last_store = current_exprs_str.back();
+          if (line.size() < last_store.size())
+            last_store = last_store.substr(last_store.size() - line.size());
+          auto remainder_delim = line.find(last_store);
+          auto remainder = line.substr(remainder_delim+last_store.size());
+          auto ret_symbol = std::string("-> ");
+          auto ret_delim = remainder.find(ret_symbol);
+          if (ret_delim != std::string::npos && remainder.substr(ret_symbol.size()+1) != "[]") {
+            auto ret = remainder.substr(ret_symbol.size()+1);
+            current_exprs_str.push_back(ret);
+          }
+        }
+
         if (parenthesis_level > 0) {
           state = STATE_CALLS_MULTILINE;
         } else {
@@ -200,13 +197,15 @@ call_path_t *load_call_path(std::string file_name,
               assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
               call_path->calls.back().extra_vars[current_extra_var].first =
                   exprs[0];
-              exprs.erase(exprs.begin(), exprs.begin() + 1);
+              exprs.erase(exprs.begin());
+              current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
             }
             if (current_exprs_str[1] != "(...)") {
               assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
               call_path->calls.back().extra_vars[current_extra_var].second =
                   exprs[0];
-              exprs.erase(exprs.begin(), exprs.begin() + 1);
+              exprs.erase(exprs.begin());
+              current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
             }
           } else {
             bool parsed_last_arg = false;
@@ -230,12 +229,21 @@ call_path_t *load_call_path(std::string file_name,
               delim = current_arg.find("&");
               if (delim == std::string::npos) {
                 assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
-                call_path->calls.back().args[current_arg_name].first = exprs[0];
+                call_path->calls.back().args[current_arg_name].expr = exprs[0];
                 exprs.erase(exprs.begin(), exprs.begin() + 1);
               } else {
-                if (current_arg.substr(delim + 1) == "[...]" ||
-                    current_arg.substr(delim + 1)[0] != '[')
+                call_path->calls.back().args[current_arg_name].expr = exprs[0];
+                exprs.erase(exprs.begin(), exprs.begin() + 1);
+
+                if (current_arg.substr(delim + 1) == "[...]") {
+                    continue;
+                }
+
+                if (current_arg.substr(delim + 1)[0] != '[') {
+                  call_path->calls.back().args[current_arg_name].fn_ptr_name =
+                      std::make_pair(true, current_arg.substr(delim + 1));
                   continue;
+                }
 
                 current_arg = current_arg.substr(delim + 2);
 
@@ -250,20 +258,25 @@ call_path_t *load_call_path(std::string file_name,
                 if (current_arg.substr(0, delim).size()) {
                   assert(exprs.size() >= 1 &&
                          "Not enough expression in kQuery.");
-                  call_path->calls.back().args[current_arg_name].first =
-                      exprs[0];
+                  call_path->calls.back().args[current_arg_name].in = exprs[0];
                   exprs.erase(exprs.begin(), exprs.begin() + 1);
                 }
 
                 if (current_arg.substr(delim + 2).size()) {
                   assert(exprs.size() >= 1 &&
                          "Not enough expression in kQuery.");
-                  call_path->calls.back().args[current_arg_name].second =
-                      exprs[0];
+                  call_path->calls.back().args[current_arg_name].out = exprs[0];
                   exprs.erase(exprs.begin(), exprs.begin() + 1);
                 }
               }
             }
+            current_exprs_str.erase(current_exprs_str.begin());
+          }
+
+
+          if (current_exprs_str.size()) {
+            call_path->calls.back().ret = exprs[0];
+            exprs.erase(exprs.begin());
           }
         }
       }
@@ -288,6 +301,20 @@ call_path_t *load_call_path(std::string file_name,
         }
       }
 
+      if (current_exprs_str.size() && parenthesis_level == 0) {
+        auto last_store = current_exprs_str.back();
+        if (line.size() < last_store.size())
+          last_store = last_store.substr(last_store.size() - line.size());
+        auto remainder_delim = line.find(last_store);
+        auto remainder = line.substr(remainder_delim+last_store.size());
+        auto ret_symbol = std::string("-> ");
+        auto ret_delim = remainder.find(ret_symbol);
+        if (ret_delim != std::string::npos && remainder.substr(ret_symbol.size()+1) != "[]") {
+          auto ret = remainder.substr(ret_symbol.size()+1);
+          current_exprs_str.push_back(ret);
+        }
+      }
+
       if (parenthesis_level == 0) {
         if (!current_extra_var.empty()) {
           assert(current_exprs_str.size() == 2 &&
@@ -296,13 +323,15 @@ call_path_t *load_call_path(std::string file_name,
             assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
             call_path->calls.back().extra_vars[current_extra_var].first =
                 exprs[0];
-            exprs.erase(exprs.begin(), exprs.begin() + 1);
+            exprs.erase(exprs.begin());
+            current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
           }
           if (current_exprs_str[1] != "(...)") {
             assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
             call_path->calls.back().extra_vars[current_extra_var].second =
                 exprs[0];
-            exprs.erase(exprs.begin(), exprs.begin() + 1);
+            exprs.erase(exprs.begin());
+            current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
           }
         } else {
           bool parsed_last_arg = false;
@@ -328,12 +357,21 @@ call_path_t *load_call_path(std::string file_name,
             delim = current_arg.find("&");
             if (delim == std::string::npos) {
               assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
-              call_path->calls.back().args[current_arg_name].first = exprs[0];
+              call_path->calls.back().args[current_arg_name].expr = exprs[0];
               exprs.erase(exprs.begin(), exprs.begin() + 1);
             } else {
-              if (current_arg.substr(delim + 1) == "[...]" ||
-                  current_arg.substr(delim + 1)[0] != '[')
+              call_path->calls.back().args[current_arg_name].expr = exprs[0];
+              exprs.erase(exprs.begin(), exprs.begin() + 1);
+
+              if (current_arg.substr(delim + 1) == "[...]") {
+                  continue;
+              }
+
+              if (current_arg.substr(delim + 1)[0] != '[') {
+                call_path->calls.back().args[current_arg_name].fn_ptr_name =
+                    std::make_pair(true, current_arg.substr(delim + 1));
                 continue;
+              }
 
               current_arg = current_arg.substr(delim + 2);
 
@@ -347,18 +385,25 @@ call_path_t *load_call_path(std::string file_name,
 
               if (current_arg.substr(0, delim).size()) {
                 assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
-                call_path->calls.back().args[current_arg_name].first = exprs[0];
+                call_path->calls.back().args[current_arg_name].in = exprs[0];
                 exprs.erase(exprs.begin(), exprs.begin() + 1);
               }
 
               if (current_arg.substr(delim + 2).size()) {
                 assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
-                call_path->calls.back().args[current_arg_name].second =
-                    exprs[0];
+                call_path->calls.back().args[current_arg_name].out = exprs[0];
                 exprs.erase(exprs.begin(), exprs.begin() + 1);
               }
             }
           }
+
+          current_exprs_str.erase(current_exprs_str.begin());
+        }
+
+
+        if (current_exprs_str.size()) {
+          call_path->calls.back().ret = exprs[0];
+          exprs.erase(exprs.begin());
         }
 
         state = STATE_CALLS;
@@ -380,58 +425,3 @@ call_path_t *load_call_path(std::string file_name,
   return call_path;
 }
 
-int main(int argc, char **argv, char **envp) {
-  llvm::cl::ParseCommandLineOptions(argc, argv);
-
-  std::vector<call_path_t *> call_paths;
-
-  for (auto file : InputCallPathFiles) {
-    std::cerr << "Loading: " << file << std::endl;
-
-    std::vector<std::string> expressions_str;
-    std::deque<klee::ref<klee::Expr> > expressions;
-    call_paths.push_back(load_call_path(file, expressions_str, expressions));
-  }
-
-  for (unsigned i = 0; i < call_paths.size(); i++) {
-    std::cout << "Call Path " << i << std::endl;
-    std::cout << "  Assuming:" << std::endl;
-    for (auto constraint : call_paths[i]->constraints) {
-      constraint->dump();
-    }
-    std::cout << "  Calls:" << std::endl;
-    for (auto call : call_paths[i]->calls) {
-      std::cout << "    Function: " << call.function_name << std::endl;
-      if (!call.args.empty()) {
-        std::cout << "      With Args:" << std::endl;
-        for (auto arg : call.args) {
-          std::cout << "        " << arg.first << ":" << std::endl;
-          if (!arg.second.first.isNull()) {
-            std::cout << "          Before:" << std::endl;
-            arg.second.first->dump();
-          }
-          if (!arg.second.second.isNull()) {
-            std::cout << "          After:" << std::endl;
-            arg.second.second->dump();
-          }
-        }
-      }
-      if (!call.extra_vars.empty()) {
-        std::cout << "      With Extra Vars:" << std::endl;
-        for (auto extra_var : call.extra_vars) {
-          std::cout << "        " << extra_var.first << ":" << std::endl;
-          if (!extra_var.second.first.isNull()) {
-            std::cout << "          Before:" << std::endl;
-            extra_var.second.first->dump();
-          }
-          if (!extra_var.second.second.isNull()) {
-            std::cout << "          After:" << std::endl;
-            extra_var.second.second->dump();
-          }
-        }
-      }
-    }
-  }
-
-  return 0;
-}
