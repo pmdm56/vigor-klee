@@ -6,9 +6,11 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-add_executable(load-call-paths
+add_executable(call-paths-to-bdd
+  call-paths-to-bdd.cpp
   main.cpp
-  load-call-paths.cpp
+  ../load-call-paths/load-call-paths.cpp
+  ../printer/printer.cpp
 )
 
 set(KLEE_LIBS
@@ -16,6 +18,7 @@ set(KLEE_LIBS
   kleeCore
 )
 
-target_link_libraries(load-call-paths ${KLEE_LIBS})
+target_include_directories(call-paths-to-bdd PRIVATE ../load-call-paths ../printer)
+target_link_libraries(call-paths-to-bdd ${KLEE_LIBS})
 
-install(TARGETS load-call-paths RUNTIME DESTINATION bin)
+install(TARGETS call-paths-to-bdd RUNTIME DESTINATION bin)

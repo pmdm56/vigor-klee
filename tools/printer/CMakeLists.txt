@@ -6,9 +6,9 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-add_executable(load-call-paths
+add_executable(printer
+  printer.cpp
   main.cpp
-  load-call-paths.cpp
 )
 
 set(KLEE_LIBS
@@ -16,6 +16,6 @@ set(KLEE_LIBS
   kleeCore
 )
 
-target_link_libraries(load-call-paths ${KLEE_LIBS})
+target_link_libraries(printer ${KLEE_LIBS})
 
-install(TARGETS load-call-paths RUNTIME DESTINATION bin)
+install(TARGETS printer RUNTIME DESTINATION bin)
