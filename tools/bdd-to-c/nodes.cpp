@@ -103,10 +103,15 @@ Expr_ptr Not::simplify(AST* ast) const {
 }
 
 Expr_ptr FunctionCall::simplify(AST* ast) const {
-  std::vector<Expr_ptr> args_simplified;
+  std::vector<ExpressionType_ptr> args_simplified;
 
   for (auto arg : args) {
-    args_simplified.push_back(arg->simplify(ast));
+    if (arg->get_expression_type_kind() == EXPRESSION_KIND) {
+      Expression* expr = static_cast<Expression*>(arg.get());
+      args_simplified.push_back(expr->simplify(ast));
+    } else {
+      args_simplified.push_back(arg);
+    }
   }
 
   return FunctionCall::build(name, args, type);
@@ -164,6 +169,12 @@ Expr_ptr And::simplify(AST* ast) const {
   Expr_ptr lhs_simplified = lhs->simplify(ast);
   Expr_ptr rhs_simplified = rhs->simplify(ast);
   return And::build(lhs_simplified, rhs_simplified);
+}
+
+Expr_ptr LogicalAnd::simplify(AST* ast) const {
+  Expr_ptr lhs_simplified = lhs->simplify(ast);
+  Expr_ptr rhs_simplified = rhs->simplify(ast);
+  return LogicalAnd::build(lhs_simplified, rhs_simplified);
 }
 
 Expr_ptr Or::simplify(AST* ast) const {

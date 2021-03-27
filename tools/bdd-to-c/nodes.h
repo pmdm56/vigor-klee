@@ -16,6 +16,7 @@ public:
     COMMENT,
     SIGNED_EXPRESSION,
     TYPE,
+    EXPRESSION_TYPE,
     CAST,
     IMPORT,
     BLOCK,
@@ -41,6 +42,7 @@ public:
     MUL,
     DIV,
     AND,
+    LOGICAL_AND,
     OR,
     XOR,
     MOD,
@@ -48,7 +50,8 @@ public:
     SHIFT_RIGHT,
     READ,
     CONCAT,
-    CONSTANT
+    CONSTANT,
+    MACRO_CALL
   };
 
 protected:
@@ -72,7 +75,27 @@ public:
 
 typedef std::shared_ptr<Node> Node_ptr;
 
-class Type : public Node {
+class ExpressionType {
+public:
+  enum ExpressionTypeKind {
+    EXPRESSION_KIND, TYPE_KIND
+  };
+
+private:
+  ExpressionTypeKind expression_type_kind;
+
+protected:
+  ExpressionType(ExpressionTypeKind _kind) : expression_type_kind(_kind) {}
+
+public:
+  ExpressionTypeKind get_expression_type_kind() const {
+    return expression_type_kind;
+  }
+};
+
+typedef std::shared_ptr<ExpressionType> ExpressionType_ptr;
+
+class Type : public Node, public ExpressionType {
 public:
   enum TypeKind {
     PRIMITIVE,
@@ -86,7 +109,7 @@ protected:
   unsigned int size;
 
   Type(TypeKind _type_kind, unsigned int _size)
-    : Node(TYPE), type_kind(_type_kind), size(_size) {}
+    : Node(TYPE), ExpressionType(TYPE_KIND), type_kind(_type_kind), size(_size) {}
 
 public:
   unsigned int get_size() const { return size; }
@@ -124,7 +147,7 @@ public:
 
 typedef std::shared_ptr<Comment> Comment_ptr;
 
-class Expression : public Node {
+class Expression : public Node, public ExpressionType {
 protected:
   bool terminate_line;
   bool wrap;
@@ -133,7 +156,7 @@ protected:
   Expression(NodeKind kind,
              std::shared_ptr<Expression> _expr1,
              std::shared_ptr<Expression> _expr2)
-    : Node(kind), terminate_line(false), wrap(false) {
+    : Node(kind), ExpressionType(EXPRESSION_KIND), terminate_line(false), wrap(false) {
     Type_ptr type1 = _expr1->get_type();
     Type_ptr type2 = _expr2->get_type();
 
@@ -145,7 +168,7 @@ protected:
   }
 
   Expression(NodeKind kind, Type_ptr _type)
-    : Node(kind), terminate_line(false), wrap(false),
+    : Node(kind), ExpressionType(EXPRESSION_KIND), terminate_line(false), wrap(false),
       type(_type->clone()) {}
 
 public:
@@ -597,6 +620,9 @@ private:
   Block(Block* block)
     : Node(BLOCK), nodes(block->nodes), enclose(block->enclose) {}
 
+  Block(Block* block, bool _enclose)
+    : Node(BLOCK), nodes(block->nodes), enclose(_enclose) {}
+
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {
     if (enclose) {
@@ -649,9 +675,13 @@ public:
   }
 
   static std::shared_ptr<Block> build(Node_ptr block_node) {
+    return build(block_node, false);
+  }
+
+  static std::shared_ptr<Block> build(Node_ptr block_node, bool _enclose) {
     assert(block_node->get_kind() == Node::NodeKind::BLOCK);
     Block* _block = static_cast<Block*>(block_node.get());
-    Block* block = new Block(_block);
+    Block* block = new Block(_block, _enclose);
     return std::shared_ptr<Block>(block);
   }
 };
@@ -1044,6 +1074,12 @@ private:
     on_false_comment = Comment::build(msg_stream.str());
   }
 
+  Branch(Expr_ptr _condition, Node_ptr _on_true)
+    : Node(BRANCH), condition(_condition), on_true(_on_true) {
+    condition->set_terminate_line(false);
+    condition->set_wrap(false);
+  }
+
   Branch(Expr_ptr _condition,
          Node_ptr _on_true, Node_ptr _on_false,
          const std::vector<std::string>& _on_true_cps_filenames,
@@ -1086,8 +1122,14 @@ public:
     }
 
     ofs << "\n";
+    
+    if (on_false.get() == nullptr) {
+      return;
+    }
+
     ofs << "\n";
 
+    
     for (auto c : on_false_cps) {
       indent(ofs, lvl);
       c->synthesize(ofs);
@@ -1122,6 +1164,10 @@ public:
     indent(ofs, lvl);
     ofs << "</if>" << "\n";
 
+    if (on_false.get() == nullptr) {
+      return;
+    }
+
     indent(ofs, lvl);
     ofs << "<else>" << "\n";
 
@@ -1133,6 +1179,11 @@ public:
 
   static std::shared_ptr<Branch> build(Expr_ptr _condition, Node_ptr _on_true, Node_ptr _on_false) {
     Branch* branch = new Branch(_condition, _on_true, _on_false);
+    return std::shared_ptr<Branch>(branch);
+  }
+
+  static std::shared_ptr<Branch> build(Expr_ptr _condition, Node_ptr _on_true) {
+    Branch* branch = new Branch(_condition, _on_true);
     return std::shared_ptr<Branch>(branch);
   }
 
@@ -1181,15 +1232,17 @@ typedef std::shared_ptr<Return> Return_ptr;
 class FunctionCall : public Expression {
 private:
   std::string name;
-  std::vector<Expr_ptr> args;
+  std::vector<ExpressionType_ptr> args;
 
-  FunctionCall(const std::string& _name, const std::vector<Expr_ptr>& _args, Type_ptr _ret)
-    : Expression(FUNCTION_CALL, _ret), name(_name) {
+  FunctionCall(const std::string& _name, const std::vector<ExpressionType_ptr>& _args, Type_ptr _ret)
+    : Expression(FUNCTION_CALL, _ret), name(_name), args(_args) {
 
+    /*
     for (const auto& arg : _args) {
       Expr_ptr cloned = arg->clone();
       args.push_back(std::move(cloned));
     }
+    */
   }
 
 public:
@@ -1199,7 +1252,14 @@ public:
 
     for (unsigned int i = 0; i < args.size(); i++) {
       const auto& arg = args[i];
-      arg->synthesize(ofs);
+
+      if (arg->get_expression_type_kind() == EXPRESSION_KIND) {
+        Expression* expr = static_cast<Expression*>(arg.get());
+        expr->synthesize(ofs);
+      } else {
+        Type* type = static_cast<Type*>(arg.get());
+        type->synthesize(ofs);
+      }
 
       if (i < args.size() - 1) {
         ofs << ", ";
@@ -1218,7 +1278,13 @@ public:
     ofs << ">" << "\n";
 
     for (const auto& arg : args) {
-      arg->debug(ofs, lvl+2);
+      if (arg->get_expression_type_kind() == EXPRESSION_KIND) {
+        Expression* expr = static_cast<Expression*>(arg.get());
+        expr->debug(ofs, lvl+2);
+      } else {
+        Type* type = static_cast<Type*>(arg.get());
+        type->debug(ofs, lvl+2);
+      }
     }
 
     indent(ofs, lvl);
@@ -1237,7 +1303,7 @@ public:
   }
 
   static std::shared_ptr<FunctionCall> build(const std::string& _name,
-                                             const std::vector<Expr_ptr>& _args,
+                                             const std::vector<ExpressionType_ptr>& _args,
                                              Type_ptr _ret) {
     FunctionCall* function_call = new FunctionCall(_name, _args, _ret);
     return std::shared_ptr<FunctionCall>(function_call);
@@ -1695,6 +1761,56 @@ public:
 };
 
 typedef std::shared_ptr<And> And_ptr;
+
+class LogicalAnd : public Expression {
+private:
+  Expr_ptr lhs;
+  Expr_ptr rhs;
+
+  LogicalAnd(Expr_ptr _lhs, Expr_ptr _rhs)
+    : Expression(LOGICAL_AND, _lhs, _rhs), lhs(_lhs->clone()), rhs(_rhs->clone()) {
+    lhs->set_wrap(true);
+    rhs->set_wrap(true);
+  }
+
+public:
+  Expr_ptr get_lhs() const { return lhs; }
+  Expr_ptr get_rhs() const { return rhs; }
+
+  void synthesize_expr(std::ostream& ofs, unsigned int lvl=0) const override {
+    lhs->synthesize(ofs, lvl);
+    ofs << " && ";
+    rhs->synthesize(ofs, lvl);
+  }
+
+  void debug(std::ostream& ofs, unsigned int lvl=0) const override {
+    indent(ofs, lvl);
+    ofs << "<logical-and";
+    ofs << " type=";
+    type->debug(ofs);
+    ofs << ">" << "\n";
+
+    lhs->debug(ofs, lvl+2);
+    rhs->debug(ofs, lvl+2);
+
+    indent(ofs, lvl);
+    ofs << "</logical-and>" << "\n";
+  }
+
+  Expr_ptr simplify(AST* ast) const override;
+
+  Expr_ptr clone() const override {
+    Expression* e = new LogicalAnd(lhs, rhs);
+    return Expr_ptr(e);
+  }
+
+  static std::shared_ptr<LogicalAnd> build(Expr_ptr _lhs, Expr_ptr _rhs) {
+    LogicalAnd* _and = new LogicalAnd(_lhs, _rhs);
+    return std::shared_ptr<LogicalAnd>(_and);
+  }
+};
+
+typedef std::shared_ptr<LogicalAnd> LogicalAnd_ptr;
 
 class Or : public Expression {
 private:
@@ -2258,7 +2374,7 @@ private:
       ofs << ")";
     }
 
-    ofs << " & ";
+    ofs << " & 0x";
     ofs << std::hex;
     ofs << ((1 << size) - 1);
     ofs << std::dec;
@@ -2319,6 +2435,12 @@ public:
 
   static std::shared_ptr<Read> build(Expr_ptr _expr, Type_ptr _type, Expr_ptr _idx) {
     Read* read = new Read(_expr, _type, _idx);
+    return std::shared_ptr<Read>(read);
+  }
+
+  static std::shared_ptr<Read> build(Expr_ptr _expr) {
+    auto zero = Constant::build(PrimitiveType::PrimitiveKind::INT, 0);
+    Read* read = new Read(_expr, _expr->get_type(), zero);
     return std::shared_ptr<Read>(read);
   }
 };
@@ -2631,7 +2753,7 @@ private:
 
   Function(const std::string& _name, const std::vector<FunctionArgDecl_ptr>& _args,
            Block_ptr _body, Type_ptr _return_type)
-    : Node(FUNCTION), name(_name), args(_args), body(_body), return_type(_return_type) {}
+    : Node(FUNCTION), name(_name), args(_args), body(Block::build(_body, true)), return_type(_return_type) {}
 
 public:
   void synthesize(std::ostream& ofs, unsigned int lvl=0) const override {

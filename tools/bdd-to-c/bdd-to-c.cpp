@@ -25,6 +25,10 @@
 #include <utility>
 
 namespace {
+enum TargetOption {
+  SEQUENTIAL, SHARED_NOTHING, LOCKS
+};
+
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::Positional,
                                                llvm::cl::OneOrMore);
@@ -41,9 +45,21 @@ llvm::cl::opt<std::string> XML(
     "xml",
     llvm::cl::desc("Output file of the syntethized code's XML. If omited, XML will not be dumped."),
     llvm::cl::cat(SynthesizerCat));
+
+llvm::cl::opt<TargetOption> Target(
+    "target",
+    llvm::cl::desc("Output file's target."),
+    llvm::cl::cat(SynthesizerCat),
+    llvm::cl::values(
+      clEnumValN(SEQUENTIAL, "seq", "Sequential"),
+      clEnumValN(SHARED_NOTHING, "sn", "Shared-nothing"),
+      clEnumValN(LOCKS, "locks", "Lock based"),
+      clEnumValEnd
+    ),
+    llvm::cl::Required);
 }
 
-Node_ptr build_ast(AST& ast, const BDD::Node* root) {
+Node_ptr build_ast(AST& ast, const BDD::Node* root, bool locks) {
   std::vector<Node_ptr> nodes;
 
   while (root != nullptr) {
@@ -59,11 +75,11 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root) {
       auto cond = branch_node->get_condition();
 
       ast.push();
-      auto then_node = build_ast(ast, on_true_bdd);
+      auto then_node = build_ast(ast, on_true_bdd, locks);
       ast.pop();
 
       ast.push();
-      auto else_node = build_ast(ast, on_false_bdd);
+      auto else_node = build_ast(ast, on_false_bdd, locks);
       ast.pop();
 
       auto cond_node = transpile(&ast, cond);
@@ -82,7 +98,7 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root) {
       auto call_bdd = static_cast<const BDD::Call*>(root);
       auto call = call_bdd->get_call();
 
-      auto call_node = ast.node_from_call(call);
+      auto call_node = ast.node_from_call(call, locks);
 
       if (call_node) {
         nodes.push_back(call_node);
@@ -148,11 +164,101 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root) {
   return Block::build(nodes);
 }
 
-void build_ast(AST& ast, const BDD::BDD& bdd) {
-  auto init_root = build_ast(ast, bdd.get_init());
+void build_ast(AST& ast, const BDD::BDD& bdd, TargetOption target) {
+  auto init_root = build_ast(ast, bdd.get_init(), target == LOCKS);
+  
+  Node_ptr global_code;
+  std::vector<Node_ptr> intro_nodes;
+
+  switch (target) {
+    case LOCKS:
+    case SEQUENTIAL: {
+      std::vector<Node_ptr> nodes;
+
+      auto state = ast.get_state();
+      for (auto gv : state) {
+        VariableDecl_ptr decl = VariableDecl::build(gv);
+        decl->set_terminate_line(true);
+        nodes.push_back(decl);
+      }
+
+      global_code = Block::build(nodes, false);
+      break;
+    }
+    case SHARED_NOTHING: {
+      std::vector<Node_ptr> nodes;
+
+      auto state = ast.get_state();
+      for (const auto& var : state) {
+        // global
+
+        std::string name = var->get_symbol();
+        
+        auto type = var->get_type();
+        auto renamed = Variable::build("_" + name, type);
+        auto ret = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+
+        std::vector<ExpressionType_ptr> args = { type, renamed };
+
+        auto def = FunctionCall::build("RTE_DEFINE_PER_LCORE", args, ret);
+        def->set_terminate_line(true);
+        nodes.push_back(def);
+
+        // intro
+
+        auto grab = FunctionCall::build("RTE_PER_LCORE", args, ret);
+        grab->set_terminate_line(true);
+
+        auto decl = VariableDecl::build(var);
+        auto assignment = Assignment::build(decl, grab);
+        assignment->set_terminate_line(true);
+
+        intro_nodes.push_back(assignment);
+      }
+
+      global_code = Block::build(nodes, false);
+      break;
+    }
+  }
+
+  assert(init_root->get_kind() == Node::NodeKind::BLOCK);
+  std::vector<Node_ptr> intro_nodes_init;
+
+  if (target == LOCKS) {
+    auto ret = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    std::vector<ExpressionType_ptr> args;
+
+    auto rte_get_master_lcore = FunctionCall::build("rte_get_master_lcore", args, ret);
+    auto rte_lcore_id = FunctionCall::build("rte_lcore_id", args, ret);
+
+    auto cond = Equals::build(rte_get_master_lcore, rte_lcore_id);
+
+    auto one = Constant::build(PrimitiveType::PrimitiveKind::INT, 1);
+    auto on_true = Return::build(one);
+
+    intro_nodes_init.push_back(Branch::build(cond, on_true));
+  }
+
+  intro_nodes_init.insert(intro_nodes_init.end(), intro_nodes.begin(), intro_nodes.end());
+  intro_nodes_init.push_back(Block::build(init_root, false));
+
+  init_root = Block::build(intro_nodes_init);
+
+  ast.set_global_code(global_code);
   ast.commit(init_root);
 
-  auto process_root = build_ast(ast, bdd.get_process());
+  auto process_root = build_ast(ast, bdd.get_process(), target == LOCKS);
+
+  assert(process_root->get_kind() == Node::NodeKind::BLOCK);
+  std::vector<Node_ptr> intro_nodes_process = intro_nodes;
+
+  if (target == LOCKS) {
+    intro_nodes_process.push_back(AST::grab_locks());
+  }
+
+  intro_nodes_process.push_back(Block::build(process_root, false));
+  process_root = Block::build(intro_nodes_process);
+
   ast.commit(process_root);
 }
 
@@ -176,7 +282,7 @@ int main(int argc, char **argv) {
 
   AST ast;
 
-  build_ast(ast, bdd);
+  build_ast(ast, bdd, Target);
 
   if (Out.size()) {
     auto file = std::ofstream(Out);

@@ -391,9 +391,9 @@ void AST::push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr) {
   local_variables.back().push_back(std::make_pair(var, expr));
 }
 
-Node_ptr AST::init_state_node_from_call(call_t call) {
+Node_ptr AST::init_state_node_from_call(call_t call, bool locks) {
   auto fname = call.function_name;
-  std::vector<Expr_ptr> args;
+  std::vector<ExpressionType_ptr> args;
 
   PrimitiveType_ptr ret_type;
   std::string ret_symbol;
@@ -418,7 +418,7 @@ Node_ptr AST::init_state_node_from_call(call_t call) {
 
     push_to_state(new_map);
 
-    args = std::vector<Expr_ptr>{ keq, khash, capacity, AddressOf::build(new_map) };
+    args = std::vector<ExpressionType_ptr>{ keq, khash, capacity, AddressOf::build(new_map) };
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "map_allocation_succeeded";
@@ -443,13 +443,17 @@ Node_ptr AST::init_state_node_from_call(call_t call) {
 
     push_to_state(new_vector);
 
-    args = std::vector<Expr_ptr>{ elem_size, capacity, init_elem, AddressOf::build(new_vector) };
+    args = std::vector<ExpressionType_ptr>{ elem_size, capacity, init_elem, AddressOf::build(new_vector) };
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "vector_alloc_success";
   }
 
   else if (fname == "dchain_allocate") {
+    if (locks) {
+      fname = "dchain_locks_allocate";
+    }
+
     Expr_ptr chain_out_expr = transpile(this, call.args["chain_out"].out);
     assert(chain_out_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t dchain_addr = (static_cast<Constant*>(chain_out_expr.get()))->get_value();
@@ -461,7 +465,7 @@ Node_ptr AST::init_state_node_from_call(call_t call) {
 
     push_to_state(new_dchain);
 
-    args = std::vector<Expr_ptr>{ index_range, AddressOf::build(new_dchain) };
+    args = std::vector<ExpressionType_ptr>{ index_range, AddressOf::build(new_dchain) };
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "is_dchain_allocated";
@@ -478,7 +482,7 @@ Node_ptr AST::init_state_node_from_call(call_t call) {
     Expr_ptr backend_capacity = transpile(this, call.args["backend_capacity"].expr);
     assert(backend_capacity);
 
-    args = std::vector<Expr_ptr>{ vector, cht_height, backend_capacity };
+    args = std::vector<ExpressionType_ptr>{ vector, cht_height, backend_capacity };
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "cht_fill_cht_successful";
@@ -530,11 +534,11 @@ Node_ptr AST::init_state_node_from_call(call_t call) {
   return fcall;
 }
 
-Node_ptr AST::process_state_node_from_call(call_t call) {
+Node_ptr AST::process_state_node_from_call(call_t call, bool locks) {
   auto fname = call.function_name;
 
   std::vector<Expr_ptr> exprs;
-  std::vector<Expr_ptr> args;
+  std::vector<ExpressionType_ptr> args;
 
   Type_ptr ret_type;
   std::string ret_symbol;
@@ -543,6 +547,9 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
 
   int counter_begins = 0;
   bool ignore = false;
+
+  bool check_write_attempt = false;
+  bool write_attempt = false;
 
   if (fname == "current_time") {
     associate_expr_to_local("now", call.ret);
@@ -577,7 +584,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
         Variable::build("ether_type", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T))
       };
 
-      Struct_ptr ether_hdr = Struct::build("ether_hdr", ether_hdr_fields);
+      Struct_ptr ether_hdr = Struct::build("rte_ether_hdr", ether_hdr_fields);
 
       ret_type = Pointer::build(ether_hdr);
       ret_symbol = CHUNK_LAYER_2;
@@ -599,7 +606,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
         Variable::build("dst_addr", PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T))
       };
 
-      Struct_ptr ipv4_hdr = Struct::build("ipv4_hdr", ipv4_hdr_fields);
+      Struct_ptr ipv4_hdr = Struct::build("rte_ipv4_hdr", ipv4_hdr_fields);
 
       ret_type = Pointer::build(ipv4_hdr);
       ret_symbol = CHUNK_LAYER_3;
@@ -633,20 +640,22 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     }
 
     ret_expr = call.extra_vars["the_chunk"].second;
-    args = std::vector<Expr_ptr>{ p, pkt_len };
+    args = std::vector<ExpressionType_ptr>{ p, pkt_len };
   }
 
   else if (fname == "packet_get_unread_length") {
     Variable_ptr p = get_from_local("p");
     assert(p);
 
-    args = std::vector<Expr_ptr>{ p };
+    args = std::vector<ExpressionType_ptr>{ p };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T);
     ret_symbol = "unread_len";
     ret_expr = call.ret;
   }
 
   else if (fname == "expire_items_single_map") {
+    check_write_attempt = true;
+
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
     assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
@@ -665,7 +674,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
 
-    args = std::vector<Expr_ptr>{ chain, vector, map, now };
+    args = std::vector<ExpressionType_ptr>{ chain, vector, map, now };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "unmber_of_freed_flows";
     ret_expr = call.ret;
@@ -689,13 +698,19 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     VariableDecl_ptr value_out_decl = VariableDecl::build(value_out);
     exprs.push_back(value_out_decl);
 
-    args = std::vector<Expr_ptr>{ map, AddressOf::build(key), AddressOf::build(value_out) };
+    args = std::vector<ExpressionType_ptr>{ map, AddressOf::build(key), AddressOf::build(value_out) };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "map_has_this_key";
     ret_expr = call.ret;
   }
 
   else if (fname == "dchain_allocate_new_index") {
+    check_write_attempt = true;
+
+    if (locks) {
+      fname = "dchain_locks_allocate_new_index";
+    }
+    
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
     assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
@@ -720,7 +735,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
       suffix = "_" + counter;
     }
 
-    args = std::vector<Expr_ptr>{ chain, AddressOf::build(index_out), now };
+    args = std::vector<ExpressionType_ptr>{ chain, AddressOf::build(index_out), now };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "out_of_space" + suffix;
     ret_expr = call.ret;
@@ -757,11 +772,13 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr val_out_arg = AddressOf::build(val_out);
     Cast_ptr val_out_cast = Cast::build(val_out_arg, val_out_type_arg);
 
-    args = std::vector<Expr_ptr>{ vector, index, val_out_cast };
+    args = std::vector<ExpressionType_ptr>{ vector, index, val_out_cast };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else if (fname == "map_put") {
+    check_write_attempt = true;
+
     Expr_ptr map_expr = transpile(this, call.args["map"].expr);
     assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
@@ -772,7 +789,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr value = transpile(this, call.args["value"].expr);
     assert(value);
 
-    args = std::vector<Expr_ptr>{ map, AddressOf::build(key), value };
+    args = std::vector<ExpressionType_ptr>{ map, AddressOf::build(key), value };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
@@ -793,13 +810,19 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     auto before_value = get_expr_from_local_by_addr(value_addr);
 
     auto changes = apply_changes(this, value, before_value, call.args["value"].in);
+
+    write_attempt = changes.size();
     exprs.insert(exprs.end(), changes.begin(), changes.end());
 
-    args = std::vector<Expr_ptr>{ vector, index, value };
+    args = std::vector<ExpressionType_ptr>{ vector, index, value };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else if (fname == "dchain_rejuvenate_index") {
+    if (locks) {
+      fname = "dchain_locks_rejuvenate_index";
+    }
+
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
     assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
@@ -811,7 +834,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
 
-    args = std::vector<Expr_ptr>{ chain, index, now };
+    args = std::vector<ExpressionType_ptr>{ chain, index, now };
 
     // actually this is an int, but we never use it in any call path...
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
@@ -837,18 +860,22 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     }
   }
 
-  else if (fname == "ether_addr_hash") {
+  else if (fname == "rte_ether_addr_hash") {
     assert(solver.are_exprs_always_equal(call.args["obj"].in, call.args["obj"].out));
     Expr_ptr obj = transpile(this, call.args["obj"].in);
     assert(obj);
 
-    args = std::vector<Expr_ptr>{ obj };
+    args = std::vector<ExpressionType_ptr>{ obj };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "hash";
     ret_expr = call.ret;
   }
 
   else if (fname == "dchain_is_index_allocated") {
+    if (locks) {
+      fname = "dchain_locks_is_index_allocated";
+    }
+
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
     assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
@@ -858,7 +885,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
 
-    args = std::vector<Expr_ptr>{ chain, index };
+    args = std::vector<ExpressionType_ptr>{ chain, index };
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
     ret_symbol = "dchain_is_index_allocated";
@@ -869,7 +896,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr obj = transpile(this, call.args["obj"].in);
     assert(obj);
 
-    args = std::vector<Expr_ptr>{ obj };
+    args = std::vector<ExpressionType_ptr>{ obj };
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
     ret_symbol = "load_balanced_flow_hash";
@@ -912,14 +939,14 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
     exprs.push_back(Assignment::build(chosen_backend_decl, zero));
 
-    args = std::vector<Expr_ptr>{ hash, cht, active_backends, cht_height, backend_capacity, AddressOf::build(chosen_backend) };
+    args = std::vector<ExpressionType_ptr>{ hash, cht, active_backends, cht_height, backend_capacity, AddressOf::build(chosen_backend) };
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
     ret_symbol = "prefered_backend_found";
     ret_expr = call.ret;
   }
 
-  else if (fname == "nf_set_ipv4_udptcp_checksum") {
+  else if (fname == "nf_set_rte_ipv4_udptcp_checksum") {
     Expr_ptr ip_header_expr = transpile(this, call.args["ip_header"].expr);
     assert(ip_header_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t ip_header_addr = (static_cast<Constant*>(ip_header_expr.get()))->get_value();
@@ -928,7 +955,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     assert(l4_header_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t l4_header_addr = (static_cast<Constant*>(l4_header_expr.get()))->get_value();
 
-    Expr_ptr ip_header = get_from_local_by_addr("ipv4_hdr", ip_header_addr);
+    Expr_ptr ip_header = get_from_local_by_addr("rte_ipv4_hdr", ip_header_addr);
     assert(ip_header);
     Expr_ptr l4_header = get_from_local_by_addr("tcpudp_hdr", l4_header_addr);
     assert(l4_header);
@@ -936,12 +963,14 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     assert(packet);
 
     fname = "rte_ipv4_udptcp_cksum";
-    args = std::vector<Expr_ptr>{ ip_header, l4_header };
+    args = std::vector<ExpressionType_ptr>{ ip_header, l4_header };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "checksum";
   }
 
   else if (fname == "map_erase") {
+    check_write_attempt = true;
+
     Expr_ptr map_expr = transpile(this, call.args["map"].expr);
     assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
@@ -956,11 +985,17 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr trash_arg = AddressOf::build(trash);
     Cast_ptr trash_cast = Cast::build(trash_arg, trash_type_arg);
 
-    args = std::vector<Expr_ptr>{ map, AddressOf::build(key), trash_cast };
+    args = std::vector<ExpressionType_ptr>{ map, AddressOf::build(key), trash_cast };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else if (fname == "dchain_free_index") {
+    if (locks) {
+      fname = "dchain_locks_free_index";
+    }
+
+    check_write_attempt = true;
+
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
     assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
@@ -970,7 +1005,7 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
 
-    args = std::vector<Expr_ptr>{ chain, index };
+    args = std::vector<ExpressionType_ptr>{ chain, index };
 
     // actually this is an int, but we never use it in any call path...
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
@@ -1053,7 +1088,19 @@ Node_ptr AST::process_state_node_from_call(call_t call) {
     return nullptr;
   }
 
-  return Block::build(exprs, false);
+  std::vector<Node_ptr> nodes;
+
+  if (locks && write_attempt) {
+    nodes.push_back(AST::write_attempt());
+  }
+
+  nodes.insert(nodes.end(), exprs.begin(), exprs.end());
+
+  if (locks && check_write_attempt) {
+    nodes.push_back(AST::check_write_attempt());
+  }
+
+  return Block::build(nodes, false);
 }
 
 void AST::push() {
@@ -1069,10 +1116,10 @@ void AST::pop() {
   layer.pop_back();
 }
 
-Node_ptr AST::node_from_call(call_t call) {
+Node_ptr AST::node_from_call(call_t call, bool locks) {
   switch (context) {
-  case INIT: return init_state_node_from_call(call);
-  case PROCESS: return process_state_node_from_call(call);
+  case INIT: return init_state_node_from_call(call, locks);
+  case PROCESS: return process_state_node_from_call(call, locks);
   case DONE: assert(false);
   }
 
@@ -1131,7 +1178,7 @@ void AST::commit(Node_ptr body) {
       FunctionArgDecl::build(from_cp_symbol("src_devices"), PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
       FunctionArgDecl::build(from_cp_symbol("p"), Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T))),
       FunctionArgDecl::build(from_cp_symbol("pkt_len"), PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T)),
-      FunctionArgDecl::build(from_cp_symbol("now"), PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT64_T)),
+      FunctionArgDecl::build(from_cp_symbol("now"), PrimitiveType::build(PrimitiveType::PrimitiveKind::INT64_T)),
     };
 
     Type_ptr _return = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
