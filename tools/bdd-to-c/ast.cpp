@@ -462,7 +462,25 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
 
     Expr_ptr index_range = transpile(this, call.args["index_range"].expr);
     assert(index_range);
-    Variable_ptr new_dchain = generate_new_symbol("dchain", Struct::build("DoubleChain"), 1, 0);
+
+    Type_ptr dchain_type;
+
+    switch (target) {
+      case LOCKS: {
+        dchain_type = Struct::build("DoubleChainLocks");
+        break;
+      }
+      case TM: {
+        dchain_type = Struct::build("DoubleChainTM");
+        break;
+      }
+      default: {
+        dchain_type = Struct::build("DoubleChain");
+      }
+
+    }
+
+    Variable_ptr new_dchain = generate_new_symbol("dchain", dchain_type, 1, 0);
     new_dchain->set_addr(dchain_addr);
 
     push_to_state(new_dchain);
