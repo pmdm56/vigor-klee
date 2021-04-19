@@ -8,6 +8,10 @@
 #include "load-call-paths.h"
 #include "printer.h"
 
+enum TargetOption {
+  SEQUENTIAL, SHARED_NOTHING, LOCKS, TM
+};
+
 class AST;
 
 class Node {

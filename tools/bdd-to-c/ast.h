@@ -78,8 +78,8 @@ private:
   void push_to_local(Variable_ptr var);
   void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);
 
-  Node_ptr init_state_node_from_call(call_t call, bool locks);
-  Node_ptr process_state_node_from_call(call_t call, bool locks);
+  Node_ptr init_state_node_from_call(call_t call, TargetOption target);
+  Node_ptr process_state_node_from_call(call_t call, TargetOption target);
 
 public:
   AST() {
@@ -107,7 +107,7 @@ public:
   void push();
   void pop();
 
-  Node_ptr node_from_call(call_t call, bool locks);
+  Node_ptr node_from_call(call_t call, TargetOption target);
 
   bool is_done() { return context == DONE; }
 

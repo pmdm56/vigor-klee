@@ -25,10 +25,6 @@
 #include <utility>
 
 namespace {
-enum TargetOption {
-  SEQUENTIAL, SHARED_NOTHING, LOCKS
-};
-
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::Positional,
                                                llvm::cl::OneOrMore);
@@ -54,12 +50,13 @@ llvm::cl::opt<TargetOption> Target(
       clEnumValN(SEQUENTIAL, "seq", "Sequential"),
       clEnumValN(SHARED_NOTHING, "sn", "Shared-nothing"),
       clEnumValN(LOCKS, "locks", "Lock based"),
+      clEnumValN(TM, "tm", "Transactional memory"),
       clEnumValEnd
     ),
     llvm::cl::Required);
 }
 
-Node_ptr build_ast(AST& ast, const BDD::Node* root, bool locks) {
+Node_ptr build_ast(AST& ast, const BDD::Node* root, TargetOption target) {
   std::vector<Node_ptr> nodes;
 
   while (root != nullptr) {
@@ -75,11 +72,11 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, bool locks) {
       auto cond = branch_node->get_condition();
 
       ast.push();
-      auto then_node = build_ast(ast, on_true_bdd, locks);
+      auto then_node = build_ast(ast, on_true_bdd, target);
       ast.pop();
 
       ast.push();
-      auto else_node = build_ast(ast, on_false_bdd, locks);
+      auto else_node = build_ast(ast, on_false_bdd, target);
       ast.pop();
 
       auto cond_node = transpile(&ast, cond);
@@ -98,7 +95,7 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, bool locks) {
       auto call_bdd = static_cast<const BDD::Call*>(root);
       auto call = call_bdd->get_call();
 
-      auto call_node = ast.node_from_call(call, locks);
+      auto call_node = ast.node_from_call(call, target);
 
       if (call_node) {
         nodes.push_back(call_node);
@@ -165,13 +162,14 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, bool locks) {
 }
 
 void build_ast(AST& ast, const BDD::BDD& bdd, TargetOption target) {
-  auto init_root = build_ast(ast, bdd.get_init(), target == LOCKS);
+  auto init_root = build_ast(ast, bdd.get_init(), target);
   
   Node_ptr global_code;
   std::vector<Node_ptr> intro_nodes;
 
   switch (target) {
     case LOCKS:
+    case TM:
     case SEQUENTIAL: {
       std::vector<Node_ptr> nodes;
 
@@ -191,7 +189,6 @@ void build_ast(AST& ast, const BDD::BDD& bdd, TargetOption target) {
       auto state = ast.get_state();
       for (const auto& var : state) {
         // global
-
         std::string name = var->get_symbol();
         
         auto type = var->get_type();
@@ -205,7 +202,6 @@ void build_ast(AST& ast, const BDD::BDD& bdd, TargetOption target) {
         nodes.push_back(def);
 
         // intro
-
         auto grab = FunctionCall::build("RTE_PER_LCORE", args, ret);
         grab->set_terminate_line(true);
 
@@ -224,14 +220,27 @@ void build_ast(AST& ast, const BDD::BDD& bdd, TargetOption target) {
   assert(init_root->get_kind() == Node::NodeKind::BLOCK);
   std::vector<Node_ptr> intro_nodes_init;
 
-  if (target == LOCKS) {
+  if (target == TM) {
+    auto void_ret = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+    std::vector<ExpressionType_ptr> no_args;
+
+    auto rte_lcore_id = FunctionCall::build("rte_lcore_id", no_args, void_ret);
+
+    std::vector<ExpressionType_ptr> args = { rte_lcore_id };
+    auto HTM_thr_init = FunctionCall::build("HTM_thr_init", args, void_ret);
+    HTM_thr_init->set_terminate_line(true);
+
+    intro_nodes_init.push_back(HTM_thr_init);
+  }
+
+  if (target == LOCKS || target == TM) {
     auto ret = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     std::vector<ExpressionType_ptr> args;
 
     auto rte_get_master_lcore = FunctionCall::build("rte_get_master_lcore", args, ret);
     auto rte_lcore_id = FunctionCall::build("rte_lcore_id", args, ret);
 
-    auto cond = Equals::build(rte_get_master_lcore, rte_lcore_id);
+    auto cond = Not::build(Equals::build(rte_get_master_lcore, rte_lcore_id));
 
     auto one = Constant::build(PrimitiveType::PrimitiveKind::INT, 1);
     auto on_true = Return::build(one);
@@ -247,7 +256,7 @@ void build_ast(AST& ast, const BDD::BDD& bdd, TargetOption target) {
   ast.set_global_code(global_code);
   ast.commit(init_root);
 
-  auto process_root = build_ast(ast, bdd.get_process(), target == LOCKS);
+  auto process_root = build_ast(ast, bdd.get_process(), target);
 
   assert(process_root->get_kind() == Node::NodeKind::BLOCK);
   std::vector<Node_ptr> intro_nodes_process = intro_nodes;

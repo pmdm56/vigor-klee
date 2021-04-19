@@ -391,7 +391,7 @@ void AST::push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr) {
   local_variables.back().push_back(std::make_pair(var, expr));
 }
 
-Node_ptr AST::init_state_node_from_call(call_t call, bool locks) {
+Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
   auto fname = call.function_name;
   std::vector<ExpressionType_ptr> args;
 
@@ -450,8 +450,10 @@ Node_ptr AST::init_state_node_from_call(call_t call, bool locks) {
   }
 
   else if (fname == "dchain_allocate") {
-    if (locks) {
+    if (target == LOCKS) {
       fname = "dchain_locks_allocate";
+    } else if (target == TM) {
+      fname = "dchain_tm_allocate";
     }
 
     Expr_ptr chain_out_expr = transpile(this, call.args["chain_out"].out);
@@ -534,7 +536,7 @@ Node_ptr AST::init_state_node_from_call(call_t call, bool locks) {
   return fcall;
 }
 
-Node_ptr AST::process_state_node_from_call(call_t call, bool locks) {
+Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
   auto fname = call.function_name;
 
   std::vector<Expr_ptr> exprs;
@@ -707,8 +709,10 @@ Node_ptr AST::process_state_node_from_call(call_t call, bool locks) {
   else if (fname == "dchain_allocate_new_index") {
     check_write_attempt = true;
 
-    if (locks) {
+    if (target == LOCKS) {
       fname = "dchain_locks_allocate_new_index";
+    } else if (target == TM) {
+      fname = "dchain_tm_allocate_new_index";
     }
     
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
@@ -819,8 +823,10 @@ Node_ptr AST::process_state_node_from_call(call_t call, bool locks) {
   }
 
   else if (fname == "dchain_rejuvenate_index") {
-    if (locks) {
+    if (target == LOCKS) {
       fname = "dchain_locks_rejuvenate_index";
+    } else if (target == TM) {
+      fname = "dchain_tm_rejuvenate_index";
     }
 
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
@@ -872,8 +878,10 @@ Node_ptr AST::process_state_node_from_call(call_t call, bool locks) {
   }
 
   else if (fname == "dchain_is_index_allocated") {
-    if (locks) {
+    if (target == LOCKS) {
       fname = "dchain_locks_is_index_allocated";
+    } else if (target == TM) {
+      fname = "dchain_tm_is_index_allocated";
     }
 
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
@@ -990,8 +998,10 @@ Node_ptr AST::process_state_node_from_call(call_t call, bool locks) {
   }
 
   else if (fname == "dchain_free_index") {
-    if (locks) {
+    if (target == LOCKS) {
       fname = "dchain_locks_free_index";
+    } else if (target == TM) {
+      fname = "dchain_tm_free_index";
     }
 
     check_write_attempt = true;
@@ -1090,13 +1100,13 @@ Node_ptr AST::process_state_node_from_call(call_t call, bool locks) {
 
   std::vector<Node_ptr> nodes;
 
-  if (locks && write_attempt) {
+  if (target == LOCKS && write_attempt) {
     nodes.push_back(AST::write_attempt());
   }
 
   nodes.insert(nodes.end(), exprs.begin(), exprs.end());
 
-  if (locks && check_write_attempt) {
+  if (target == LOCKS && check_write_attempt) {
     nodes.push_back(AST::check_write_attempt());
   }
 
@@ -1116,10 +1126,10 @@ void AST::pop() {
   layer.pop_back();
 }
 
-Node_ptr AST::node_from_call(call_t call, bool locks) {
+Node_ptr AST::node_from_call(call_t call, TargetOption target) {
   switch (context) {
-  case INIT: return init_state_node_from_call(call, locks);
-  case PROCESS: return process_state_node_from_call(call, locks);
+  case INIT: return init_state_node_from_call(call, target);
+  case PROCESS: return process_state_node_from_call(call, target);
   case DONE: assert(false);
   }
 
