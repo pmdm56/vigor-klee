@@ -26,6 +26,8 @@ private:
 private:
   std::string output_path;
   std::map<std::string, std::string> callpath_var_translation;
+  std::map<std::pair<std::string, TargetOption>, std::string> fname_translation;
+  std::map<std::pair<std::string, TargetOption>, std::string> struct_translation;
 
   std::vector<unsigned int> layer;
 
@@ -81,6 +83,22 @@ private:
   Node_ptr init_state_node_from_call(call_t call, TargetOption target);
   Node_ptr process_state_node_from_call(call_t call, TargetOption target);
 
+  std::string translate_fname(std::string fname, TargetOption target) {
+    if (fname_translation.count(std::make_pair(fname, target))) {
+      fname_translation[std::make_pair(fname, target)];
+    }
+
+    return fname;
+  }
+
+  std::string translate_struct(std::string struct_name, TargetOption target) {
+    if (struct_translation.count(std::make_pair(struct_name, target))) {
+      struct_translation[std::make_pair(struct_name, target)];
+    }
+
+    return struct_name;
+  }
+
 public:
   AST() {
     layer.push_back(2);
@@ -94,6 +112,76 @@ public:
       { "unmber_of_freed_flows", "number_of_freed_flows" },
       { "value_out", "map_value_out" },
       { "val_out", "vector_value_out" }
+    };
+
+    fname_translation = {
+
+      /****************************************************************************
+       *                                double chain
+       ****************************************************************************/
+      { { "dchain_allocate", TargetOption::LOCKS }, "dchain_locks_allocate" },
+      { { "dchain_allocate", TargetOption::TM },    "dchain_tm_allocate" },
+
+      { { "dchain_allocate_new_index", TargetOption::LOCKS }, "dchain_locks_allocate_new_index" },
+      { { "dchain_allocate_new_index", TargetOption::TM },    "dchain_tm_allocate_new_index" },
+
+      { { "dchain_rejuvenate_index", TargetOption::LOCKS }, "dchain_locks_rejuvenate_index" },
+      { { "dchain_rejuvenate_index", TargetOption::TM },    "dchain_tm_rejuvenate_index" },
+
+      { { "dchain_expire_one_index", TargetOption::LOCKS }, "dchain_locks_expire_one_index" },
+      { { "dchain_expire_one_index", TargetOption::TM },    "dchain_tm_expire_one_index" },
+
+      { { "dchain_is_index_allocated", TargetOption::LOCKS }, "dchain_locks_is_index_allocated" },
+      { { "dchain_is_index_allocated", TargetOption::TM },    "dchain_tm_is_index_allocated" },
+
+      { { "dchain_free_index", TargetOption::LOCKS }, "dchain_locks_free_index" },
+      { { "dchain_free_index", TargetOption::TM },    "dchain_tm_free_index" },
+
+      /****************************************************************************
+       *                                map
+       ****************************************************************************/
+
+      { { "map_allocate", TargetOption::LOCKS }, "map_locks_allocate" },
+      { { "map_get", TargetOption::LOCKS }, "map_locks_get" },
+      { { "map_put", TargetOption::LOCKS }, "map_locks_put" },
+      { { "map_erase", TargetOption::LOCKS }, "map_locks_erase" },
+      { { "map_size", TargetOption::LOCKS }, "map_locks_size" },
+
+      /****************************************************************************
+       *                                vector
+       ****************************************************************************/
+
+      { { "vector_allocate", TargetOption::LOCKS }, "vector_locks_allocate" },
+      { { "vector_borrow", TargetOption::LOCKS }, "vector_locks_borrow" },
+      { { "vector_return", TargetOption::LOCKS }, "vector_locks_return" },
+
+      /****************************************************************************
+       *                                expirator
+       ****************************************************************************/
+
+      { { "expire_items", TargetOption::LOCKS }, "expire_items_locks" },
+      { { "expire_items_single_map", TargetOption::LOCKS }, "expire_items_single_map_locks" },
+
+      /****************************************************************************
+       *                                double map
+       ****************************************************************************/
+
+      { { "dmap_allocate", TargetOption::LOCKS }, "dmap_locks_allocate" },
+      { { "dmap_get_a", TargetOption::LOCKS }, "dmap_locks_get_a" },
+      { { "dmap_get_b", TargetOption::LOCKS }, "dmap_locks_get_b" },
+      { { "dmap_put", TargetOption::LOCKS }, "dmap_locks_put" },
+      { { "dmap_get_value", TargetOption::LOCKS }, "dmap_locks_get_value" },
+      { { "dmap_erase", TargetOption::LOCKS }, "dmap_locks_erase" },
+      { { "dmap_size", TargetOption::LOCKS }, "dmap_locks_size" }
+    };
+
+    struct_translation = {
+      { { "DoubleChain", TargetOption::LOCKS }, "DoubleChainLocks" },
+      { { "DoubleChain", TargetOption::TM }, "DoubleChainTM" },
+
+      { { "Map", TargetOption::LOCKS }, "MapLocks" },
+      { { "Vector", TargetOption::LOCKS }, "VectorLocks" },
+      { { "DoubleMap", TargetOption::LOCKS }, "DoubleMapLocks" }
     };
   }
 

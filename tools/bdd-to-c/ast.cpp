@@ -450,12 +450,6 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
   }
 
   else if (fname == "dchain_allocate") {
-    if (target == LOCKS) {
-      fname = "dchain_locks_allocate";
-    } else if (target == TM) {
-      fname = "dchain_tm_allocate";
-    }
-
     Expr_ptr chain_out_expr = transpile(this, call.args["chain_out"].out);
     assert(chain_out_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t dchain_addr = (static_cast<Constant*>(chain_out_expr.get()))->get_value();
@@ -463,23 +457,7 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
     Expr_ptr index_range = transpile(this, call.args["index_range"].expr);
     assert(index_range);
 
-    Type_ptr dchain_type;
-
-    switch (target) {
-      case LOCKS: {
-        dchain_type = Struct::build("DoubleChainLocks");
-        break;
-      }
-      case TM: {
-        dchain_type = Struct::build("DoubleChainTM");
-        break;
-      }
-      default: {
-        dchain_type = Struct::build("DoubleChain");
-      }
-
-    }
-
+    Type_ptr dchain_type = Struct::build(translate_struct("DoubleChain", target));
     Variable_ptr new_dchain = generate_new_symbol("dchain", dchain_type, 1, 0);
     new_dchain->set_addr(dchain_addr);
 
@@ -533,6 +511,7 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
     assert(false && "Not implemented");
   }
 
+  fname = translate_fname(fname, target);
   assert(args.size() == call.args.size());
 
   FunctionCall_ptr fcall = FunctionCall::build(fname, args, ret_type);
@@ -726,12 +705,6 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
 
   else if (fname == "dchain_allocate_new_index") {
     check_write_attempt = true;
-
-    if (target == LOCKS) {
-      fname = "dchain_locks_allocate_new_index";
-    } else if (target == TM) {
-      fname = "dchain_tm_allocate_new_index";
-    }
     
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
     assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
@@ -841,12 +814,6 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
   }
 
   else if (fname == "dchain_rejuvenate_index") {
-    if (target == LOCKS) {
-      fname = "dchain_locks_rejuvenate_index";
-    } else if (target == TM) {
-      fname = "dchain_tm_rejuvenate_index";
-    }
-
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
     assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
@@ -896,12 +863,6 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
   }
 
   else if (fname == "dchain_is_index_allocated") {
-    if (target == LOCKS) {
-      fname = "dchain_locks_is_index_allocated";
-    } else if (target == TM) {
-      fname = "dchain_tm_is_index_allocated";
-    }
-
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
     assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t chain_addr = (static_cast<Constant*>(chain_expr.get()))->get_value();
@@ -1016,12 +977,6 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
   }
 
   else if (fname == "dchain_free_index") {
-    if (target == LOCKS) {
-      fname = "dchain_locks_free_index";
-    } else if (target == TM) {
-      fname = "dchain_tm_free_index";
-    }
-
     check_write_attempt = true;
 
     Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
@@ -1063,6 +1018,8 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
 
     assert(false && "Not implemented");
   }
+
+  fname = translate_fname(fname, target);
 
   if (!ignore) {
     assert(call.function_name != fname || args.size() == call.args.size());
