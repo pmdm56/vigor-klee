@@ -413,7 +413,9 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
     assert(khash);
     Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
     assert(capacity);
-    Variable_ptr new_map = generate_new_symbol("map", Struct::build("Map"), 1, 0);
+
+    Type_ptr map_type = Struct::build(translate_struct("Map", target));
+    Variable_ptr new_map = generate_new_symbol("map", map_type, 1, 0);
     new_map->set_addr(map_addr);
 
     push_to_state(new_map);
@@ -438,7 +440,9 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
     assert(capacity);
     Expr_ptr init_elem = Variable::build(call.args["init_elem"].fn_ptr_name.second, void_type);
     assert(init_elem);
-    Variable_ptr new_vector = generate_new_symbol("vector", Struct::build("Vector"), 1, 0);
+
+    Type_ptr vector_type = Struct::build(translate_struct("Vector", target));
+    Variable_ptr new_vector = generate_new_symbol("vector", vector_type, 1, 0);
     new_vector->set_addr(vector_addr);
 
     push_to_state(new_vector);

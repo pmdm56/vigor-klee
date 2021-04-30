@@ -85,7 +85,7 @@ private:
 
   std::string translate_fname(std::string fname, TargetOption target) {
     if (fname_translation.count(std::make_pair(fname, target))) {
-      fname_translation[std::make_pair(fname, target)];
+      return fname_translation[std::make_pair(fname, target)];
     }
 
     return fname;
@@ -93,7 +93,7 @@ private:
 
   std::string translate_struct(std::string struct_name, TargetOption target) {
     if (struct_translation.count(std::make_pair(struct_name, target))) {
-      struct_translation[std::make_pair(struct_name, target)];
+      return struct_translation[std::make_pair(struct_name, target)];
     }
 
     return struct_name;
