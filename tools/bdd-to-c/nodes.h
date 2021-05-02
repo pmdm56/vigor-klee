@@ -2673,6 +2673,13 @@ public:
     type->synthesize(ofs, lvl);
     ofs << " ";
     ofs << symbol;
+
+    if (type->get_type_kind() == Type::TypeKind::ARRAY) {
+      Array* array = static_cast<Array*>(type.get());
+      ofs << "[";
+      ofs << array->get_n_elems();
+      ofs << "]";
+    }
   }
 
   void debug(std::ostream& ofs, unsigned int lvl=0) const override {
@@ -2910,3 +2917,4 @@ public:
 typedef std::shared_ptr<Assignment> Assignment_ptr;
 
 Type_ptr type_from_size(uint64_t size);
+Type_ptr type_from_size(uint64_t size, bool force_byte_array);

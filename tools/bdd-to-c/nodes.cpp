@@ -335,7 +335,22 @@ Expr_ptr Assignment::simplify(AST* ast) const {
 }
 
 Type_ptr type_from_size(uint64_t size) {
+  return type_from_size(size, false);
+}
+
+Type_ptr type_from_size(uint64_t size, bool force_byte_array) {
   Type_ptr type;
+
+  if (force_byte_array) {
+    if (size % 8 != 0) {
+      assert(false && "Size not a byte multiple");
+    }
+
+    Type_ptr byte = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
+    type = Array::build(byte, size / 8);
+
+    return type;
+  }
 
   switch (size) {
   case 1:

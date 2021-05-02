@@ -688,8 +688,16 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
 
-    Expr_ptr key = transpile(this, call.args["key"].in);
-    assert(key);
+    Type_ptr key_type = type_from_klee_expr(call.args["key"].in, true);
+    Variable_ptr key = generate_new_symbol("map_key", key_type);
+
+    VariableDecl_ptr key_decl = VariableDecl::build(key);
+    exprs.push_back(key_decl);
+
+    auto statements = build_and_fill_byte_array(this, key, call.args["key"].in);
+    assert(statements.size());
+    exprs.insert(exprs.end(), statements.begin(), statements.end());
+
     Expr_ptr map = get_from_state(map_addr);
 
     Type_ptr value_out_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
@@ -783,8 +791,17 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
 
     Expr_ptr map = get_from_state(map_addr);
-    Expr_ptr key = transpile(this, call.args["key"].in);
-    assert(key);
+    
+    Type_ptr key_type = type_from_klee_expr(call.args["key"].in, true);
+    Variable_ptr key = generate_new_symbol("map_key", key_type);
+
+    VariableDecl_ptr key_decl = VariableDecl::build(key);
+    exprs.push_back(key_decl);
+
+    auto statements = build_and_fill_byte_array(this, key, call.args["key"].in);
+    assert(statements.size());
+    exprs.insert(exprs.end(), statements.begin(), statements.end());
+
     Expr_ptr value = transpile(this, call.args["value"].expr);
     assert(value);
 

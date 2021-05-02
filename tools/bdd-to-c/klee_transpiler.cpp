@@ -2,6 +2,12 @@
 #include "call-paths-to-bdd.h"
 #include "printer.h"
 
+Type_ptr type_from_klee_expr(klee::ref<klee::Expr> expr, bool force_byte_array) {
+  auto width = expr->getWidth();
+  assert(width != klee::Expr::InvalidWidth);
+  return type_from_size(width, force_byte_array);
+}
+
 Type_ptr klee_width_to_type(klee::Expr::Width width) {
   assert(width != klee::Expr::InvalidWidth);
   return type_from_size(width);
@@ -110,7 +116,6 @@ std::vector<Expr_ptr> apply_changes(AST *ast, Expr_ptr variable,
 
     for (unsigned int byte = 0; byte < after->getWidth() / 8; byte++) {
       Constant_ptr byte_const = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, byte);
-
       Expr_ptr var_read = Read::build(variable, byte_type, byte_const);
 
       auto extracted = ast->solver.exprBuilder->Extract(after, byte * 8, klee::Expr::Int8);
@@ -129,6 +134,28 @@ std::vector<Expr_ptr> apply_changes(AST *ast, Expr_ptr variable,
   }
 
   return changes;
+}
+
+std::vector<Expr_ptr> build_and_fill_byte_array(AST *ast, Expr_ptr var, klee::ref<klee::Expr> expr) {
+  std::vector<Expr_ptr> statements;
+
+  auto bit_size = expr->getWidth();
+  assert(bit_size % 8 == 0);
+
+  Type_ptr byte_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
+  Type_ptr expr_type = Array::build(byte_type, bit_size / 8);
+
+  for (unsigned int byte = 0; byte < bit_size / 8; byte++) {
+    Constant_ptr byte_const = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, byte);
+    Expr_ptr var_read = Read::build(var, byte_type, byte_const);
+
+    auto extracted = ast->solver.exprBuilder->Extract(expr, byte * 8, klee::Expr::Int8);
+    Expr_ptr val_read = transpile(ast, extracted);
+
+    statements.push_back(Assignment::build(var_read, val_read));
+  }
+
+  return statements;
 }
 
 std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
@@ -298,6 +325,16 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitConcat(const klee::Co
   Expr_ptr left = transpile(ast, e.getKid(0));
   Expr_ptr right = transpile(ast, e.getKid(1));
   Type_ptr type = klee_width_to_type(e.getWidth());
+
+  if (left->get_kind() == Node::NodeKind::CONSTANT &&
+    left->get_type()->get_type_kind() == Type::TypeKind::PRIMITIVE) {
+    Constant* constant = static_cast<Constant*>(left.get());
+    auto value = constant->get_value();
+    if (value == 0) {
+      save_result(right);
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+  }
 
   Concat_ptr concat = Concat::build(left, right, type);
 

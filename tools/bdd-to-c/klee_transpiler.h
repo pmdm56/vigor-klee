@@ -33,9 +33,11 @@ std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
                                              const klee::ref<klee::Expr> &e2);
 std::vector<Expr_ptr> apply_changes(AST *ast, Expr_ptr variable,
                                     klee::ref<klee::Expr> before, klee::ref<klee::Expr> after);
+std::vector<Expr_ptr> build_and_fill_byte_array(AST *ast, Expr_ptr var, klee::ref<klee::Expr> expr);
 Constant_ptr const_to_ast_expr(const BDD::solver_toolbox_t& solver, const klee::ref<klee::Expr> &e);
 uint64_t get_first_concat_idx(const BDD::solver_toolbox_t& solver, const klee::ref<klee::Expr> &e);
 uint64_t get_last_concat_idx(const BDD::solver_toolbox_t& solver, const klee::ref<klee::Expr> &e);
+Type_ptr type_from_klee_expr(klee::ref<klee::Expr> expr, bool force_byte_array);
 
 class KleeExprToASTNodeConverter : public klee::ExprVisitor::ExprVisitor {
 private:
