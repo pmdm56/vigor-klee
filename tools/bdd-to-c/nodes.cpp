@@ -229,7 +229,9 @@ Expr_ptr Read::simplify(AST* ast) const {
     auto idx_value = idx_constant->get_value();
     auto expr_size = expr_type->get_size();
 
-    if (idx_value == 0 && size == expr_size && type->get_type_kind() != Type::TypeKind::POINTER) {
+    if (idx_value == 0 && size == expr_size &&
+        type->get_type_kind() != Type::TypeKind::POINTER &&
+        type->get_type_kind() != Type::TypeKind::ARRAY) {
       return expr_simplified;
     }
   }

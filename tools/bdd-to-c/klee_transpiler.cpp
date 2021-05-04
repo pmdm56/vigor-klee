@@ -463,9 +463,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::E
     Expr_ptr offset = Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, offset_value);
     ShiftRight_ptr shift = ShiftRight::build(ast_expr, offset);
     extract = And::build(shift, mask);
-  }
-
-  else {
+  } else {
     extract = ast_expr;
   }
 
@@ -736,7 +734,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitEq(const klee::EqExpr
 
   if (right->get_kind() == Node::NodeKind::EQUALS &&
       left->get_kind() == Node::NodeKind::CONSTANT) {
-
+      
     Constant* left_const = static_cast<Constant*>(left.get());
     Equals* right_eq = static_cast<Equals*>(right.get());
     Expr_ptr right_eq_left = right_eq->get_lhs();
@@ -748,6 +746,19 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitEq(const klee::EqExpr
         save_result(right_eq->get_rhs());
         return klee::ExprVisitor::Action::skipChildren();
       }
+    }
+  }
+
+  else if (right->get_kind() == Node::NodeKind::VARIABLE &&
+           left->get_kind() == Node::NodeKind::CONSTANT) {
+    Type_ptr right_type = right->get_type();
+
+    if (right_type->get_type_kind() == Type::TypeKind::ARRAY ||
+        right_type->get_type_kind() == Type::TypeKind::POINTER) {
+      assert(right_type->get_size() <= 64);
+      Type_ptr new_type = Pointer::build(left->get_type());
+      Expr_ptr cast = Cast::build(right, new_type);
+      right = Read::build(cast);
     }
   }
 

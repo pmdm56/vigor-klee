@@ -497,10 +497,6 @@ public:
 
   Expr_ptr simplify(AST* ast) const override;
 
-  void set_wrap(bool _wrap) override {
-    expr->set_wrap(_wrap);
-  }
-
   Expr_ptr clone() const override {
     Expression* cast = new Cast(expr, type);
     return Expr_ptr(cast);
@@ -2236,15 +2232,29 @@ private:
   Expr_ptr idx;
 
   Read(Expr_ptr _expr, Type_ptr _type, Expr_ptr _idx)
-    : Expression(READ, _type), expr(_expr->clone()), idx(_idx) {
-    assert(expr->get_kind() == VARIABLE);
-  }
+    : Expression(READ, _type), expr(_expr->clone()), idx(_idx) {}
 
   void synthesize_pointer(std::ostream& ofs, unsigned int lvl) const {
-    Variable* var = static_cast<Variable*>(expr.get());
-    Type_ptr t = var->get_type();
+    Variable* var;
+    Type_ptr t;
+
+    if (expr->get_kind() == Node::NodeKind::CAST) {
+      Cast* cast = static_cast<Cast*>(expr.get());
+      assert(cast->get_expression()->get_kind() == Node::NodeKind::VARIABLE);
+
+      var = static_cast<Variable*>(cast->get_expression().get());
+      t = cast->get_type();
+    } else {
+      assert(expr->get_kind() == Node::NodeKind::VARIABLE);
+      var = static_cast<Variable*>(expr.get());
+      t = var->get_type();
+    }
 
     assert(t->get_type_kind() == Type::TypeKind::POINTER);
+
+    if (expr->get_kind() == Node::NodeKind::CAST) {
+      expr->set_wrap(true);
+    }
 
     expr->synthesize(ofs);
     ofs << "[";
@@ -2253,19 +2263,25 @@ private:
   }
 
   void synthesize_array(std::ostream& ofs, unsigned int lvl) const {
-    Variable* var = static_cast<Variable*>(expr.get());
-    Type_ptr t = var->get_type();
+    Variable* var;
+    Type_ptr t;
+
+    if (expr->get_kind() == Node::NodeKind::CAST) {
+      Cast* cast = static_cast<Cast*>(expr.get());
+      assert(cast->get_expression()->get_kind() == Node::NodeKind::VARIABLE);
+
+      var = static_cast<Variable*>(cast->get_expression().get());
+      t = cast->get_type();
+    } else {
+      assert(expr->get_kind() == Node::NodeKind::VARIABLE);
+      var = static_cast<Variable*>(expr.get());
+      t = var->get_type();
+    }
 
     assert(t->get_type_kind() == Type::TypeKind::ARRAY);
 
-    if (idx->get_kind() == Node::NodeKind::CONSTANT) {
-      Constant *idx_const = static_cast<Constant*>(idx.get());
-
-      if (type->get_size() == t->get_size()) {
-        assert(idx_const->get_value() == 0);
-        expr->synthesize(ofs);
-        return;
-      }
+    if (expr->get_kind() == Node::NodeKind::CAST) {
+      expr->set_wrap(true);
     }
 
     expr->synthesize(ofs);
@@ -2275,6 +2291,8 @@ private:
   }
 
   void synthesize_struct(std::ostream& ofs, unsigned int lvl) const {
+    assert(expr->get_kind() != Node::NodeKind::CAST && "Not implemented");
+    
     Variable* var = static_cast<Variable*>(expr.get());
     Type_ptr t = var->get_type();
     bool is_ptr = false;
@@ -2318,10 +2336,20 @@ private:
   }
 
   void synthesize_helper(std::ostream& ofs, unsigned int lvl, bool offset) const {
-    assert(expr->get_kind() == Node::NodeKind::VARIABLE);
+    Variable* var;
+    Type_ptr t;
 
-    Variable* var = static_cast<Variable*>(expr.get());
-    Type_ptr t = var->get_type();
+    if (expr->get_kind() == Node::NodeKind::CAST) {
+      Cast* cast = static_cast<Cast*>(expr.get());
+      assert(cast->get_expression()->get_kind() == Node::NodeKind::VARIABLE);
+
+      var = static_cast<Variable*>(cast->get_expression().get());
+      t = cast->get_type();
+    } else {
+      assert(expr->get_kind() == Node::NodeKind::VARIABLE);
+      var = static_cast<Variable*>(expr.get());
+      t = var->get_type();
+    }
 
     if (t->get_type_kind() == Type::TypeKind::POINTER) {
       Pointer* ptr = static_cast<Pointer*>(var->get_type().get());

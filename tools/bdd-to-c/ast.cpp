@@ -690,6 +690,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
 
     Type_ptr key_type = type_from_klee_expr(call.args["key"].in, true);
     Variable_ptr key = generate_new_symbol("map_key", key_type);
+    push_to_local(key);
 
     VariableDecl_ptr key_decl = VariableDecl::build(key);
     exprs.push_back(key_decl);
@@ -794,6 +795,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     
     Type_ptr key_type = type_from_klee_expr(call.args["key"].in, true);
     Variable_ptr key = generate_new_symbol("map_key", key_type);
+    push_to_local(key);
 
     VariableDecl_ptr key_decl = VariableDecl::build(key);
     exprs.push_back(key_decl);
@@ -877,7 +879,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     Expr_ptr obj = transpile(this, call.args["obj"].in);
     assert(obj);
 
-    args = std::vector<ExpressionType_ptr>{ obj };
+    args = std::vector<ExpressionType_ptr>{ AddressOf::build(obj) };
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = "hash";
     ret_expr = call.ret;
@@ -984,8 +986,18 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     uint64_t map_addr = (static_cast<Constant*>(map_expr.get()))->get_value();
 
     Expr_ptr map = get_from_state(map_addr);
-    Expr_ptr key = transpile(this, call.args["key"].in);
-    assert(key);
+    
+    Type_ptr key_type = type_from_klee_expr(call.args["key"].in, true);
+    Variable_ptr key = generate_new_symbol("map_key", key_type);
+    push_to_local(key);
+
+    VariableDecl_ptr key_decl = VariableDecl::build(key);
+    exprs.push_back(key_decl);
+
+    auto statements = build_and_fill_byte_array(this, key, call.args["key"].in);
+    assert(statements.size());
+    exprs.insert(exprs.end(), statements.begin(), statements.end());
+
     Expr_ptr trash = transpile(this, call.args["trash"].expr);
     assert(trash);
 
