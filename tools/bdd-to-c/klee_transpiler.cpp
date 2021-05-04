@@ -389,7 +389,7 @@ klee::ExprVisitor::Action KleeExprToASTNodeConverter::visitExtract(const klee::E
       ast_expr = right;
     }
 
-    else if (offset_value > right_size) {
+    else if (offset_value >= right_size) {
       ast_expr = left;
       offset_value -= right_size;
     }
