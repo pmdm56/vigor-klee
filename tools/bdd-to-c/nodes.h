@@ -2290,7 +2290,7 @@ private:
     ofs << "]";
   }
 
-  void synthesize_struct(std::ostream& ofs, unsigned int lvl) const {
+  void synthesize_struct(std::ostream& ofs, unsigned int lvl, bool open_parenthesis) const {
     assert(expr->get_kind() != Node::NodeKind::CAST && "Not implemented");
     
     Variable* var = static_cast<Variable*>(expr.get());
@@ -2325,6 +2325,11 @@ private:
       std::shared_ptr<Read> field_read = Read::build(field, type, new_idx_expr);
       field_read->set_wrap(false);
 
+      if (idx_val != 0 && open_parenthesis &&
+          field->get_type()->get_type_kind() == Type::TypeKind::PRIMITIVE) {
+        ofs << "(";
+      }
+
       ofs << var->get_symbol();
       ofs << (is_ptr ? "->" : ".");
 
@@ -2335,7 +2340,7 @@ private:
     assert(false);
   }
 
-  void synthesize_helper(std::ostream& ofs, unsigned int lvl, bool offset) const {
+  void synthesize_helper(std::ostream& ofs, unsigned int lvl, bool open_parenthesis) const {
     Variable* var;
     Type_ptr t;
 
@@ -2368,7 +2373,7 @@ private:
     }
 
     if (t->get_type_kind() == Type::TypeKind::STRUCT) {
-      synthesize_struct(ofs, lvl);
+      synthesize_struct(ofs, lvl, open_parenthesis);
       return;
     }
 
@@ -2378,14 +2383,12 @@ private:
       Constant *idx_const = static_cast<Constant*>(idx.get());
       unsigned int idx_val = idx_const->get_value();
 
-      if (!offset || idx_val == 0) {
+      if (idx_val == 0 && size == expr->get_type()->get_size()) {
         expr->synthesize(ofs);
         return;
       }
 
-      assert(offset);
-
-      if (idx_val != 0) {
+      if (idx_val != 0 && open_parenthesis) {
         ofs << "(";
       }
 
@@ -2406,10 +2409,12 @@ private:
       ofs << ")";
     }
 
-    ofs << " & 0x";
-    ofs << std::hex;
-    ofs << ((1 << size) - 1);
-    ofs << std::dec;
+    if (size != expr->get_type()->get_size()) {
+      ofs << " & 0x";
+      ofs << std::hex;
+      ofs << ((1 << size) - 1);
+      ofs << std::dec;
+    }
   }
 
 public:
