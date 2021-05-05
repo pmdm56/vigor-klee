@@ -898,7 +898,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     args = std::vector<ExpressionType_ptr>{ chain, index };
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
-    ret_symbol = "dchain_is_index_allocated";
+    ret_symbol = "is_index_allocated";
     ret_expr = call.ret;
   }
 
