@@ -1,3 +1,5 @@
+#include "llvm/Support/CommandLine.h"
+
 #include "call-paths-to-bdd.h"
 
 namespace {
@@ -29,8 +31,10 @@ int main(int argc, char **argv) {
   }
 
   BDD::BDD bdd(call_paths);
+  
+  BDD::PrinterDebug printer;
+  bdd.visit(printer);
 
-  bdd.dump();
   for (auto call_path : call_paths) {
     delete call_path;
   }
@@ -38,7 +42,9 @@ int main(int argc, char **argv) {
   if (Gv.size()) {
     auto file = std::ofstream(Gv);
     assert(file.is_open());
-    file << bdd.dump_gv();
+    
+    BDD::GraphvizGenerator graphviz_generator(file);
+    bdd.visit(graphviz_generator);
   }
 
   return 0;

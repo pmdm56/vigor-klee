@@ -1,8 +1,3 @@
-#include "load-call-paths.h"
-#include "call-paths-to-bdd.h"
-#include "ast.h"
-#include "nodes.h"
-
 #include "klee/ExprBuilder.h"
 #include "klee/perf-contracts.h"
 #include "klee/util/ArrayCache.h"
@@ -23,6 +18,11 @@
 #include <memory>
 #include <stack>
 #include <utility>
+
+#include "load-call-paths.h"
+#include "call-paths-to-bdd.h"
+#include "ast.h"
+#include "nodes.h"
 
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
@@ -60,7 +60,8 @@ Node_ptr build_ast(AST& ast, const BDD::Node* root, TargetOption target) {
   std::vector<Node_ptr> nodes;
 
   while (root != nullptr) {
-    root->dump(); std::cerr << "\n";
+    BDD::PrinterDebug::debug(root);
+    std::cerr << "\n";
 
     switch (root->get_type()) {
     case BDD::Node::NodeType::BRANCH: {
