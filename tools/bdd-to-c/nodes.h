@@ -746,30 +746,45 @@ private:
     case Type::TypeKind::PRIMITIVE: {
       PrimitiveType* primitive = static_cast<PrimitiveType*>(type.get());
 
+      if (hex && primitive->get_primitive_kind() != PrimitiveType::PrimitiveKind::BOOL) {
+        ofs << "0x";
+      }
+
       switch (primitive->get_primitive_kind()) {
       case PrimitiveType::PrimitiveKind::BOOL:
         if (values[0] == 0) ofs << "false";
         else ofs << "true";
         break;
       case PrimitiveType::PrimitiveKind::INT8_T:
-        if (hex) ofs << "0x";
         ofs << ((int8_t) values[0]);
         break;
+      case PrimitiveType::PrimitiveKind::UINT8_T:
+        ofs << ((uint8_t) values[0]);
+        if (!hex) ofs << "u";
+        break;
       case PrimitiveType::PrimitiveKind::INT16_T:
-        if (hex) ofs << "0x";
         ofs << ((int16_t) values[0]);
+        break;
+      case PrimitiveType::PrimitiveKind::UINT16_T:
+        ofs << ((uint16_t) values[0]);
+        if (!hex) ofs << "u";
         break;
       case PrimitiveType::PrimitiveKind::INT32_T:
       case PrimitiveType::PrimitiveKind::INT:
-        if (hex) ofs << "0x";
         ofs << ((int) values[0]);
         break;
+      case PrimitiveType::PrimitiveKind::UINT32_T:
+        ofs << ((uint32_t) values[0]);
+        if (!hex) ofs << "u";
+        break;
       case PrimitiveType::PrimitiveKind::INT64_T:
-        if (hex) ofs << "0x";
         ofs << ((int64_t) values[0]);
         break;
+      case PrimitiveType::PrimitiveKind::UINT64_T:
+        ofs << ((uint64_t) values[0]);
+        if (!hex) ofs << "ul";
+        break;
       default:
-        if (hex) ofs << "0x";
         ofs << values[0];
         break;
       }
