@@ -24,7 +24,7 @@ public:
   void visit(const ReturnRaw* node);
   void visit(const BDD& bdd);
 
-public:
+protected:
   virtual Action visitBranch(const Branch* node) = 0;
   virtual Action visitCall(const Call* node) = 0;
   virtual Action visitReturnInit(const ReturnInit* node) = 0;
