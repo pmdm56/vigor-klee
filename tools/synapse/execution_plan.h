@@ -44,9 +44,9 @@ private:
 
 public:
   ExecutionPlan() {}
-  ExecutionPlan(const BDD::Node* _next) : next(_next) {}
+  ExecutionPlan(const BDD::Node* _next) : next(_next), depth(0) {}
   ExecutionPlan(const ExecutionPlan& ep)
-    : leafs(ep.leafs), root(ep.root), next(ep.next) {}
+    : leafs(ep.leafs), root(ep.root), next(ep.next), depth(0) {}
 
 public:
   int get_depth() const { return depth; }
@@ -84,6 +84,8 @@ public:
       auto leaf = leafs[0];
       leaf->set_branches(Branches{ node });
       leafs[0] = node;
+
+      depth++;
     }
 
     next = _next;
