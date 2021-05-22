@@ -19,10 +19,11 @@ public:
 public:
 
   void add_target(Target target) {
+    std::vector<Module> _modules;
+
     switch (target) {
       case Target::x86:
-        // TODO:
-        // modules.push_back(new )
+        _modules = targets::x86::get_modules();
         break;
       case Target::Tofino:
         // TODO:
@@ -34,6 +35,8 @@ public:
         // TODO:
         break;
     }
+
+    modules.insert(modules.begin(), _modules.begin(), _modules.end());
   }
 
   template<class T>
@@ -45,6 +48,7 @@ public:
     h.add(context);
 
     while (1) {
+      std::cerr << "new round\n";
       auto next_ep   = h.pop();
       auto next_node = next_ep.get_next_node();
 
@@ -54,6 +58,7 @@ public:
       }
 
       for (auto module : modules) {
+        std::cerr << "trying module...\n";
         auto next_context = module->process_node(next_ep, next_node);
 
         if (next_context.size()) {

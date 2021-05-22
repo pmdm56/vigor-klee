@@ -8,6 +8,7 @@
 #===------------------------------------------------------------------------===#
 add_executable(synapse
   synapse.cpp
+  modules/module.cpp
   ../load-call-paths/load-call-paths.cpp
   ../call-paths-to-bdd/call-paths-to-bdd.cpp
   ../printer/printer.cpp
