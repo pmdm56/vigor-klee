@@ -23,21 +23,14 @@
 #include "call-paths-to-bdd.h"
 
 #include "execution_plan.h"
-#include "modules/module.h"
-#include "heuristic.h"
+#include "modules/modules.h"
+#include "heuristics/heuristics.h"
+#include "search.h"
 
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::Positional,
                                                llvm::cl::OneOrMore);
-
-
-llvm::cl::OptionCategory BDDGeneratorCat("BDD generator specific options");
-
-llvm::cl::opt<std::string> Gv(
-    "gv",
-    llvm::cl::desc("GraphViz file for BDD visualization."),
-    llvm::cl::cat(BDDGeneratorCat));
 }
 
 int main(int argc, char **argv) {
@@ -55,6 +48,11 @@ int main(int argc, char **argv) {
   }
 
   BDD::BDD bdd(call_paths);
+  synapse::SearchEngine se(bdd);
+  synapse::DFS dfs;
+
+  se.add_target(synapse::Target::x86);
+  se.search(dfs);
   
   for (auto call_path : call_paths) {
     delete call_path;
