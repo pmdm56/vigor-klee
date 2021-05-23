@@ -13,7 +13,7 @@ namespace x86 {
 
 class ExecutionPlanVisitor {
 public:
-  void visit(ExecutionPlan ep);
+  virtual void visit(ExecutionPlan ep);
 
   virtual void visit(const targets::x86::MapGet* node) = 0;
   virtual void visit(const targets::x86::CurrentTime* node) = 0;

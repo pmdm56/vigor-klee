@@ -3,6 +3,7 @@
 #include "execution_plan/execution_plan.h"
 #include "heuristics/heuristic.h"
 #include "log.h"
+#include "execution_plan/visitors/graphviz.h"
 
 namespace synapse {
 
@@ -52,6 +53,9 @@ public:
       bool processed = false;
       auto next_ep   = h.pop();
       auto next_node = next_ep.get_next_node();
+
+      Graphviz gv;
+      next_ep.visit(gv);
 
       // Should we terminate when we find the first result?
       if (!next_node && h.get_cfg().terminate_on_first_solution()) {
