@@ -8,21 +8,21 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class MapGet : public __Module {
+class CurrentTime : public __Module {
 public:
-  MapGet() : __Module(Target::x86) {}
+  CurrentTime() : __Module(Target::x86) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {
-    Log::dbg() << "branch ~ MapGet" << "\n";
+    Log::dbg() << "branch ~ CurrentTime" << "\n";
     return BDD::BDDVisitor::Action::STOP;
   }
 
   BDD::BDDVisitor::Action visitCall(const BDD::Call* node) override {
     auto call = node->get_call();
-    Log::dbg() << call.function_name << " ~ " << "MapGet" << "\n";
+    Log::dbg() << call.function_name << " ~ " << "CurrentTime" << "\n";
 
-    if (call.function_name == "map_get") {
+    if (call.function_name == "current_time") {
       auto ep_node = ExecutionPlan::build_node(SHARED_THIS_MODULE, node);
       ep->add(ep_node, node->get_next());
       next_context->push_back(*ep);
@@ -32,12 +32,12 @@ private:
   }
 
   BDD::BDDVisitor::Action visitReturnInit(const BDD::ReturnInit* node) override {
-    Log::dbg() << "return init ~ MapGet" << "\n";
+    Log::dbg() << "return init ~ CurrentTime" << "\n";
     return BDD::BDDVisitor::Action::STOP;
   }
 
   BDD::BDDVisitor::Action visitReturnProcess(const BDD::ReturnProcess* node) override {
-    Log::dbg() << "return process ~ MapGet" << "\n";
+    Log::dbg() << "return process ~ CurrentTime" << "\n";
     return BDD::BDDVisitor::Action::STOP;
   }
 

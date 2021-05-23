@@ -1,6 +1,6 @@
 #pragma once
 
-#include "./heuristic.h"
+#include "heuristic.h"
 
 namespace synapse {
 

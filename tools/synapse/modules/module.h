@@ -1,7 +1,10 @@
 #pragma once
 
 #include "call-paths-to-bdd.h"
-#include "../execution_plan.h"
+#include "../execution_plan/visitors/visitor.h"
+
+#define SHARED_THIS_MODULE (std::shared_ptr<__Module>(this))
+#define MODULE(X)          (std::make_shared<X>())
 
 namespace synapse {
 
@@ -17,8 +20,8 @@ typedef std::vector<ExecutionPlan> context_t;
 
 class __Module : public BDD::BDDVisitor {
 private:
-  Target        target;
-  BDD::Node*    node;
+  Target     target;
+  BDD::Node* node;
 
 protected:
   __Module(Target _target) : target(_target) {}
@@ -34,7 +37,24 @@ public:
   Target     get_target() const { return target; }
   BDD::Node* get_node()   const { return node; }
 
+  std::string get_target_name() {
+    switch (target) {
+      case x86:
+        return "x86";
+      case Tofino:
+        return "Tofino";
+      case Netronome:
+        return "Netronome";
+      case FPGA:
+        return "FPGA";
+    }
+
+    assert(false && "I should not be here");
+  }
+
   context_t process_node(ExecutionPlan _ep, const BDD::Node* node);
+
+  virtual void visit(ExecutionPlanVisitor& visitor) const = 0;
 };
 
 }

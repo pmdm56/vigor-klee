@@ -22,10 +22,11 @@
 #include "load-call-paths.h"
 #include "call-paths-to-bdd.h"
 
-#include "execution_plan.h"
+#include "execution_plan/execution_plan.h"
 #include "modules/modules.h"
 #include "heuristics/heuristics.h"
 #include "search.h"
+#include "log.h"
 
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
@@ -34,6 +35,8 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 }
 
 int main(int argc, char **argv) {
+  synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::DEBUG;
+
   llvm::cl::ParseCommandLineOptions(argc, argv);
   std::vector<call_path_t*> call_paths;
 

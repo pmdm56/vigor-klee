@@ -1,4 +1,5 @@
 #include "module.h"
+#include "../execution_plan/execution_plan.h"
 
 namespace synapse {
 

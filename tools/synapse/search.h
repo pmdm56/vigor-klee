@@ -1,7 +1,8 @@
 #pragma once
 
-#include "execution_plan.h"
-#include "./heuristics/heuristic.h"
+#include "execution_plan/execution_plan.h"
+#include "heuristics/heuristic.h"
+#include "log.h"
 
 namespace synapse {
 
@@ -48,7 +49,7 @@ public:
     h.add(context);
 
     while (1) {
-      std::cerr << "new round\n";
+      bool processed = false;
       auto next_ep   = h.pop();
       auto next_node = next_ep.get_next_node();
 
@@ -58,17 +59,20 @@ public:
       }
 
       for (auto module : modules) {
-        std::cerr << "trying module...\n";
         auto next_context = module->process_node(next_ep, next_node);
 
         if (next_context.size()) {
+          Log::dbg() << "MATCH "
+                     << module->get_target_name() << " -> "
+                     << next_context.size() << " exec plans" << "\n";
           h.add(next_context);
+          processed = true;
           break;
         }
       }
 
       // FIXME: No module is capable of doing anything. What should we do?
-      assert(false && "No module can handle the next BDD node");
+      assert(processed && "No module can handle the next BDD node");
     }
 
     return h.get();

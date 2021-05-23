@@ -1,13 +1,13 @@
 #pragma once
 
 #include "call-paths-to-bdd.h"
-#include "modules/module.h"
+#include "../modules/module.h"
+#include "visitors/visitor.h"
 
 namespace synapse {
 
 class   ExecutionPlan;
 class   __ExecutionPlanNode;
-class   __Module;
 
 typedef std::shared_ptr<__ExecutionPlanNode> ExecutionPlanNode;
 typedef std::vector<ExecutionPlanNode> Branches;
@@ -16,12 +16,12 @@ class __ExecutionPlanNode {
 friend class ExecutionPlan;
 
 private:
-  Branches          branches;
-  __Module*         module;
-  const BDD::Node*  node;
+  Module           module;
+  Branches         branches;
+  const BDD::Node* node;
 
 private:  
-  __ExecutionPlanNode(__Module* _module, const BDD::Node* _node)
+  __ExecutionPlanNode(Module _module, const BDD::Node* _node)
     : module(_module), node(_node) {}
 
 public:
@@ -29,6 +29,9 @@ public:
     assert(!branches.size());
     branches = _branches;
   }
+
+  const Module&   get_module()   const { return module; }
+  const Branches& get_branches() const { return branches; }
 };
 
 //TODO: create execution plan visitor (for printing, generating code, etc)
@@ -95,7 +98,11 @@ public:
     // TODO: 
   }
 
-  static ExecutionPlanNode build_node(__Module* _module, const BDD::Node* _node) {
+  void visit(ExecutionPlanVisitor& visitor) const {
+    visitor.visit(*this);
+  }
+
+  static ExecutionPlanNode build_node(Module _module, const BDD::Node* _node) {
     __ExecutionPlanNode* epn = new __ExecutionPlanNode(_module, _node);
     return std::shared_ptr<__ExecutionPlanNode>(epn);
   }
