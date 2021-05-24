@@ -36,8 +36,8 @@ public:
     return copy;
   }
 
-  void add(context_t context) {
-    for (auto ep : context) {
+  void add(Context context) {
+    for (auto ep : context.get_next_eps()) {
       execution_plans.insert(ep);
     }
   }

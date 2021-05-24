@@ -14,12 +14,12 @@ void ExecutionPlanVisitor::visit(ExecutionPlan ep) {
 }
 
 void ExecutionPlanVisitor::visit(const __ExecutionPlanNode* ep_node) {
-  auto mod      = ep_node->get_module();
-  auto branches = ep_node->get_branches();
+  auto mod  = ep_node->get_module();
+  auto next = ep_node->get_next();
 
   mod->visit(*this);
 
-  for (auto branch : branches) {
+  for (auto branch : next) {
     branch->visit(*this);
   }
 }

@@ -3,6 +3,7 @@
 #include "call-paths-to-bdd.h"
 #include "../modules/module.h"
 #include "visitors/visitor.h"
+#include "../log.h"
 
 namespace synapse {
 
@@ -17,7 +18,7 @@ friend class ExecutionPlan;
 
 private:
   Module           module;
-  Branches         branches;
+  Branches         next;
   const BDD::Node* node;
   int              id;
 
@@ -26,14 +27,14 @@ private:
     : module(_module), node(_node), id(_id) {}
 
 public:
-  void set_branches(Branches _branches) {
-    assert(!branches.size());
-    branches = _branches;
+  void set_next(Branches _next) {
+    assert(!next.size());
+    next = _next;
   }
 
-  const Module&   get_module()   const { return module; }
-  const Branches& get_branches() const { return branches; }
-  int             get_id()       const { return id; }
+  const Module&   get_module() const { return module; }
+  const Branches& get_next()   const { return next; }
+  int             get_id()     const { return id; }
 
   void visit(ExecutionPlanVisitor& visitor) const {
     visitor.visit(this);
@@ -42,10 +43,20 @@ public:
 
 //TODO: create execution plan visitor (for printing, generating code, etc)
 class ExecutionPlan {
+public:
+  struct leaf_t {
+    ExecutionPlanNode leaf;
+    const BDD::Node*  next;
+
+    leaf_t(const BDD::Node* _next) : next(_next) {}
+
+    leaf_t(ExecutionPlanNode _leaf, const BDD::Node* _next)
+      : leaf(_leaf), next(_next) {}
+  };
+
 private:
-  std::vector<ExecutionPlanNode> leafs;
-  ExecutionPlanNode              root;
-  const BDD::Node*               next;
+  ExecutionPlanNode   root;
+  std::vector<leaf_t> leafs;
 
 // metadata
 private:
@@ -53,55 +64,90 @@ private:
 
 public:
   ExecutionPlan() {}
-  ExecutionPlan(const BDD::Node* _next) : next(_next), depth(0) {}
+  ExecutionPlan(const BDD::Node* _next) : depth(0) {
+    leaf_t leaf(_next);
+    leafs.push_back(leaf);
+  }
+
   ExecutionPlan(const ExecutionPlan& ep)
-    : leafs(ep.leafs), root(ep.root), next(ep.next), depth(0) {}
+    : root(ep.root), leafs(ep.leafs), depth(0) {}
+
+private:
+  void update_leafs(leaf_t leaf) {
+    leafs.erase(leafs.begin());
+
+    if (leaf.next) {
+      leafs.insert(leafs.begin(), leaf);
+    }
+  }
+
+  void update_leafs(std::vector<leaf_t> leafs) {
+    assert(leafs.size());
+    leafs.erase(leafs.begin());
+    for (auto leaf : leafs) {
+      leafs.insert(leafs.begin(), leaf);
+    }
+  }
 
 public:
   int get_depth() const { return depth; }
 
-  ExecutionPlanNode get_root()        { return root; }
-  const BDD::Node*  get_next_node()   { return next; }
+  ExecutionPlanNode get_root() { return root; }
+
+  const BDD::Node* get_next_node() {
+    const BDD::Node* next;
+
+    if (leafs.size()) {
+      next = leafs[0].next;
+    }
+
+    return next;
+  }
 
   ExecutionPlanNode get_active_leaf() {
     ExecutionPlanNode leaf;
 
     if (leafs.size()) {
-      leaf = leafs[0];
+      leaf = leafs[0].leaf;
     }
 
     return leaf;
   }
 
-  ExecutionPlanNode change_active_leaf() {
-    leafs.erase(leafs.begin());
-    return get_active_leaf();
-  }
-
-  void add(ExecutionPlanNode node, const BDD::Node* _next) {
+  void add(leaf_t leaf) {
     if (!root) {
-      assert(!leafs.size());
-
-      root = node;
-      leafs.push_back(node);
+      assert(leafs.size() == 1);
+      assert(!leafs[0].leaf);
+      root = leaf.leaf;
     }
 
     else {
       assert(root);
       assert(leafs.size());
 
-      auto leaf = leafs[0];
-      leaf->set_branches(Branches{ node });
-      leafs[0] = node;
+      leafs[0].leaf->set_next(Branches{ leaf.leaf });
 
       depth++;
     }
 
-    next = _next;
+    assert(leafs.size());
+    update_leafs(leaf);
   }
 
-  void add(Branches branches, std::vector<const BDD::Node*> next) {
-    // TODO: 
+  // Order matters!
+  // The active leaf will correspond to the first branch in the branches
+  void add(std::vector<leaf_t> _leafs) {
+    assert(root);
+    assert(leafs.size());
+
+    Branches branches;
+    for (auto leaf : _leafs) branches.push_back(leaf.leaf);
+    leafs[0].leaf->set_next(branches);
+
+    leafs = _leafs;
+    depth++;
+
+    update_leafs(_leafs);
   }
 
   void visit(ExecutionPlanVisitor& visitor) const {

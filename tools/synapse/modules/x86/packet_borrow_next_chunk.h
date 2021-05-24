@@ -21,9 +21,12 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "packet_borrow_next_chunk") {
-      auto ep_node = ExecutionPlan::build_node(SHARED_THIS_MODULE, node);
-      ep->add(ep_node, node->get_next());
-      next_context->push_back(*ep);
+      auto ep_node  = ExecutionPlan::build_node(SHARED_THIS_MODULE, node);
+      auto ep       = context.get_current();
+      auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
+
+      ep.add(new_leaf);
+      context.add(ep);
     }
 
     return BDD::BDDVisitor::Action::STOP;

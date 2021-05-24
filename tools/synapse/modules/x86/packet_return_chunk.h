@@ -8,9 +8,9 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class MapGet : public __Module {
+class PacketReturnChunk : public __Module {
 public:
-  MapGet() : __Module(Target::x86, "MapGet") {}
+  PacketReturnChunk() : __Module(Target::x86, "PacketReturnChunk") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {
@@ -20,11 +20,11 @@ private:
   BDD::BDDVisitor::Action visitCall(const BDD::Call* node) override {
     auto call = node->get_call();
 
-    if (call.function_name == "map_get") {
+    if (call.function_name == "packet_return_chunk") {
       auto ep_node  = ExecutionPlan::build_node(SHARED_THIS_MODULE, node);
       auto ep       = context.get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-      
+
       ep.add(new_leaf);
       context.add(ep);
     }

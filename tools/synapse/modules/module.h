@@ -16,7 +16,46 @@ class   ExecutionPlan;
 class    __Module;
 
 typedef std::shared_ptr<__Module>  Module;
-typedef std::vector<ExecutionPlan> context_t;
+
+class Context {
+private:
+  std::vector<ExecutionPlan> next_eps;
+  ExecutionPlan*             current_ep;
+  bool                       success;
+ 
+public:
+  // context_t(ExecutionPlan ep) : current_ep(ep), success(false) {}
+  Context() : success(false) {}
+  Context(const BDD::Node* node) {
+    next_eps.emplace_back(node);
+  }
+
+  void add(ExecutionPlan& next_ep) {
+    next_eps.push_back(next_ep);
+    success = true;
+  }
+
+  void reset(ExecutionPlan* _current_ep) {
+    next_eps.clear();
+    current_ep = _current_ep;
+    success = false;
+  }
+
+  const ExecutionPlan& get_current() const {
+    return *current_ep;
+  }
+
+  const std::vector<ExecutionPlan>& get_next_eps() const {
+    return next_eps;
+  }
+
+  bool processed() const { return success; }
+  int  size()      const { return next_eps.size(); }
+
+  void set_processed(bool _success) {
+    success = _success;
+  }
+};
 
 class __Module : public BDD::BDDVisitor {
 protected:
@@ -24,8 +63,7 @@ protected:
   const char* name;
   BDD::Node*  node;
 
-  ExecutionPlan* ep;           // intermediary data
-  context_t*     next_context; // intermediary data
+  Context     context; // intermediary data
 
 protected:
   __Module(Target _target, const char* _name)
@@ -54,7 +92,7 @@ public:
     assert(false && "I should not be here");
   }
 
-  context_t process_node(ExecutionPlan _ep, const BDD::Node* node);
+  Context& process_node(ExecutionPlan _ep, const BDD::Node* node);
 
   virtual void visit(ExecutionPlanVisitor& visitor) const = 0;
 };

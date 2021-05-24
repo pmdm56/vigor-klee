@@ -43,18 +43,32 @@ public:
 
   template<class T>
   ExecutionPlan search(Heuristic<T> h) {
-    context_t context;
-
-    auto root = bdd.get_process();
-    context.emplace_back(root);
+    Context context(bdd.get_process());
     h.add(context);
 
     while (1) {
+      Log::dbg() << "# exec plans: " << h.size() << "\n";
+
       bool processed = false;
       auto next_ep   = h.pop();
       auto next_node = next_ep.get_next_node();
 
-      Log::dbg() << "# exec plans: " << h.size() << "\n";
+      switch (next_node->get_type()) {
+        case BDD::Node::NodeType::CALL: {
+          auto call = static_cast<const BDD::Call*>(next_node);
+          Log::dbg() << "processing " << call->get_call().function_name << "...\n";
+          break;
+        }
+        case BDD::Node::NodeType::BRANCH:
+          Log::dbg() << "processing branch" << "...\n";
+          break;
+        case BDD::Node::NodeType::RETURN_INIT:
+        case BDD::Node::NodeType::RETURN_PROCESS:
+        case BDD::Node::NodeType::RETURN_RAW:
+          Log::dbg() << "processing return" << "...\n";
+          break;
+      }
+
       Graphviz::visualize(next_ep);
 
       // Should we terminate when we find the first result?
@@ -65,7 +79,7 @@ public:
       for (auto module : modules) {
         auto next_context = module->process_node(next_ep, next_node);
 
-        if (next_context.size()) {
+        if (next_context.processed()) {
           Log::dbg() << "MATCH "
                      << module->get_target_name() << " : " << module->get_name()
                      << " -> " << next_context.size() << " exec plans"

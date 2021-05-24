@@ -5,6 +5,7 @@
 #include "map_get.h"
 #include "current_time.h"
 #include "packet_borrow_next_chunk.h"
+#include "packet_return_chunk.h"
 
 namespace synapse {
 namespace targets {
@@ -15,6 +16,7 @@ std::vector<Module> get_modules() {
     MODULE(MapGet),
     MODULE(CurrentTime),
     MODULE(PacketBorrowNextChunk),
+    MODULE(PacketReturnChunk),
   };
 
   return modules;
