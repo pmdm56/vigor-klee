@@ -24,8 +24,8 @@ private:
   bool                       success;
  
 public:
-  // context_t(ExecutionPlan ep) : current_ep(ep), success(false) {}
   Context() : success(false) {}
+  
   Context(const BDD::Node* node) {
     next_eps.emplace_back(node);
   }
@@ -58,7 +58,18 @@ public:
 };
 
 class __Module : public BDD::BDDVisitor {
+public:
+  enum ModuleType {
+    x86_CurrentTime,
+    x86_Else,
+    x86_IfThen,
+    x86_MapGet,
+    x86_PacketBorrowNextChunk,
+    x86_PacketReturnChunk,
+  };
+
 protected:
+  ModuleType  type;
   Target      target;
   const char* name;
   BDD::Node*  node;
@@ -66,13 +77,14 @@ protected:
   Context     context; // intermediary data
 
 protected:
-  __Module(Target _target, const char* _name)
-    : target(_target), name(_name) {}
+  __Module(ModuleType _type, Target _target, const char* _name)
+    : type(_type), target(_target), name(_name) {}
 
 public:
   __Module() {}
   __Module(const __Module& m) : node(m.node) {}
 
+  ModuleType  get_type()   const { return type; }
   const char* get_name()   const { return name;   }
   Target      get_target() const { return target; }
   BDD::Node*  get_node()   const { return node;   }

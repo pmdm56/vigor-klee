@@ -8,36 +8,53 @@
 namespace synapse {
 
 class   ExecutionPlan;
-class   __ExecutionPlanNode;
+class   ExecutionPlanNode;
 
-typedef std::shared_ptr<__ExecutionPlanNode> ExecutionPlanNode;
-typedef std::vector<ExecutionPlanNode> Branches;
+typedef std::shared_ptr<ExecutionPlanNode> ExecutionPlanNode_ptr;
+typedef std::vector<ExecutionPlanNode_ptr> Branches;
 
-class __ExecutionPlanNode {
+class ExecutionPlanNode {
 friend class ExecutionPlan;
 
 private:
-  Module           module;
-  Branches         next;
-  const BDD::Node* node;
-  int              id;
+  Module                module;
+  Branches              next;
+  ExecutionPlanNode_ptr prev;
+  const BDD::Node*      node;
+  int                   id;
+
+  static int counter;
 
 private:  
-  __ExecutionPlanNode(Module _module, const BDD::Node* _node, int _id)
-    : module(_module), node(_node), id(_id) {}
+  ExecutionPlanNode(Module _module, const BDD::Node* _node)
+    : module(_module), node(_node), id(counter++) {}
 
 public:
   void set_next(Branches _next) {
     assert(!next.size());
     next = _next;
+    for (auto n : next) {
+      assert(!n->get_prev());
+      n->set_prev(std::shared_ptr<ExecutionPlanNode>(this));
+    }
   }
 
-  const Module&   get_module() const { return module; }
-  const Branches& get_next()   const { return next; }
-  int             get_id()     const { return id; }
+  void set_prev(ExecutionPlanNode_ptr _prev) {
+    prev = _prev;
+  }
+
+  const Module&         get_module() const { return module; }
+  const Branches&       get_next()   const { return next; }
+  ExecutionPlanNode_ptr get_prev()   const { return prev; }
+  int                   get_id()     const { return id; }
 
   void visit(ExecutionPlanVisitor& visitor) const {
     visitor.visit(this);
+  }
+
+  static ExecutionPlanNode_ptr build(Module _module, const BDD::Node* _node) {
+    ExecutionPlanNode* epn = new ExecutionPlanNode(_module, _node);
+    return std::shared_ptr<ExecutionPlanNode>(epn);
   }
 };
 
@@ -45,17 +62,17 @@ public:
 class ExecutionPlan {
 public:
   struct leaf_t {
-    ExecutionPlanNode leaf;
+    ExecutionPlanNode_ptr leaf;
     const BDD::Node*  next;
 
     leaf_t(const BDD::Node* _next) : next(_next) {}
 
-    leaf_t(ExecutionPlanNode _leaf, const BDD::Node* _next)
+    leaf_t(ExecutionPlanNode_ptr _leaf, const BDD::Node* _next)
       : leaf(_leaf), next(_next) {}
   };
 
 private:
-  ExecutionPlanNode   root;
+  ExecutionPlanNode_ptr   root;
   std::vector<leaf_t> leafs;
 
 // metadata
@@ -92,7 +109,7 @@ private:
 public:
   int get_depth() const { return depth; }
 
-  ExecutionPlanNode get_root() { return root; }
+  ExecutionPlanNode_ptr get_root() { return root; }
 
   const BDD::Node* get_next_node() {
     const BDD::Node* next;
@@ -104,8 +121,8 @@ public:
     return next;
   }
 
-  ExecutionPlanNode get_active_leaf() {
-    ExecutionPlanNode leaf;
+  ExecutionPlanNode_ptr get_active_leaf() const {
+    ExecutionPlanNode_ptr leaf;
 
     if (leafs.size()) {
       leaf = leafs[0].leaf;
@@ -141,7 +158,9 @@ public:
     assert(leafs.size());
 
     Branches branches;
-    for (auto leaf : _leafs) branches.push_back(leaf.leaf);
+    for (auto leaf : _leafs)
+      branches.push_back(leaf.leaf);
+
     leafs[0].leaf->set_next(branches);
 
     leafs = _leafs;
@@ -152,12 +171,6 @@ public:
 
   void visit(ExecutionPlanVisitor& visitor) const {
     visitor.visit(*this);
-  }
-
-  static ExecutionPlanNode build_node(Module _module, const BDD::Node* _node) {
-    static int id = 0;
-    __ExecutionPlanNode* epn = new __ExecutionPlanNode(_module, _node, id++);
-    return std::shared_ptr<__ExecutionPlanNode>(epn);
   }
 };
 

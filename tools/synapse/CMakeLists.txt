@@ -9,6 +9,7 @@
 add_executable(synapse
   synapse.cpp
   modules/module.cpp
+  execution_plan/execution_plan.cpp
   execution_plan/visitors/visitor.cpp
   log.cpp
   ../load-call-paths/load-call-paths.cpp

@@ -6,6 +6,8 @@
 #include "current_time.h"
 #include "packet_borrow_next_chunk.h"
 #include "packet_return_chunk.h"
+#include "if_then.h"
+#include "else.h"
 
 namespace synapse {
 namespace targets {
@@ -17,6 +19,8 @@ std::vector<Module> get_modules() {
     MODULE(CurrentTime),
     MODULE(PacketBorrowNextChunk),
     MODULE(PacketReturnChunk),
+    MODULE(IfThen),
+    MODULE(Else),
   };
 
   return modules;

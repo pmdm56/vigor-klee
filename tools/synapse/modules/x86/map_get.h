@@ -10,7 +10,7 @@ namespace x86 {
 
 class MapGet : public __Module {
 public:
-  MapGet() : __Module(Target::x86, "MapGet") {}
+  MapGet() : __Module(ModuleType::x86_MapGet, Target::x86, "MapGet") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {
@@ -21,7 +21,7 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "map_get") {
-      auto ep_node  = ExecutionPlan::build_node(SHARED_THIS_MODULE, node);
+      auto ep_node  = ExecutionPlanNode::build(SHARED_THIS_MODULE, node);
       auto ep       = context.get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       

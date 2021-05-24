@@ -10,7 +10,8 @@ namespace x86 {
 
 class PacketReturnChunk : public __Module {
 public:
-  PacketReturnChunk() : __Module(Target::x86, "PacketReturnChunk") {}
+  PacketReturnChunk()
+    : __Module(ModuleType::x86_PacketReturnChunk, Target::x86, "PacketReturnChunk") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {
@@ -21,7 +22,7 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "packet_return_chunk") {
-      auto ep_node  = ExecutionPlan::build_node(SHARED_THIS_MODULE, node);
+      auto ep_node  = ExecutionPlanNode::build(SHARED_THIS_MODULE, node);
       auto ep       = context.get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
 

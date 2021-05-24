@@ -97,7 +97,7 @@ public:
     ofs.flush();
   }
 
-  void visit(const __ExecutionPlanNode* ep_node) override {
+  void visit(const ExecutionPlanNode* ep_node) override {
     auto mod  = ep_node->get_module();
     auto next = ep_node->get_next();
     auto id   = ep_node->get_id();
@@ -124,6 +124,14 @@ public:
 
   void visit(const targets::x86::PacketReturnChunk* node) override {
     function_call(node->get_target(), "packet_return_chunk");
+  }
+
+  void visit(const targets::x86::IfThen* node) override {
+    function_call(node->get_target(), "if");
+  }
+
+  void visit(const targets::x86::Else* node) override {
+    function_call(node->get_target(), "else");
   }
 };
 
