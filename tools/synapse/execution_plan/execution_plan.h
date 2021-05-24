@@ -19,10 +19,11 @@ private:
   Module           module;
   Branches         branches;
   const BDD::Node* node;
+  int              id;
 
 private:  
-  __ExecutionPlanNode(Module _module, const BDD::Node* _node)
-    : module(_module), node(_node) {}
+  __ExecutionPlanNode(Module _module, const BDD::Node* _node, int _id)
+    : module(_module), node(_node), id(_id) {}
 
 public:
   void set_branches(Branches _branches) {
@@ -32,6 +33,11 @@ public:
 
   const Module&   get_module()   const { return module; }
   const Branches& get_branches() const { return branches; }
+  int             get_id()       const { return id; }
+
+  void visit(ExecutionPlanVisitor& visitor) const {
+    visitor.visit(this);
+  }
 };
 
 //TODO: create execution plan visitor (for printing, generating code, etc)
@@ -103,7 +109,8 @@ public:
   }
 
   static ExecutionPlanNode build_node(Module _module, const BDD::Node* _node) {
-    __ExecutionPlanNode* epn = new __ExecutionPlanNode(_module, _node);
+    static int id = 0;
+    __ExecutionPlanNode* epn = new __ExecutionPlanNode(_module, _node, id++);
     return std::shared_ptr<__ExecutionPlanNode>(epn);
   }
 };

@@ -19,23 +19,25 @@ typedef std::shared_ptr<__Module>  Module;
 typedef std::vector<ExecutionPlan> context_t;
 
 class __Module : public BDD::BDDVisitor {
-private:
-  Target     target;
-  BDD::Node* node;
-
 protected:
-  __Module(Target _target) : target(_target) {}
+  Target      target;
+  const char* name;
+  BDD::Node*  node;
 
-protected:
   ExecutionPlan* ep;           // intermediary data
   context_t*     next_context; // intermediary data
+
+protected:
+  __Module(Target _target, const char* _name)
+    : target(_target), name(_name) {}
 
 public:
   __Module() {}
   __Module(const __Module& m) : node(m.node) {}
 
-  Target     get_target() const { return target; }
-  BDD::Node* get_node()   const { return node; }
+  const char* get_name()   const { return name;   }
+  Target      get_target() const { return target; }
+  BDD::Node*  get_node()   const { return node;   }
 
   std::string get_target_name() {
     switch (target) {

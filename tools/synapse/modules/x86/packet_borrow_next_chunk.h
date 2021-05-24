@@ -8,9 +8,9 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class MapGet : public __Module {
+class PacketBorrowNextChunk : public __Module {
 public:
-  MapGet() : __Module(Target::x86, "MapGet") {}
+  PacketBorrowNextChunk() : __Module(Target::x86, "PacketBorrowNextChunk") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {
@@ -20,7 +20,7 @@ private:
   BDD::BDDVisitor::Action visitCall(const BDD::Call* node) override {
     auto call = node->get_call();
 
-    if (call.function_name == "map_get") {
+    if (call.function_name == "packet_borrow_next_chunk") {
       auto ep_node = ExecutionPlan::build_node(SHARED_THIS_MODULE, node);
       ep->add(ep_node, node->get_next());
       next_context->push_back(*ep);

@@ -54,8 +54,8 @@ public:
       auto next_ep   = h.pop();
       auto next_node = next_ep.get_next_node();
 
-      Graphviz gv;
-      next_ep.visit(gv);
+      Log::dbg() << "# exec plans: " << h.size() << "\n";
+      Graphviz::visualize(next_ep);
 
       // Should we terminate when we find the first result?
       if (!next_node && h.get_cfg().terminate_on_first_solution()) {
@@ -67,11 +67,15 @@ public:
 
         if (next_context.size()) {
           Log::dbg() << "MATCH "
-                     << module->get_target_name() << " -> "
-                     << next_context.size() << " exec plans" << "\n";
+                     << module->get_target_name() << " : " << module->get_name()
+                     << " -> " << next_context.size() << " exec plans"
+                     << "\n";
           h.add(next_context);
           processed = true;
-          break;
+        } else {
+          Log::dbg() << "FAIL  "
+                     << module->get_target_name() << " : " << module->get_name()
+                     << "\n";
         }
       }
 

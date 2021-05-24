@@ -6,19 +6,21 @@
 namespace synapse {
 
 void ExecutionPlanVisitor::visit(ExecutionPlan ep) {
-  std::vector<ExecutionPlanNode> nodes{ ep.get_root() };
+  auto root = ep.get_root();
 
-  while (nodes.size() && nodes[0]) {
-    auto node = nodes[0];
-    auto mod  = node->get_module();
+  if (root) {
+    root->visit(*this);
+  }
+}
 
-    mod->visit(*this);
+void ExecutionPlanVisitor::visit(const __ExecutionPlanNode* ep_node) {
+  auto mod      = ep_node->get_module();
+  auto branches = ep_node->get_branches();
 
-    auto branches = node->get_branches();
+  mod->visit(*this);
 
-    nodes.erase(nodes.begin());
-    branches.insert(branches.end(), nodes.begin(), nodes.end());
-    nodes = branches;
+  for (auto branch : branches) {
+    branch->visit(*this);
   }
 }
 

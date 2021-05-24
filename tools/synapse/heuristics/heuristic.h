@@ -42,6 +42,10 @@ public:
     }
   }
 
+  int size() const {
+    return execution_plans.size();
+  }
+
   T get_cfg() const { return configuration; }
 };
 
