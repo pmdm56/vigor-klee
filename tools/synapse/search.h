@@ -48,19 +48,16 @@ public:
 
     while (!h.finished()) {
       Log::dbg() << "\n";
-      Log::dbg() << "=============================================\n";
+      Log::dbg() << "=======================================================\n";
       Log::dbg() << "Available " << h.size() << "\n";
 
       bool processed = false;
       auto next_ep   = h.pop();
-      Log::dbg() << "leaf " << next_ep.get_active_leaf().get() << "\n";
-      // Graphviz::visualize(next_ep);
-
       auto next_node = next_ep.get_next_node();
       assert(next_node);
 
-      Log::dbg() << "Node      " << next_node << "\n";
       Log::dbg() << "Node      " << next_node->dump(true) << "\n";
+      // Graphviz::visualize(next_ep);
 
       if (!next_node && h.get_cfg().terminate_on_first_solution()) {
         return next_ep;
@@ -81,7 +78,7 @@ public:
 
       // FIXME: No module is capable of doing anything. What should we do?
       assert(processed && "No module can handle the next BDD node");
-      Log::dbg() << "=============================================\n";
+      Log::dbg() << "=======================================================\n";
     }
 
     return h.get();

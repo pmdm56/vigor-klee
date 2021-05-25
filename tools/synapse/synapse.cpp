@@ -27,6 +27,7 @@
 #include "modules/modules.h"
 #include "heuristics/heuristics.h"
 #include "search.h"
+#include "execution_plan/visitors/graphviz.h"
 #include "log.h"
 
 namespace {
@@ -60,8 +61,10 @@ int main(int argc, char **argv) {
   se.add_target(synapse::Target::x86);
   se.add_target(synapse::Target::Tofino);
   
-  // se.search(dfs);
-  se.search(most_compact);
+  // auto winner = se.search(dfs);
+  auto winner = se.search(most_compact);
+
+  // synapse::Graphviz::visualize(winner);
   
   for (auto call_path : call_paths) {
     delete call_path;
