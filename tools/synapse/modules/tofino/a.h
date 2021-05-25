@@ -4,37 +4,31 @@
 #include "../module.h"
 #include "../../log.h"
 
-#include "else.h"
-
 namespace synapse {
 namespace targets {
-namespace x86 {
+namespace tofino {
 
-class IfThen : public __Module {
+class A : public __Module {
 public:
-  IfThen() : __Module(ModuleType::x86_IfThen, Target::x86, "IfThen") {}
+  A() : __Module(ModuleType::x86_CurrentTime, Target::Tofino, "Table") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {
-    auto _else          = std::shared_ptr<Else>(new Else());
-
-    auto ifthen_ep_node = ExecutionPlanNode::build(CREATE_SHARED_MODULE(IfThen), node);
-    auto else_ep_node   = ExecutionPlanNode::build(_else, node);
-
-    auto ep             = context->get_current();
-
-    auto ifthen_leaf    = ExecutionPlan::leaf_t(ifthen_ep_node, node->get_on_true());
-    auto else_leaf      = ExecutionPlan::leaf_t(else_ep_node, node->get_on_false());
-
-    std::vector<ExecutionPlan::leaf_t> new_leafs{ ifthen_leaf, else_leaf };
-
-    ep.add(new_leafs);
-    context->add(ep);
-
     return BDD::BDDVisitor::Action::STOP;
   }
 
   BDD::BDDVisitor::Action visitCall(const BDD::Call* node) override {
+    auto call = node->get_call();
+
+    if (call.function_name == "map_get") {
+      auto ep_node  = ExecutionPlanNode::build(CREATE_SHARED_MODULE(A), node);
+      auto ep       = context->get_current();
+      auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
+      
+      ep.add(new_leaf);
+      context->add(ep);
+    }
+
     return BDD::BDDVisitor::Action::STOP;
   }
 

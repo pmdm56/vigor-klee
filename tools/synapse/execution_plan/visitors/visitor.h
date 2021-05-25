@@ -16,6 +16,11 @@ namespace x86 {
   class IfThen;
   class Else;
 }
+
+namespace tofino {
+  class A;
+  class B;
+}
 }
 
 class ExecutionPlanVisitor {
@@ -29,6 +34,9 @@ public:
   virtual void visit(const targets::x86::PacketReturnChunk* node)     = 0;
   virtual void visit(const targets::x86::IfThen* node)                = 0;
   virtual void visit(const targets::x86::Else* node)                  = 0;
+
+  virtual void visit(const targets::tofino::A* node)                  = 0;
+  virtual void visit(const targets::tofino::B* node)                  = 0;
 };
 
 }

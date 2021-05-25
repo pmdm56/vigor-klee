@@ -133,6 +133,14 @@ public:
   void visit(const targets::x86::Else* node) override {
     function_call(node->get_target(), "else");
   }
+
+  void visit(const targets::tofino::A* node) override {
+    function_call(node->get_target(), "Tables");
+  }
+
+  void visit(const targets::tofino::B* node) override {
+    function_call(node->get_target(), "Registers");
+  }
 };
 
 }

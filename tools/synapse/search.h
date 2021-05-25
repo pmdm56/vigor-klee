@@ -28,7 +28,7 @@ public:
         _modules = targets::x86::get_modules();
         break;
       case Target::Tofino:
-        // TODO:
+        _modules = targets::tofino::get_modules();
         break;
       case Target::Netronome:
         // TODO:

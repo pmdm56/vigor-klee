@@ -16,11 +16,12 @@ class Heuristic {
 static_assert(std::is_base_of<HeuristicConfiguration, T>::value, "T must inherit from HeuristicConfiguration");
 
 protected:
-  std::set<ExecutionPlan, T> execution_plans;
-  T                          configuration;
+  std::multiset<ExecutionPlan, T> execution_plans;
+  T                               configuration;
 
 private:
   typename std::set<ExecutionPlan, T>::iterator get_it() {
+    assert(execution_plans.size());
     return std::prev(execution_plans.end());
   }
 
@@ -37,6 +38,7 @@ public:
   }
 
   void add(Context context) {
+    assert(context.get_next_eps().size());
     for (auto ep : context.get_next_eps()) {
       execution_plans.insert(ep);
     }

@@ -23,6 +23,7 @@
 #include "call-paths-to-bdd.h"
 
 #include "execution_plan/execution_plan.h"
+#include "execution_plan/context.h"
 #include "modules/modules.h"
 #include "heuristics/heuristics.h"
 #include "search.h"
@@ -52,10 +53,15 @@ int main(int argc, char **argv) {
 
   BDD::BDD bdd(call_paths);
   synapse::SearchEngine se(bdd);
+  
   synapse::DFS dfs;
+  synapse::MostCompact most_compact;
 
   se.add_target(synapse::Target::x86);
-  se.search(dfs);
+  se.add_target(synapse::Target::Tofino);
+  
+  // se.search(dfs);
+  se.search(most_compact);
   
   for (auto call_path : call_paths) {
     delete call_path;
