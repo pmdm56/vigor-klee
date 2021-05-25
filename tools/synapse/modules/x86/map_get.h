@@ -8,9 +8,9 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class MapGet : public __Module {
+class MapGet : public Module {
 public:
-  MapGet() : __Module(ModuleType::x86_MapGet, Target::x86, "MapGet") {}
+  MapGet() : Module(ModuleType::x86_MapGet, Target::x86, "MapGet") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {

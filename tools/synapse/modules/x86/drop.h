@@ -8,9 +8,9 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class Drop : public __Module {
+class Drop : public Module {
 public:
-  Drop() : __Module(ModuleType::x86_Drop, Target::x86, "Drop") {}
+  Drop() : Module(ModuleType::x86_Drop, Target::x86, "Drop") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {

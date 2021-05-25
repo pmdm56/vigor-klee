@@ -10,9 +10,9 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class IfThen : public __Module {
+class IfThen : public Module {
 public:
-  IfThen() : __Module(ModuleType::x86_IfThen, Target::x86, "IfThen") {}
+  IfThen() : Module(ModuleType::x86_IfThen, Target::x86, "IfThen") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {

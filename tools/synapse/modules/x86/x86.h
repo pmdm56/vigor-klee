@@ -16,8 +16,8 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-std::vector<Module> get_modules() {
-  std::vector<Module> modules {
+std::vector<Module_ptr> get_modules() {
+  std::vector<Module_ptr> modules {
     MODULE(MapGet),
     MODULE(CurrentTime),
     MODULE(PacketBorrowNextChunk),

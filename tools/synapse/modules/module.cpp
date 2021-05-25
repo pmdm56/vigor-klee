@@ -4,11 +4,11 @@
 
 namespace synapse {
 
-__Module::~__Module() {
+Module::~Module() {
   delete context;
 }
 
-Context __Module::process_node(ExecutionPlan ep, const BDD::Node* node) {
+Context Module::process_node(ExecutionPlan ep, const BDD::Node* node) {
   if (context == nullptr) {
     context = new Context(ep);
   } else {

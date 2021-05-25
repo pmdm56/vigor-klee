@@ -16,7 +16,7 @@ class ExecutionPlanNode {
 friend class ExecutionPlan;
 
 private:
-  Module                module;
+  Module_ptr                module;
   Branches              next;
   ExecutionPlanNode_ptr prev;
   const BDD::Node*      node;
@@ -25,7 +25,7 @@ private:
   static int counter;
 
 private:  
-  ExecutionPlanNode(Module _module, const BDD::Node* _node)
+  ExecutionPlanNode(Module_ptr _module, const BDD::Node* _node)
     : module(_module), node(_node), id(counter++) {}
   
   ExecutionPlanNode(const ExecutionPlanNode* ep_node)
@@ -42,7 +42,7 @@ public:
     prev = _prev;
   }
 
-  const Module&         get_module() const { return module; }
+  const Module_ptr&         get_module() const { return module; }
   const Branches&       get_next()   const { return next; }
   ExecutionPlanNode_ptr get_prev()   const { return prev; }
   int                   get_id()     const { return id; }
@@ -51,7 +51,7 @@ public:
     visitor.visit(this);
   }
 
-  static ExecutionPlanNode_ptr build(Module _module, const BDD::Node* _node) {
+  static ExecutionPlanNode_ptr build(Module_ptr _module, const BDD::Node* _node) {
     ExecutionPlanNode* epn = new ExecutionPlanNode(_module, _node);
     return std::shared_ptr<ExecutionPlanNode>(epn);
   }

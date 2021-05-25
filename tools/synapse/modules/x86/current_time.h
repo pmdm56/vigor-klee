@@ -8,9 +8,9 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class CurrentTime : public __Module {
+class CurrentTime : public Module {
 public:
-  CurrentTime() : __Module(ModuleType::x86_CurrentTime, Target::x86, "CurrentTime") {}
+  CurrentTime() : Module(ModuleType::x86_CurrentTime, Target::x86, "CurrentTime") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {

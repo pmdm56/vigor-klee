@@ -8,9 +8,9 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class Broadcast : public __Module {
+class Broadcast : public Module {
 public:
-  Broadcast() : __Module(ModuleType::x86_Broadcast, Target::x86, "Broadcast") {}
+  Broadcast() : Module(ModuleType::x86_Broadcast, Target::x86, "Broadcast") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {

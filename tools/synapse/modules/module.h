@@ -4,7 +4,7 @@
 
 #include "../execution_plan/visitors/visitor.h"
 
-#define CREATE_SHARED_MODULE(M) (std::shared_ptr<__Module>(new (M)()))
+#define CREATE_SHARED_MODULE(M) (std::shared_ptr<Module>(new (M)()))
 #define MODULE(X)               (std::make_shared<X>())
 
 namespace synapse {
@@ -14,12 +14,12 @@ enum Target {
 };
 
 class ExecutionPlan;
-class  __Module;
+class  Module;
 class Context;
 
-typedef std::shared_ptr<__Module>  Module;
+typedef std::shared_ptr<Module>  Module_ptr;
 
-class __Module : public BDD::BDDVisitor {
+class Module : public BDD::BDDVisitor {
 public:
   enum ModuleType {
     x86_CurrentTime,
@@ -42,12 +42,12 @@ protected:
   Context*    context; // intermediary data
 
 protected:
-  __Module(ModuleType _type, Target _target, const char* _name)
+  Module(ModuleType _type, Target _target, const char* _name)
     : type(_type), target(_target), name(_name), context(nullptr) {}
 
 public:
-  __Module() {}
-  __Module(const __Module& m) : __Module(m.type, m.target, m.name) {
+  Module() {}
+  Module(const Module& m) : Module(m.type, m.target, m.name) {
     node = m.node;
   }
 
@@ -56,7 +56,7 @@ public:
   Target      get_target() const { return target; }
   BDD::Node*  get_node()   const { return node;   }
 
-  std::string get_target_name() {
+  std::string get_target_name() const {
     switch (target) {
       case x86:
         return "x86";
@@ -75,7 +75,7 @@ public:
 
   virtual void visit(ExecutionPlanVisitor& visitor) const = 0;
 
-  ~__Module();
+  ~Module();
 };
 
 }

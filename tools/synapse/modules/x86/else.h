@@ -8,9 +8,9 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class Else : public __Module {
+class Else : public Module {
 public:
-  Else() : __Module(ModuleType::x86_Else, Target::x86, "Else") {}
+  Else() : Module(ModuleType::x86_Else, Target::x86, "Else") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {

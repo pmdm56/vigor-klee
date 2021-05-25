@@ -8,10 +8,10 @@ namespace synapse {
 namespace targets {
 namespace x86 {
 
-class PacketReturnChunk : public __Module {
+class PacketReturnChunk : public Module {
 public:
   PacketReturnChunk()
-    : __Module(ModuleType::x86_PacketReturnChunk, Target::x86, "PacketReturnChunk") {}
+    : Module(ModuleType::x86_PacketReturnChunk, Target::x86, "PacketReturnChunk") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {

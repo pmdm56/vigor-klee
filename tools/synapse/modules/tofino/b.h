@@ -8,9 +8,9 @@ namespace synapse {
 namespace targets {
 namespace tofino {
 
-class B : public __Module {
+class B : public Module {
 public:
-  B() : __Module(ModuleType::x86_CurrentTime, Target::Tofino, "Register") {}
+  B() : Module(ModuleType::x86_CurrentTime, Target::Tofino, "Register") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {

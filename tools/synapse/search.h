@@ -9,7 +9,7 @@ namespace synapse {
 
 class SearchEngine {
 private:
-  std::vector<synapse::Module> modules;
+  std::vector<synapse::Module_ptr> modules;
   BDD::BDD                     bdd;
 
 public:  
@@ -21,7 +21,7 @@ public:
 public:
 
   void add_target(Target target) {
-    std::vector<Module> _modules;
+    std::vector<Module_ptr> _modules;
 
     switch (target) {
       case Target::x86:

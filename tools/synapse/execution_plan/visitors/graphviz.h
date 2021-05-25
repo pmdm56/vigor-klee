@@ -67,8 +67,8 @@ public:
 private:
   Graphviz() : Graphviz(get_rand_fname()) {}
 
-  void function_call(Target target, std::string label) {
-    ofs << "[label=\"" << label << "\", ";
+  void function_call(Target target, std::string target_name, std::string label) {
+    ofs << "[label=\"" << target_name << "::" << label << "\", ";
     ofs << "color=" << node_colors[target] << "];";
     ofs << "\n";
   }
@@ -117,39 +117,39 @@ public:
    ********************************************/
 
   void visit(const targets::x86::MapGet* node) override {
-    function_call(node->get_target(), "map_get");
+    function_call(node->get_target(), node->get_target_name(), "map_get");
   }
 
   void visit(const targets::x86::CurrentTime* node) override {
-    function_call(node->get_target(), "current_time");
+    function_call(node->get_target(), node->get_target_name(), "current_time");
   }
 
   void visit(const targets::x86::PacketBorrowNextChunk* node) override {
-    function_call(node->get_target(), "packet_borrow_next_chunk");
+    function_call(node->get_target(), node->get_target_name(), "packet_borrow_next_chunk");
   }
 
   void visit(const targets::x86::PacketReturnChunk* node) override {
-    function_call(node->get_target(), "packet_return_chunk");
+    function_call(node->get_target(), node->get_target_name(), "packet_return_chunk");
   }
 
   void visit(const targets::x86::IfThen* node) override {
-    function_call(node->get_target(), "if");
+    function_call(node->get_target(), node->get_target_name(), "if");
   }
 
   void visit(const targets::x86::Else* node) override {
-    function_call(node->get_target(), "else");
+    function_call(node->get_target(), node->get_target_name(), "else");
   }
 
   void visit(const targets::x86::Forward* node) override {
-    function_call(node->get_target(), "forward");
+    function_call(node->get_target(), node->get_target_name(), "forward");
   }
 
   void visit(const targets::x86::Broadcast* node) override {
-    function_call(node->get_target(), "drop");
+    function_call(node->get_target(), node->get_target_name(), "drop");
   }
 
   void visit(const targets::x86::Drop* node) override {
-    function_call(node->get_target(), "broadcast");
+    function_call(node->get_target(), node->get_target_name(), "broadcast");
   }
 
   /********************************************
@@ -159,11 +159,11 @@ public:
    ********************************************/
 
   void visit(const targets::tofino::A* node) override {
-    function_call(node->get_target(), "Tables");
+    function_call(node->get_target(), node->get_target_name(), "Tables");
   }
 
   void visit(const targets::tofino::B* node) override {
-    function_call(node->get_target(), "Registers");
+    function_call(node->get_target(), node->get_target_name(), "Registers");
   }
 };
 

@@ -9,8 +9,8 @@ namespace synapse {
 namespace targets {
 namespace tofino {
 
-std::vector<Module> get_modules() {
-  std::vector<Module> modules {
+std::vector<Module_ptr> get_modules() {
+  std::vector<Module_ptr> modules {
     MODULE(A),
     MODULE(B),
   };
