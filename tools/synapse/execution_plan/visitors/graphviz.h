@@ -74,7 +74,7 @@ private:
   }
 
 public:
-  static void visualize(ExecutionPlan& ep) {
+  static void visualize(const ExecutionPlan& ep) {
     if (ep.get_root()) {
       Graphviz gv;
       ep.visit(gv);
@@ -110,6 +110,12 @@ public:
     }
   }
 
+  /********************************************
+   * 
+   *                  x86
+   * 
+   ********************************************/
+
   void visit(const targets::x86::MapGet* node) override {
     function_call(node->get_target(), "map_get");
   }
@@ -133,6 +139,24 @@ public:
   void visit(const targets::x86::Else* node) override {
     function_call(node->get_target(), "else");
   }
+
+  void visit(const targets::x86::Forward* node) override {
+    function_call(node->get_target(), "forward");
+  }
+
+  void visit(const targets::x86::Broadcast* node) override {
+    function_call(node->get_target(), "drop");
+  }
+
+  void visit(const targets::x86::Drop* node) override {
+    function_call(node->get_target(), "broadcast");
+  }
+
+  /********************************************
+   * 
+   *                  Tofino
+   * 
+   ********************************************/
 
   void visit(const targets::tofino::A* node) override {
     function_call(node->get_target(), "Tables");

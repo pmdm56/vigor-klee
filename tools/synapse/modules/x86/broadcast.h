@@ -4,35 +4,16 @@
 #include "../module.h"
 #include "../../log.h"
 
-#include "else.h"
-
 namespace synapse {
 namespace targets {
 namespace x86 {
 
-class IfThen : public __Module {
+class Broadcast : public __Module {
 public:
-  IfThen() : __Module(ModuleType::x86_IfThen, Target::x86, "IfThen") {}
+  Broadcast() : __Module(ModuleType::x86_Broadcast, Target::x86, "Broadcast") {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch* node) override {
-    auto _else          = std::shared_ptr<Else>(new Else());
-
-    auto ifthen_ep_node = ExecutionPlanNode::build(CREATE_SHARED_MODULE(IfThen), node);
-    auto else_ep_node   = ExecutionPlanNode::build(_else, node);
-
-    auto ep             = context->get_current();
-
-    auto ifthen_leaf    = ExecutionPlan::leaf_t(ifthen_ep_node, node->get_on_true());
-    auto else_leaf      = ExecutionPlan::leaf_t(else_ep_node, node->get_on_false());
-
-    std::vector<ExecutionPlan::leaf_t> new_leafs{ ifthen_leaf, else_leaf };
-
-    ep.add(new_leafs);
-
-    auto clone = ep.clone();
-    context->add(ep);
-
     return BDD::BDDVisitor::Action::STOP;
   }
 
@@ -45,6 +26,15 @@ private:
   }
 
   BDD::BDDVisitor::Action visitReturnProcess(const BDD::ReturnProcess* node) override {
+    if (node->get_return_operation() == BDD::ReturnProcess::Operation::BCAST) {
+      auto ep_node  = ExecutionPlanNode::build(CREATE_SHARED_MODULE(Broadcast), node);
+      auto ep       = context->get_current();
+      auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
+      
+      ep.add(new_leaf);
+      context->add(ep);
+    }
+    
     return BDD::BDDVisitor::Action::STOP;
   }
 

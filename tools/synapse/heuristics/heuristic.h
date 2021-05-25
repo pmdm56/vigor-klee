@@ -20,19 +20,42 @@ protected:
   T                               configuration;
 
 private:
-  typename std::set<ExecutionPlan, T>::iterator get_it() {
+  typename std::set<ExecutionPlan, T>::iterator get_best_it() const {
     assert(execution_plans.size());
     return std::prev(execution_plans.end());
   }
 
+  typename std::set<ExecutionPlan, T>::iterator get_next_it() const {
+    assert(execution_plans.size());
+    auto conf = static_cast<const HeuristicConfiguration*>(&configuration);
+    auto it   = std::prev(execution_plans.end());
+
+    if (!conf->terminate_on_first_solution()) {
+      while (!it->get_next_node() && it != execution_plans.begin()) {
+        --it;
+      }
+
+      if (!it->get_next_node()) {
+        it = execution_plans.end();
+      }
+    }
+    
+    return it;
+  }
+
 public:
+  bool finished() const {
+    return !execution_plans.size() || get_next_it() == execution_plans.end();
+  }
+
   ExecutionPlan get() {
-    return *get_it();
+    return *get_best_it();
   }
 
   ExecutionPlan pop() {
-    auto it = get_it();
+    auto it   = get_next_it();
     auto copy = *it;
+
     execution_plans.erase(it);
     return copy;
   }

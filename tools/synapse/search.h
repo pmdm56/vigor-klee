@@ -46,32 +46,22 @@ public:
     Context context(bdd.get_process());
     h.add(context);
 
-    while (1) {
-      Log::dbg() << "# exec plans: " << h.size() << "\n";
+    while (!h.finished()) {
+      Log::dbg() << "\n";
+      Log::dbg() << "=============================================\n";
+      Log::dbg() << "Available " << h.size() << "\n";
 
       bool processed = false;
       auto next_ep   = h.pop();
+      Log::dbg() << "leaf " << next_ep.get_active_leaf().get() << "\n";
+      // Graphviz::visualize(next_ep);
+
       auto next_node = next_ep.get_next_node();
+      assert(next_node);
 
-      switch (next_node->get_type()) {
-        case BDD::Node::NodeType::CALL: {
-          auto call = static_cast<const BDD::Call*>(next_node);
-          Log::dbg() << "processing " << call->get_call().function_name << "...\n";
-          break;
-        }
-        case BDD::Node::NodeType::BRANCH:
-          Log::dbg() << "processing branch" << "...\n";
-          break;
-        case BDD::Node::NodeType::RETURN_INIT:
-        case BDD::Node::NodeType::RETURN_PROCESS:
-        case BDD::Node::NodeType::RETURN_RAW:
-          Log::dbg() << "processing return" << "...\n";
-          break;
-      }
+      Log::dbg() << "Node      " << next_node << "\n";
+      Log::dbg() << "Node      " << next_node->dump(true) << "\n";
 
-      Graphviz::visualize(next_ep);
-
-      // Should we terminate when we find the first result?
       if (!next_node && h.get_cfg().terminate_on_first_solution()) {
         return next_ep;
       }
@@ -80,21 +70,18 @@ public:
         auto next_context = module->process_node(next_ep, next_node);
 
         if (next_context.processed()) {
-          Log::dbg() << "MATCH "
-                     << module->get_target_name() << " : " << module->get_name()
+          Log::dbg() << "MATCH     "
+                     << module->get_target_name() << "::" << module->get_name()
                      << " -> " << next_context.size() << " exec plans"
                      << "\n";
           h.add(next_context);
           processed = true;
-        } else {
-          Log::dbg() << "FAIL  "
-                     << module->get_target_name() << " : " << module->get_name()
-                     << "\n";
         }
       }
 
       // FIXME: No module is capable of doing anything. What should we do?
       assert(processed && "No module can handle the next BDD node");
+      Log::dbg() << "=============================================\n";
     }
 
     return h.get();

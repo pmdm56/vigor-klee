@@ -15,6 +15,9 @@ namespace x86 {
   class PacketReturnChunk;
   class IfThen;
   class Else;
+  class Forward;
+  class Broadcast;
+  class Drop;
 }
 
 namespace tofino {
@@ -34,6 +37,9 @@ public:
   virtual void visit(const targets::x86::PacketReturnChunk* node)     = 0;
   virtual void visit(const targets::x86::IfThen* node)                = 0;
   virtual void visit(const targets::x86::Else* node)                  = 0;
+  virtual void visit(const targets::x86::Forward* node)               = 0;
+  virtual void visit(const targets::x86::Broadcast* node)             = 0;
+  virtual void visit(const targets::x86::Drop* node)                  = 0;
 
   virtual void visit(const targets::tofino::A* node)                  = 0;
   virtual void visit(const targets::tofino::B* node)                  = 0;

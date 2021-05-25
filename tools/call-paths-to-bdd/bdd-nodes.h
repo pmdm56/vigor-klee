@@ -311,6 +311,7 @@ public:
   }
 
   virtual void visit(BDDVisitor& visitor) const = 0;
+  virtual std::string dump(bool one_liner=false) const = 0;
 };
 
 class Call : public Node {
@@ -340,6 +341,21 @@ public:
 
   void visit(BDDVisitor& visitor) const override {
     visitor.visit(this);
+  }
+
+  std::string dump(bool one_liner=false) const override {
+    std::stringstream ss;
+    ss << call.function_name;
+    ss << "(";
+
+    bool first = true;
+    for (auto& arg : call.args) {
+      if (!first) ss << ", ";
+      ss << expr_to_string(arg.second.expr, one_liner);
+      first = false;
+    }
+    ss << ")";
+    return ss.str();
   }
 };
 
@@ -407,6 +423,14 @@ public:
   void visit(BDDVisitor& visitor) const override {
     visitor.visit(this);
   }
+
+  std::string dump(bool one_liner=false) const {
+    std::stringstream ss;
+    ss << "if (";
+    ss << expr_to_string(condition, one_liner);
+    ss << ")";
+    return ss.str();
+  }
 };
 
 class ReturnRaw : public Node {
@@ -433,6 +457,12 @@ public:
 
   void visit(BDDVisitor& visitor) const override {
     visitor.visit(this);
+  }
+
+  std::string dump(bool one_liner=false) const {
+    std::stringstream ss;
+    ss << "return raw";
+    return ss.str();
   }
 };
 
@@ -485,6 +515,22 @@ public:
 
   void visit(BDDVisitor& visitor) const override {
     visitor.visit(this);
+  }
+
+  std::string dump(bool one_liner=false) const {
+    std::stringstream ss;
+    ss << "return ";
+    
+    switch (value) {
+      case ReturnType::SUCCESS:
+        ss << "SUCCESS";
+        break;
+      case ReturnType::FAILURE:
+        ss << "FAILURE";
+        break;
+    }
+
+    return ss.str();
   }
 };
 
@@ -584,6 +630,27 @@ public:
 
   void visit(BDDVisitor& visitor) const override {
     visitor.visit(this);
+  }
+
+  std::string dump(bool one_liner=false) const {
+    std::stringstream ss;
+    
+    switch (operation) {
+      case Operation::FWD:
+        ss << "FORWARD";
+        break;
+      case Operation::DROP:
+        ss << "DROP";
+        break;
+      case Operation::BCAST:
+        ss << "BROADCAST";
+        break;
+      case Operation::ERR:
+        ss << "ERR";
+        break;
+    }
+
+    return ss.str();
   }
 };
 

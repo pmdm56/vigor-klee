@@ -10,7 +10,7 @@ struct MostCompactComparator : public HeuristicConfiguration {
   }
 
   bool terminate_on_first_solution() const override {
-    return true;
+    return false;
   }
 };
 

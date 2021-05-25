@@ -28,6 +28,9 @@ public:
     x86_MapGet,
     x86_PacketBorrowNextChunk,
     x86_PacketReturnChunk,
+    x86_Forward,
+    x86_Drop,
+    x86_Broadcast,
   };
 
 protected:

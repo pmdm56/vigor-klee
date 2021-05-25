@@ -8,6 +8,9 @@
 #include "packet_return_chunk.h"
 #include "if_then.h"
 #include "else.h"
+#include "forward.h"
+#include "broadcast.h"
+#include "drop.h"
 
 namespace synapse {
 namespace targets {
@@ -21,6 +24,9 @@ std::vector<Module> get_modules() {
     MODULE(PacketReturnChunk),
     MODULE(IfThen),
     MODULE(Else),
+    MODULE(Forward),
+    MODULE(Broadcast),
+    MODULE(Drop),
   };
 
   return modules;

@@ -41,16 +41,15 @@ public:
 private:
   void update_leafs(leaf_t leaf) {
     leafs.erase(leafs.begin());
-
     if (leaf.next) {
       leafs.insert(leafs.begin(), leaf);
     }
   }
 
-  void update_leafs(std::vector<leaf_t> leafs) {
+  void update_leafs(std::vector<leaf_t> _leafs) {
     assert(leafs.size());
     leafs.erase(leafs.begin());
-    for (auto leaf : leafs) {
+    for (auto leaf : _leafs) {
       leafs.insert(leafs.begin(), leaf);
     }
   }
@@ -70,16 +69,13 @@ private:
       copy->set_next(new_next);
       return copy;
     }
-
-    bool found = false;
+    
     for (auto& leaf : ep.leafs) {
-      if (leaf.leaf.get() == node) {
+      if (leaf.leaf->get_id() == node->get_id()) {
         leaf.leaf = copy;
-        found = true;
       }
     }
 
-    assert(found);
     return copy;
   }
 
@@ -87,10 +83,10 @@ public:
   int get_depth() const { return depth; }
   int get_nodes() const { return nodes; }
 
-  ExecutionPlanNode_ptr get_root() { return root; }
+  const ExecutionPlanNode_ptr& get_root() const { return root; }
 
-  const BDD::Node* get_next_node() {
-    const BDD::Node* next;
+  const BDD::Node* get_next_node() const {
+    const BDD::Node* next = nullptr;
 
     if (leafs.size()) {
       next = leafs[0].next;
@@ -119,9 +115,8 @@ public:
     else {
       assert(root);
       assert(leafs.size());
-
       leafs[0].leaf->set_next(Branches{ leaf.leaf });
-
+      leaf.leaf->set_prev(leafs[0].leaf);
     }
 
     depth++;
@@ -140,14 +135,14 @@ public:
     Branches branches;
     for (auto leaf : _leafs) {
       branches.push_back(leaf.leaf);
+      assert(!leaf.leaf->get_prev());
+      leaf.leaf->set_prev(leafs[0].leaf);
       nodes++;
     }
 
     leafs[0].leaf->set_next(branches);
 
-    leafs = _leafs;
     depth++;
-
     update_leafs(_leafs);
   }
 
