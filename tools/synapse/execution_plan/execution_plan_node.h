@@ -16,7 +16,7 @@ class ExecutionPlanNode {
 friend class ExecutionPlan;
 
 private:
-  Module_ptr                module;
+  Module_ptr            module;
   Branches              next;
   ExecutionPlanNode_ptr prev;
   const BDD::Node*      node;
