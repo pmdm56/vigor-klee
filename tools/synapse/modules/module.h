@@ -38,6 +38,9 @@ public:
     x86_VectorReturn,
     x86_DchainAllocateNewIndex,
     x86_MapPut,
+    x86_PacketGetUnreadLength,
+    x86_SetIpv4UdpTcpChecksum,
+    x86_DchainIsIndexAllocated,
   };
 
 protected:

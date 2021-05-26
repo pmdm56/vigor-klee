@@ -139,6 +139,9 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::x86::VectorReturn)
   VISIT_PRINT_MODULE_NAME(targets::x86::DchainAllocateNewIndex)
   VISIT_PRINT_MODULE_NAME(targets::x86::MapPut)
+  VISIT_PRINT_MODULE_NAME(targets::x86::PacketGetUnreadLength)
+  VISIT_PRINT_MODULE_NAME(targets::x86::SetIpv4UdpTcpChecksum)
+  VISIT_PRINT_MODULE_NAME(targets::x86::DchainIsIndexAllocated)
 
   /********************************************
    * 

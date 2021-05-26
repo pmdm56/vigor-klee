@@ -4,9 +4,11 @@
 
 #include "current_time.h"
 #include "rte_ether_addr_hash.h"
+#include "nf_set_rte_ipv4_udptcp_checksum.h"
 
 #include "packet_borrow_next_chunk.h"
 #include "packet_return_chunk.h"
+#include "packet_get_unread_length.h"
 
 #include "if_then.h"
 #include "else.h"
@@ -17,6 +19,7 @@
 
 #include "dchain_rejuvenate_index.h"
 #include "dchain_allocate_new_index.h"
+#include "dchain_is_index_allocated.h"
 
 #include "vector_borrow.h"
 #include "vector_return.h"
@@ -47,6 +50,9 @@ std::vector<Module_ptr> get_modules() {
     MODULE(VectorReturn),
     MODULE(DchainAllocateNewIndex),
     MODULE(MapPut),
+    MODULE(PacketGetUnreadLength),
+    MODULE(SetIpv4UdpTcpChecksum),
+    MODULE(DchainIsIndexAllocated),
   };
 
   return modules;

@@ -25,6 +25,9 @@ namespace x86 {
   class VectorReturn;
   class DchainAllocateNewIndex;
   class MapPut;
+  class PacketGetUnreadLength;
+  class SetIpv4UdpTcpChecksum;
+  class DchainIsIndexAllocated;
 }
 
 namespace tofino {
@@ -54,6 +57,9 @@ public:
   virtual void visit(const targets::x86::VectorReturn* node)           = 0;
   virtual void visit(const targets::x86::DchainAllocateNewIndex* node) = 0;
   virtual void visit(const targets::x86::MapPut* node)                 = 0;
+  virtual void visit(const targets::x86::PacketGetUnreadLength* node)  = 0;
+  virtual void visit(const targets::x86::SetIpv4UdpTcpChecksum* node)  = 0;
+  virtual void visit(const targets::x86::DchainIsIndexAllocated* node) = 0;
 
   virtual void visit(const targets::tofino::A* node)                   = 0;
   virtual void visit(const targets::tofino::B* node)                   = 0;
