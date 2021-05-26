@@ -5,19 +5,22 @@
 #include "../execution_plan/visitors/visitor.h"
 
 #define CREATE_SHARED_MODULE(M) (std::shared_ptr<Module>(new (M)()))
-#define MODULE(X)               (std::make_shared<X>())
+#define MODULE(X) (std::make_shared<X>())
 
 namespace synapse {
 
 enum Target {
-  x86, Tofino, Netronome, FPGA
+  x86,
+  Tofino,
+  Netronome,
+  FPGA
 };
 
 class ExecutionPlan;
-class  Module;
+class Module;
 class Context;
 
-typedef std::shared_ptr<Module>  Module_ptr;
+typedef std::shared_ptr<Module> Module_ptr;
 
 class Module : public BDD::BDDVisitor {
 public:
@@ -44,48 +47,45 @@ public:
   };
 
 protected:
-  ModuleType  type;
-  Target      target;
-  const char* name;
-  BDD::Node*  node;
+  ModuleType type;
+  Target target;
+  const char *name;
+  BDD::Node *node;
 
-  Context*    context; // intermediary data
+  Context *context; // intermediary data
 
 protected:
-  Module(ModuleType _type, Target _target, const char* _name)
-    : type(_type), target(_target), name(_name), context(nullptr) {}
+  Module(ModuleType _type, Target _target, const char *_name)
+      : type(_type), target(_target), name(_name), context(nullptr) {}
 
 public:
   Module() {}
-  Module(const Module& m) : Module(m.type, m.target, m.name) {
-    node = m.node;
-  }
+  Module(const Module &m) : Module(m.type, m.target, m.name) { node = m.node; }
 
-  ModuleType  get_type()   const { return type; }
-  const char* get_name()   const { return name;   }
-  Target      get_target() const { return target; }
-  BDD::Node*  get_node()   const { return node;   }
+  ModuleType get_type() const { return type; }
+  const char *get_name() const { return name; }
+  Target get_target() const { return target; }
+  BDD::Node *get_node() const { return node; }
 
   std::string get_target_name() const {
     switch (target) {
-      case x86:
-        return "x86";
-      case Tofino:
-        return "Tofino";
-      case Netronome:
-        return "Netronome";
-      case FPGA:
-        return "FPGA";
+    case x86:
+      return "x86";
+    case Tofino:
+      return "Tofino";
+    case Netronome:
+      return "Netronome";
+    case FPGA:
+      return "FPGA";
     }
 
     assert(false && "I should not be here");
   }
 
-  Context process_node(ExecutionPlan _ep, const BDD::Node* node);
+  Context process_node(ExecutionPlan _ep, const BDD::Node *node);
 
-  virtual void visit(ExecutionPlanVisitor& visitor) const = 0;
+  virtual void visit(ExecutionPlanVisitor &visitor) const = 0;
 
   ~Module();
 };
-
 }

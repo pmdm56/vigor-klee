@@ -33,31 +33,21 @@ namespace targets {
 namespace x86 {
 
 std::vector<Module_ptr> get_modules() {
-  std::vector<Module_ptr> modules {
-    MODULE(MapGet),
-    MODULE(CurrentTime),
-    MODULE(PacketBorrowNextChunk),
-    MODULE(PacketReturnChunk),
-    MODULE(IfThen),
-    MODULE(Else),
-    MODULE(Forward),
-    MODULE(Broadcast),
-    MODULE(Drop),
-    MODULE(ExpireItemsSingleMap),
-    MODULE(RteEtherAddrHash),
-    MODULE(DchainRejuvenateIndex),
-    MODULE(VectorBorrow),
-    MODULE(VectorReturn),
-    MODULE(DchainAllocateNewIndex),
-    MODULE(MapPut),
-    MODULE(PacketGetUnreadLength),
-    MODULE(SetIpv4UdpTcpChecksum),
+  std::vector<Module_ptr> modules{
+    MODULE(MapGet),                 MODULE(CurrentTime),
+    MODULE(PacketBorrowNextChunk),  MODULE(PacketReturnChunk),
+    MODULE(IfThen),                 MODULE(Else),
+    MODULE(Forward),                MODULE(Broadcast),
+    MODULE(Drop),                   MODULE(ExpireItemsSingleMap),
+    MODULE(RteEtherAddrHash),       MODULE(DchainRejuvenateIndex),
+    MODULE(VectorBorrow),           MODULE(VectorReturn),
+    MODULE(DchainAllocateNewIndex), MODULE(MapPut),
+    MODULE(PacketGetUnreadLength),  MODULE(SetIpv4UdpTcpChecksum),
     MODULE(DchainIsIndexAllocated),
   };
 
   return modules;
 }
-
 }
 }
 }

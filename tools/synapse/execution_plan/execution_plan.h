@@ -12,28 +12,27 @@ class ExecutionPlan {
 public:
   struct leaf_t {
     ExecutionPlanNode_ptr leaf;
-    const BDD::Node*      next;
+    const BDD::Node *next;
 
-    leaf_t(const BDD::Node* _next) : next(_next) {}
+    leaf_t(const BDD::Node *_next) : next(_next) {}
 
-    leaf_t(ExecutionPlanNode_ptr _leaf, const BDD::Node* _next)
-      : leaf(_leaf), next(_next) {}
-    
-    leaf_t(const leaf_t& _leaf)
-      : leaf(_leaf.leaf), next(_leaf.next) {}
+    leaf_t(ExecutionPlanNode_ptr _leaf, const BDD::Node *_next)
+        : leaf(_leaf), next(_next) {}
+
+    leaf_t(const leaf_t &_leaf) : leaf(_leaf.leaf), next(_leaf.next) {}
   };
 
 private:
   ExecutionPlanNode_ptr root;
-  std::vector<leaf_t>   leafs;
+  std::vector<leaf_t> leafs;
 
-// metadata
+  // metadata
 private:
   int depth;
   int nodes;
 
 public:
-  ExecutionPlan(const BDD::Node* _next) : depth(0) {
+  ExecutionPlan(const BDD::Node *_next) : depth(0) {
     leaf_t leaf(_next);
     leafs.push_back(leaf);
   }
@@ -54,8 +53,9 @@ private:
     }
   }
 
-  ExecutionPlanNode_ptr clone_nodes(ExecutionPlan& ep, const ExecutionPlanNode* node) const {
-    auto copy     = ExecutionPlanNode::build(node);
+  ExecutionPlanNode_ptr clone_nodes(ExecutionPlan &ep,
+                                    const ExecutionPlanNode *node) const {
+    auto copy = ExecutionPlanNode::build(node);
     auto old_next = node->get_next();
     Branches new_next;
 
@@ -69,8 +69,8 @@ private:
       copy->set_next(new_next);
       return copy;
     }
-    
-    for (auto& leaf : ep.leafs) {
+
+    for (auto &leaf : ep.leafs) {
       if (leaf.leaf->get_id() == node->get_id()) {
         leaf.leaf = copy;
       }
@@ -83,10 +83,10 @@ public:
   int get_depth() const { return depth; }
   int get_nodes() const { return nodes; }
 
-  const ExecutionPlanNode_ptr& get_root() const { return root; }
+  const ExecutionPlanNode_ptr &get_root() const { return root; }
 
-  const BDD::Node* get_next_node() const {
-    const BDD::Node* next = nullptr;
+  const BDD::Node *get_next_node() const {
+    const BDD::Node *next = nullptr;
 
     if (leafs.size()) {
       next = leafs[0].next;
@@ -110,9 +110,7 @@ public:
       assert(leafs.size() == 1);
       assert(!leafs[0].leaf);
       root = leaf.leaf;
-    }
-
-    else {
+    } else {
       assert(root);
       assert(leafs.size());
       leafs[0].leaf->set_next(Branches{ leaf.leaf });
@@ -146,9 +144,7 @@ public:
     update_leafs(_leafs);
   }
 
-  void visit(ExecutionPlanVisitor& visitor) const {
-    visitor.visit(*this);
-  }
+  void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(*this); }
 
   ExecutionPlan clone() const {
     ExecutionPlan copy = *this;
@@ -158,9 +154,7 @@ public:
 
     if (root) {
       copy.root = clone_nodes(copy, root.get());
-    }
-
-    else {
+    } else {
       for (auto leaf : leafs) {
         assert(!leaf.leaf);
       }
@@ -184,13 +178,13 @@ public:
       assert(leaf.next);
     }
   }
-  
+
   ~ExecutionPlan() {
     //_assert();
-    
+
     Log::dbg() << "====================================================\n";
     Log::dbg() << "FREEING EXECUTION PLAN\n";
-    
+
     Log::dbg() << "root      " << root.get() << "\n";
     Log::dbg() << "use count " << root.use_count() << "\n";
     assert(!root || (root && root.use_count() > 0));
@@ -227,5 +221,4 @@ public:
   }
   */
 };
-
 }

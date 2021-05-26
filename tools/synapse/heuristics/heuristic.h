@@ -7,17 +7,18 @@
 namespace synapse {
 
 struct HeuristicConfiguration {
-  virtual bool operator()(const ExecutionPlan& e1, const ExecutionPlan& e2) const = 0;
+  virtual bool operator()(const ExecutionPlan &e1,
+                          const ExecutionPlan &e2) const = 0;
   virtual bool terminate_on_first_solution() const = 0;
 };
 
-template<class T>
-class Heuristic {
-static_assert(std::is_base_of<HeuristicConfiguration, T>::value, "T must inherit from HeuristicConfiguration");
+template <class T> class Heuristic {
+  static_assert(std::is_base_of<HeuristicConfiguration, T>::value,
+                "T must inherit from HeuristicConfiguration");
 
 protected:
   std::multiset<ExecutionPlan, T> execution_plans;
-  T                               configuration;
+  T configuration;
 
 private:
   typename std::set<ExecutionPlan, T>::iterator get_best_it() const {
@@ -27,8 +28,8 @@ private:
 
   typename std::set<ExecutionPlan, T>::iterator get_next_it() const {
     assert(execution_plans.size());
-    auto conf = static_cast<const HeuristicConfiguration*>(&configuration);
-    auto it   = std::prev(execution_plans.end());
+    auto conf = static_cast<const HeuristicConfiguration *>(&configuration);
+    auto it = std::prev(execution_plans.end());
 
     if (!conf->terminate_on_first_solution()) {
       while (!it->get_next_node() && it != execution_plans.begin()) {
@@ -39,7 +40,7 @@ private:
         it = execution_plans.end();
       }
     }
-    
+
     return it;
   }
 
@@ -48,12 +49,10 @@ public:
     return !execution_plans.size() || get_next_it() == execution_plans.end();
   }
 
-  ExecutionPlan get() {
-    return *get_best_it();
-  }
+  ExecutionPlan get() { return *get_best_it(); }
 
   ExecutionPlan pop() {
-    auto it   = get_next_it();
+    auto it = get_next_it();
     auto copy = *it;
 
     execution_plans.erase(it);
@@ -67,11 +66,8 @@ public:
     }
   }
 
-  int size() const {
-    return execution_plans.size();
-  }
+  int size() const { return execution_plans.size(); }
 
   T get_cfg() const { return configuration; }
 };
-
 }

@@ -47,25 +47,25 @@ private:
 private:
   Log(const Level &_level) : stream(nullptr), level(_level) {
     switch (_level) {
-      case LOG:
-        stream.rdbuf(std::cout.rdbuf());
-        color = Colors::WHITE;
-        break;
-      case DEBUG:
-        stream.rdbuf(std::cerr.rdbuf());
-        color = Colors::WHITE;
-        break;
-      case WARNING:
-        stream.rdbuf(std::cerr.rdbuf());
-        color = Colors::YELLOW;
-        break;
-      case ERROR:
-        stream.rdbuf(std::cerr.rdbuf());
-        color = Colors::RED_BRIGHT;
-        break;
-      default:
-        stream.rdbuf(std::cerr.rdbuf());
-        color = Colors::WHITE;
+    case LOG:
+      stream.rdbuf(std::cout.rdbuf());
+      color = Colors::WHITE;
+      break;
+    case DEBUG:
+      stream.rdbuf(std::cerr.rdbuf());
+      color = Colors::WHITE;
+      break;
+    case WARNING:
+      stream.rdbuf(std::cerr.rdbuf());
+      color = Colors::YELLOW;
+      break;
+    case ERROR:
+      stream.rdbuf(std::cerr.rdbuf());
+      color = Colors::RED_BRIGHT;
+      break;
+    default:
+      stream.rdbuf(std::cerr.rdbuf());
+      color = Colors::WHITE;
     }
   }
 
@@ -90,5 +90,4 @@ template <typename T> Log &operator<<(Log &log, T &&t) {
 template <typename T> Log &operator<<(Log &&log, T &&t) {
   return log << std::forward<T>(t);
 }
-
 }
