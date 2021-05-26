@@ -9,6 +9,13 @@
 
 #include <fstream>
 
+#define VISIT_PRINT_MODULE_NAME(M)         \
+  void visit(const M* node) override {     \
+    function_call(node->get_target(),      \
+                  node->get_target_name(), \
+                  node->get_name());       \
+  }
+
 namespace synapse {
 
 class Graphviz : public ExecutionPlanVisitor {
@@ -116,41 +123,22 @@ public:
    * 
    ********************************************/
 
-  void visit(const targets::x86::MapGet* node) override {
-    function_call(node->get_target(), node->get_target_name(), "map_get");
-  }
-
-  void visit(const targets::x86::CurrentTime* node) override {
-    function_call(node->get_target(), node->get_target_name(), "current_time");
-  }
-
-  void visit(const targets::x86::PacketBorrowNextChunk* node) override {
-    function_call(node->get_target(), node->get_target_name(), "packet_borrow_next_chunk");
-  }
-
-  void visit(const targets::x86::PacketReturnChunk* node) override {
-    function_call(node->get_target(), node->get_target_name(), "packet_return_chunk");
-  }
-
-  void visit(const targets::x86::IfThen* node) override {
-    function_call(node->get_target(), node->get_target_name(), "if");
-  }
-
-  void visit(const targets::x86::Else* node) override {
-    function_call(node->get_target(), node->get_target_name(), "else");
-  }
-
-  void visit(const targets::x86::Forward* node) override {
-    function_call(node->get_target(), node->get_target_name(), "forward");
-  }
-
-  void visit(const targets::x86::Broadcast* node) override {
-    function_call(node->get_target(), node->get_target_name(), "drop");
-  }
-
-  void visit(const targets::x86::Drop* node) override {
-    function_call(node->get_target(), node->get_target_name(), "broadcast");
-  }
+  VISIT_PRINT_MODULE_NAME(targets::x86::MapGet)
+  VISIT_PRINT_MODULE_NAME(targets::x86::CurrentTime)
+  VISIT_PRINT_MODULE_NAME(targets::x86::PacketBorrowNextChunk)
+  VISIT_PRINT_MODULE_NAME(targets::x86::PacketReturnChunk)
+  VISIT_PRINT_MODULE_NAME(targets::x86::IfThen)
+  VISIT_PRINT_MODULE_NAME(targets::x86::Else)
+  VISIT_PRINT_MODULE_NAME(targets::x86::Forward)
+  VISIT_PRINT_MODULE_NAME(targets::x86::Broadcast)
+  VISIT_PRINT_MODULE_NAME(targets::x86::Drop)
+  VISIT_PRINT_MODULE_NAME(targets::x86::ExpireItemsSingleMap)
+  VISIT_PRINT_MODULE_NAME(targets::x86::RteEtherAddrHash)
+  VISIT_PRINT_MODULE_NAME(targets::x86::DchainRejuvenateIndex)
+  VISIT_PRINT_MODULE_NAME(targets::x86::VectorBorrow)
+  VISIT_PRINT_MODULE_NAME(targets::x86::VectorReturn)
+  VISIT_PRINT_MODULE_NAME(targets::x86::DchainAllocateNewIndex)
+  VISIT_PRINT_MODULE_NAME(targets::x86::MapPut)
 
   /********************************************
    * 
@@ -158,13 +146,9 @@ public:
    * 
    ********************************************/
 
-  void visit(const targets::tofino::A* node) override {
-    function_call(node->get_target(), node->get_target_name(), "Tables");
-  }
+  VISIT_PRINT_MODULE_NAME(targets::tofino::A)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::B)
 
-  void visit(const targets::tofino::B* node) override {
-    function_call(node->get_target(), node->get_target_name(), "Registers");
-  }
 };
 
 }

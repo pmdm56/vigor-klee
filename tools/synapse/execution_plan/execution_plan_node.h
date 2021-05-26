@@ -42,7 +42,7 @@ public:
     prev = _prev;
   }
 
-  const Module_ptr&         get_module() const { return module; }
+  const Module_ptr&     get_module() const { return module; }
   const Branches&       get_next()   const { return next; }
   ExecutionPlanNode_ptr get_prev()   const { return prev; }
   int                   get_id()     const { return id; }

@@ -31,6 +31,13 @@ public:
     x86_Forward,
     x86_Drop,
     x86_Broadcast,
+    x86_ExpireItemsSingleMap,
+    x86_RteEtherAddrHash,
+    x86_DchainRejuvenateIndex,
+    x86_VectorBorrow,
+    x86_VectorReturn,
+    x86_DchainAllocateNewIndex,
+    x86_MapPut,
   };
 
 protected:
