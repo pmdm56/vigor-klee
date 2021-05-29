@@ -12,10 +12,11 @@ private:
 
 public:
   Context(const ExecutionPlan &ep) : current_ep(&ep), success(false) {}
+  Context(const BDD::Node *node) : current_ep(nullptr) {
+    next_eps.emplace_back(node);
+  }
 
-  Context(const BDD::Node *node) { next_eps.emplace_back(node); }
-
-  void add(ExecutionPlan &ep) {
+  void add(const ExecutionPlan &ep) {
     next_eps.push_back(ep);
     success = true;
   }
@@ -25,6 +26,8 @@ public:
     current_ep = &_current_ep;
     success = false;
   }
+
+  bool has_current() const { return current_ep != nullptr; }
 
   ExecutionPlan get_current() const {
     assert(current_ep);

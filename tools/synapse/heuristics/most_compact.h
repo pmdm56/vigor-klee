@@ -5,11 +5,7 @@
 namespace synapse {
 
 struct MostCompactComparator : public HeuristicConfiguration {
-  bool operator()(const ExecutionPlan &e1, const ExecutionPlan &e2) const
-      override {
-    return e1.get_nodes() > e2.get_nodes();
-  }
-
+  int get_score(const ExecutionPlan &e) const override { return e.get_nodes(); }
   bool terminate_on_first_solution() const override { return false; }
 };
 

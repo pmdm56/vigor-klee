@@ -82,7 +82,7 @@ public:
     assert(false && "I should not be here");
   }
 
-  Context process_node(ExecutionPlan _ep, const BDD::Node *node);
+  Context process_node(const ExecutionPlan &_ep, const BDD::Node *node);
 
   virtual void visit(ExecutionPlanVisitor &visitor) const = 0;
 

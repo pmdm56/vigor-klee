@@ -22,18 +22,15 @@ private:
         ExecutionPlanNode::build(CREATE_SHARED_MODULE(IfThen), node);
     auto else_ep_node = ExecutionPlanNode::build(_else, node);
 
-    auto ep = context->get_current();
-
     auto ifthen_leaf =
         ExecutionPlan::leaf_t(ifthen_ep_node, node->get_on_true());
     auto else_leaf = ExecutionPlan::leaf_t(else_ep_node, node->get_on_false());
 
-    std::vector<ExecutionPlan::leaf_t> new_leafs{ ifthen_leaf, else_leaf };
+    std::vector<ExecutionPlan::leaf_t> new_leaves{ else_leaf, ifthen_leaf };
 
-    ep.add(new_leafs);
-
-    auto clone = ep.clone();
-    context->add(ep);
+    auto ep = context->get_current();
+    auto new_ep = ExecutionPlan(ep, new_leaves);
+    context->add(new_ep);
 
     return BDD::BDDVisitor::Action::STOP;
   }

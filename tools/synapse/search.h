@@ -4,6 +4,7 @@
 #include "heuristics/heuristic.h"
 #include "log.h"
 #include "execution_plan/visitors/graphviz.h"
+#include "search_space.h"
 
 namespace synapse {
 
@@ -42,6 +43,8 @@ public:
 
   template <class T> ExecutionPlan search(Heuristic<T> h) {
     Context context(bdd.get_process());
+    SearchSpace search_space(h.get_cfg(), context.get_next_eps()[0]);
+
     h.add(context);
 
     while (!h.finished()) {
@@ -55,9 +58,9 @@ public:
       assert(next_node);
 
       Log::dbg() << "Node      " << next_node->dump(true) << "\n";
-      // Graphviz::visualize(next_ep);
+      // Graphviz::visualize(next_ep, search_space);
 
-      if (!next_node && h.get_cfg().terminate_on_first_solution()) {
+      if (!next_node && h.get_cfg()->terminate_on_first_solution()) {
         return next_ep;
       }
 
@@ -70,15 +73,19 @@ public:
                      << next_context.size() << " exec plans"
                      << "\n";
           h.add(next_context);
+          search_space.add_leaves(next_context);
           processed = true;
         }
       }
+
+      search_space.submit_leaves();
 
       // FIXME: No module is capable of doing anything. What should we do?
       assert(processed && "No module can handle the next BDD node");
       Log::dbg() << "=======================================================\n";
     }
 
+    synapse::Graphviz::visualize(h.get(), search_space);
     return h.get();
   }
 };

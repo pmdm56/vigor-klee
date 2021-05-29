@@ -24,32 +24,52 @@ public:
 
 private:
   ExecutionPlanNode_ptr root;
-  std::vector<leaf_t> leafs;
+  std::vector<leaf_t> leaves;
 
   // metadata
 private:
   int depth;
   int nodes;
+  int id;
+
+  static int counter;
 
 public:
-  ExecutionPlan(const BDD::Node *_next) : depth(0) {
+  ExecutionPlan(const BDD::Node *_next) : depth(0), nodes(0), id(counter++) {
     leaf_t leaf(_next);
-    leafs.push_back(leaf);
+    leaves.push_back(leaf);
+  }
+
+  ExecutionPlan(const ExecutionPlan &ep)
+      : root(ep.root), leaves(ep.leaves), depth(ep.depth), nodes(ep.nodes),
+        id(ep.id) {}
+
+  ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf)
+      : ExecutionPlan(ep.clone()) {
+    id = counter++;
+    add(leaf);
+  }
+
+  ExecutionPlan(const ExecutionPlan &ep, const std::vector<leaf_t> &_leaves)
+      : ExecutionPlan(ep.clone()) {
+    assert(root);
+    id = counter++;
+    add(_leaves);
   }
 
 private:
-  void update_leafs(leaf_t leaf) {
-    leafs.erase(leafs.begin());
+  void update_leaves(leaf_t leaf) {
+    leaves.erase(leaves.begin());
     if (leaf.next) {
-      leafs.insert(leafs.begin(), leaf);
+      leaves.insert(leaves.begin(), leaf);
     }
   }
 
-  void update_leafs(std::vector<leaf_t> _leafs) {
-    assert(leafs.size());
-    leafs.erase(leafs.begin());
-    for (auto leaf : _leafs) {
-      leafs.insert(leafs.begin(), leaf);
+  void update_leaves(std::vector<leaf_t> _leaves) {
+    assert(leaves.size());
+    leaves.erase(leaves.begin());
+    for (auto leaf : _leaves) {
+      leaves.insert(leaves.begin(), leaf);
     }
   }
 
@@ -70,7 +90,7 @@ private:
       return copy;
     }
 
-    for (auto &leaf : ep.leafs) {
+    for (auto &leaf : ep.leaves) {
       if (leaf.leaf->get_id() == node->get_id()) {
         leaf.leaf = copy;
       }
@@ -79,17 +99,57 @@ private:
     return copy;
   }
 
+  void add(const leaf_t &leaf) {
+    if (!root) {
+      assert(leaves.size() == 1);
+      assert(!leaves[0].leaf);
+      root = leaf.leaf;
+    } else {
+      assert(root);
+      assert(leaves.size());
+      leaves[0].leaf->set_next(Branches{ leaf.leaf });
+      leaf.leaf->set_prev(leaves[0].leaf);
+    }
+
+    depth++;
+    nodes++;
+
+    assert(leaves.size());
+    update_leaves(leaf);
+  }
+
+  // Order matters!
+  // The active leaf will correspond to the first branch in the branches
+  void add(const std::vector<leaf_t> &_leaves) {
+    assert(root);
+    assert(leaves.size());
+
+    Branches branches;
+    for (auto &leaf : _leaves) {
+      branches.push_back(leaf.leaf);
+      assert(!leaf.leaf->get_prev());
+      leaf.leaf->set_prev(leaves[0].leaf);
+      nodes++;
+    }
+
+    leaves[0].leaf->set_next(branches);
+
+    depth++;
+    update_leaves(_leaves);
+  }
+
 public:
   int get_depth() const { return depth; }
   int get_nodes() const { return nodes; }
+  int get_id() const { return id; }
 
   const ExecutionPlanNode_ptr &get_root() const { return root; }
 
   const BDD::Node *get_next_node() const {
     const BDD::Node *next = nullptr;
 
-    if (leafs.size()) {
-      next = leafs[0].next;
+    if (leaves.size()) {
+      next = leaves[0].next;
     }
 
     return next;
@@ -98,50 +158,11 @@ public:
   ExecutionPlanNode_ptr get_active_leaf() const {
     ExecutionPlanNode_ptr leaf;
 
-    if (leafs.size()) {
-      leaf = leafs[0].leaf;
+    if (leaves.size()) {
+      leaf = leaves[0].leaf;
     }
 
     return leaf;
-  }
-
-  void add(leaf_t leaf) {
-    if (!root) {
-      assert(leafs.size() == 1);
-      assert(!leafs[0].leaf);
-      root = leaf.leaf;
-    } else {
-      assert(root);
-      assert(leafs.size());
-      leafs[0].leaf->set_next(Branches{ leaf.leaf });
-      leaf.leaf->set_prev(leafs[0].leaf);
-    }
-
-    depth++;
-    nodes++;
-
-    assert(leafs.size());
-    update_leafs(leaf);
-  }
-
-  // Order matters!
-  // The active leaf will correspond to the first branch in the branches
-  void add(std::vector<leaf_t> _leafs) {
-    assert(root);
-    assert(leafs.size());
-
-    Branches branches;
-    for (auto leaf : _leafs) {
-      branches.push_back(leaf.leaf);
-      assert(!leaf.leaf->get_prev());
-      leaf.leaf->set_prev(leafs[0].leaf);
-      nodes++;
-    }
-
-    leafs[0].leaf->set_next(branches);
-
-    depth++;
-    update_leafs(_leafs);
   }
 
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(*this); }
@@ -149,76 +170,15 @@ public:
   ExecutionPlan clone() const {
     ExecutionPlan copy = *this;
 
-    copy.leafs = leafs;
-    copy.depth = depth;
-
     if (root) {
       copy.root = clone_nodes(copy, root.get());
     } else {
-      for (auto leaf : leafs) {
+      for (auto leaf : leaves) {
         assert(!leaf.leaf);
       }
     }
 
     return copy;
   }
-
-  /*
-  void _assert() const {
-    if (!root) {
-      assert(leafs.size() == 1);
-      assert(leafs[0].next);
-      assert(!leafs[0].leaf);
-      return;
-    }
-
-    assert(root);
-    assert(leafs.size());
-    for (auto leaf : leafs) {
-      assert(leaf.next);
-    }
-  }
-
-  ~ExecutionPlan() {
-    //_assert();
-
-    Log::dbg() << "====================================================\n";
-    Log::dbg() << "FREEING EXECUTION PLAN\n";
-
-    Log::dbg() << "root      " << root.get() << "\n";
-    Log::dbg() << "use count " << root.use_count() << "\n";
-    assert(!root || (root && root.use_count() > 0));
-    auto before = root.use_count();
-    auto root_ptr = root.get();
-
-    Log::dbg() << "freeing " << leafs.size() << " leafs\n";
-    for (unsigned i = 0; i < leafs.size(); i++) {
-      auto ptr = leafs[0].leaf.get();
-      Log::dbg() << "freeing i " << i << "\n";
-      Log::dbg() << "freeing   " << leafs[0].leaf.get() << "\n";
-      Log::dbg() << "use count " << leafs[0].leaf.use_count() << "\n";
-      leafs.erase(leafs.begin());
-      if (ptr == root_ptr && ptr != 0) {
-        assert(root.use_count() == before - 1);
-        before--;
-      }
-      Log::dbg() << "freeing " << i << " done\n";
-    }
-    Log::dbg() << "freeing " << leafs.size() << " leafs done\n";
-
-    Log::dbg() << "freeing root\n";
-    Log::dbg() << "root      " << root.get() << "\n";
-    Log::dbg() << "use count " << root.use_count() << "\n";
-    root.~shared_ptr<ExecutionPlanNode>();
-    if (root_ptr != 0) {
-      assert(root.use_count() == before - 1);
-      before--;
-    }
-    Log::dbg() << "root freed\n";
-
-    Log::dbg() << "====================================================\n";
-
-  }
-  */
 };
 }

@@ -8,7 +8,7 @@ Module::~Module() {
   delete context;
 }
 
-Context Module::process_node(ExecutionPlan ep, const BDD::Node* node) {
+Context Module::process_node(const ExecutionPlan& ep, const BDD::Node* node) {
   if (context == nullptr) {
     context = new Context(ep);
   } else {

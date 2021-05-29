@@ -7,8 +7,12 @@
 namespace synapse {
 
 struct HeuristicConfiguration {
+  virtual int get_score(const ExecutionPlan &e) const = 0;
+
   virtual bool operator()(const ExecutionPlan &e1,
-                          const ExecutionPlan &e2) const = 0;
+                          const ExecutionPlan &e2) const {
+    return get_score(e1) > get_score(e2);
+  }
   virtual bool terminate_on_first_solution() const = 0;
 };
 
@@ -68,6 +72,11 @@ public:
 
   int size() const { return execution_plans.size(); }
 
-  T get_cfg() const { return configuration; }
+  const T *get_cfg() const { return &configuration; }
+
+  int get_score(const ExecutionPlan &e) const {
+    auto conf = static_cast<const HeuristicConfiguration *>(&configuration);
+    return conf->get_score(e);
+  }
 };
 }

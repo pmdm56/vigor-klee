@@ -33,9 +33,9 @@ private:
           ExecutionPlanNode::build(CREATE_SHARED_MODULE(Forward), node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
+      auto new_ep = ExecutionPlan(ep, new_leaf);
 
-      ep.add(new_leaf);
-      context->add(ep);
+      context->add(new_ep);
     }
 
     return BDD::BDDVisitor::Action::STOP;

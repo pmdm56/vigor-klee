@@ -2,11 +2,13 @@
 
 #include "visitor.h"
 #include "../execution_plan.h"
+#include "../../search_space.h"
 #include "../../log.h"
+#include "../../heuristics/heuristic.h"
 
 #include <ctime>
 #include <unistd.h>
-
+#include <math.h>
 #include <fstream>
 
 #define VISIT_PRINT_MODULE_NAME(M)                                             \
@@ -21,6 +23,9 @@ class Graphviz : public ExecutionPlanVisitor {
 private:
   std::ofstream ofs;
   std::string fpath;
+
+  const SearchSpace *search_space;
+  std::string search_space_fpath;
 
   std::map<Target, std::string> node_colors;
 
@@ -54,11 +59,16 @@ private:
     std::string script = "open_graph.sh";
     std::string cmd = dir_path + "/" + script + " " + fpath;
 
+    if (search_space) {
+      cmd += " " + search_space_fpath;
+    }
+
     system(cmd.c_str());
   }
 
 public:
-  Graphviz(const std::string &path) : fpath(path) {
+  Graphviz(const std::string &path, const SearchSpace *_search_space)
+      : fpath(path), search_space(_search_space) {
     node_colors =
         std::map<Target, std::string>{ { Target::x86, "cornflowerblue" },
                                        { Target::Tofino, "darkolivegreen2" },
@@ -69,14 +79,74 @@ public:
     assert(ofs);
   }
 
+  Graphviz(const std::string &path) : Graphviz(path, nullptr) {}
+
 private:
   Graphviz() : Graphviz(get_rand_fname()) {}
+  Graphviz(const SearchSpace *_search_space)
+      : Graphviz(get_rand_fname(), _search_space) {
+    search_space_fpath = get_rand_fname();
+  }
 
   void function_call(Target target, std::string target_name,
                      std::string label) {
     ofs << "[label=\"" << target_name << "::" << label << "\", ";
     ofs << "color=" << node_colors[target] << "];";
     ofs << "\n";
+  }
+
+  struct rgb_t {
+    int r;
+    int g;
+    int b;
+  };
+
+  rgb_t get_color(float f) const {
+    rgb_t rgb;
+
+    // float to RGB colormap : long rainbow
+    // source: https://www.particleincell.com/2014/colormap/
+
+    float group, color_value;
+    color_value = 255 * modf(f * 5.0f, &group);
+
+    int int_group = (int)group;
+    int int_color_value = (int)color_value;
+
+    switch (int_group) {
+    case 0:
+      rgb.r = 255;
+      rgb.g = int_color_value;
+      rgb.b = 0;
+      break;
+    case 1:
+      rgb.r = 255 - int_color_value;
+      rgb.g = 255;
+      rgb.b = 0;
+      break;
+    case 2:
+      rgb.r = 0;
+      rgb.g = 255;
+      rgb.b = int_color_value;
+      break;
+    case 3:
+      rgb.r = 0;
+      rgb.g = 255 - int_color_value;
+      rgb.b = 255;
+      break;
+    case 4:
+      rgb.r = int_color_value;
+      rgb.g = 0;
+      rgb.b = 255;
+      break;
+    case 5:
+      rgb.r = 255;
+      rgb.g = 0;
+      rgb.b = 255;
+      break;
+    }
+
+    return rgb;
   }
 
 public:
@@ -88,20 +158,37 @@ public:
     }
   }
 
+  static void visualize(const ExecutionPlan &ep, SearchSpace &_search_space) {
+    if (!ep.get_root()) {
+      return;
+    }
+
+    _search_space.normalize();
+
+    Graphviz gv(&_search_space);
+    ep.visit(gv);
+    gv.open();
+  }
+
   ~Graphviz() { ofs.close(); }
 
   void visit(ExecutionPlan ep) override {
-    ofs << "digraph mygraph {"
-        << "\n";
-    ofs << "  compound=true;"
-        << "\n";
-    ofs << "  node [shape=record,style=filled];"
-        << "\n";
+    ofs << "digraph ExecutionPlan {\n";
+
+    ofs << "label=\"Execution Plan\"\n";
+    ofs << "ratio=\"fill\";\n";
+    ofs << "size=\"12,12!\";\n";
+    ofs << "margin=0;\n";
+    ofs << "node [shape=record,style=filled];\n";
 
     ExecutionPlanVisitor::visit(ep);
 
     ofs << "}\n";
     ofs.flush();
+
+    if (search_space) {
+      dump_search_space();
+    }
   }
 
   void visit(const ExecutionPlanNode *ep_node) override {
@@ -109,13 +196,66 @@ public:
     auto next = ep_node->get_next();
     auto id = ep_node->get_id();
 
-    ofs << "  " << id << " ";
+    ofs << id << " ";
     ExecutionPlanVisitor::visit(ep_node);
 
     for (auto branch : next) {
-      ofs << "  " << id << " -> " << branch->get_id() << ";"
+      ofs << id << " -> " << branch->get_id() << ";"
           << "\n";
     }
+  }
+
+  void dump_search_space() {
+    assert(search_space);
+    assert(search_space->get_root());
+
+    std::ofstream search_space_ofs;
+
+    search_space_ofs.open(search_space_fpath);
+
+    search_space_ofs << "digraph SearchSpace {\n";
+
+    search_space_ofs << "label=\"Search Space\";\n";
+    search_space_ofs << "ratio=\"fill\";\n";
+    search_space_ofs << "size=\"12,12!\";\n";
+    search_space_ofs << "margin=0;\n";
+    search_space_ofs << "node [shape=circle,style=filled];\n";
+
+    std::vector<search_space_node_t *> nodes;
+    nodes.push_back(search_space->get_root().get());
+
+    while (nodes.size()) {
+      auto node = nodes[0];
+      nodes.erase(nodes.begin());
+
+      search_space_ofs << node->execution_plan_id << " [color=\"#";
+
+      auto color = get_color(node->normalized_score);
+
+      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
+      search_space_ofs << color.r;
+      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
+      search_space_ofs << color.g;
+      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
+      search_space_ofs << color.b;
+
+      search_space_ofs << std::dec;
+      search_space_ofs << "\"";
+      search_space_ofs << "];\n";
+
+      if (node->prev) {
+        search_space_ofs << node->prev->execution_plan_id << " -> "
+                         << node->execution_plan_id << ";\n";
+      }
+
+      for (auto leaf : node->space) {
+        nodes.push_back(leaf.get());
+      }
+    }
+
+    search_space_ofs << "}\n";
+
+    search_space_ofs.close();
   }
 
   /********************************************
@@ -123,7 +263,6 @@ public:
    *                  x86
    *
    ********************************************/
-
   VISIT_PRINT_MODULE_NAME(targets::x86::MapGet)
   VISIT_PRINT_MODULE_NAME(targets::x86::CurrentTime)
   VISIT_PRINT_MODULE_NAME(targets::x86::PacketBorrowNextChunk)
@@ -149,7 +288,6 @@ public:
    *                  Tofino
    *
    ********************************************/
-
   VISIT_PRINT_MODULE_NAME(targets::tofino::A)
   VISIT_PRINT_MODULE_NAME(targets::tofino::B)
 };

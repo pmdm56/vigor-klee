@@ -63,8 +63,6 @@ int main(int argc, char **argv) {
   
   // auto winner = se.search(dfs);
   auto winner = se.search(most_compact);
-
-  synapse::Graphviz::visualize(winner);
   
   for (auto call_path : call_paths) {
     delete call_path;
