@@ -48,21 +48,17 @@ public:
     h.add(context);
 
     while (!h.finished()) {
-      Log::dbg() << "\n";
-      Log::dbg() << "=======================================================\n";
-      Log::dbg() << "Available " << h.size() << "\n";
-
       bool processed = false;
+      auto available = h.size();
       auto next_ep = h.pop();
       auto next_node = next_ep.get_next_node();
       assert(next_node);
 
+      Log::dbg() << "\n";
+      Log::dbg() << "=======================================================\n";
+      Log::dbg() << "Available " << available << "\n";
       Log::dbg() << "Node      " << next_node->dump(true) << "\n";
       // Graphviz::visualize(next_ep, search_space);
-
-      if (!next_node && h.get_cfg()->terminate_on_first_solution()) {
-        return next_ep;
-      }
 
       for (auto module : modules) {
         auto next_context = module->process_node(next_ep, next_node);
@@ -73,7 +69,7 @@ public:
                      << next_context.size() << " exec plans"
                      << "\n";
           h.add(next_context);
-          search_space.add_leaves(next_context);
+          search_space.add_leaves(next_context, module);
           processed = true;
         }
       }

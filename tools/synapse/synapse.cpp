@@ -61,8 +61,8 @@ int main(int argc, char **argv) {
   se.add_target(synapse::Target::x86);
   se.add_target(synapse::Target::Tofino);
   
-  // auto winner = se.search(dfs);
-  auto winner = se.search(most_compact);
+  auto winner = se.search(dfs);
+  // auto winner = se.search(most_compact);
   
   for (auto call_path : call_paths) {
     delete call_path;

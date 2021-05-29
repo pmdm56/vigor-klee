@@ -165,6 +165,8 @@ public:
     return leaf;
   }
 
+  const std::vector<leaf_t> &get_leaves() const { return leaves; }
+
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(*this); }
 
   ExecutionPlan clone() const {

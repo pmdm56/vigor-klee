@@ -35,23 +35,20 @@ private:
     auto conf = static_cast<const HeuristicConfiguration *>(&configuration);
     auto it = std::prev(execution_plans.end());
 
-    if (!conf->terminate_on_first_solution()) {
-      while (!it->get_next_node() && it != execution_plans.begin()) {
-        --it;
-      }
+    while (!conf->terminate_on_first_solution() && !it->get_next_node() &&
+           it != execution_plans.begin()) {
+      --it;
+    }
 
-      if (!it->get_next_node()) {
-        it = execution_plans.end();
-      }
+    if (!it->get_next_node()) {
+      it = execution_plans.end();
     }
 
     return it;
   }
 
 public:
-  bool finished() const {
-    return !execution_plans.size() || get_next_it() == execution_plans.end();
-  }
+  bool finished() const { return get_next_it() == execution_plans.end(); }
 
   ExecutionPlan get() { return *get_best_it(); }
 

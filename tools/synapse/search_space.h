@@ -13,6 +13,7 @@ struct search_space_node_t {
   std::shared_ptr<search_space_node_t> prev;
   bool active;
   int execution_plan_id;
+  Module_ptr m;
 
   int score;
   float normalized_score;
@@ -20,6 +21,11 @@ struct search_space_node_t {
   search_space_node_t(int _execution_plan_id, int _score)
       : active(false), execution_plan_id(_execution_plan_id), score(_score),
         normalized_score(-1) {}
+
+  search_space_node_t(int _execution_plan_id, const Module_ptr &_m, int _score)
+      : search_space_node_t(_execution_plan_id, _score) {
+    m = _m;
+  }
 };
 
 class SearchSpace {
@@ -27,15 +33,20 @@ private:
   struct pending_leaves_t {
     int execution_plan_id;
     std::vector<ExecutionPlan> eps;
+    std::vector<Module_ptr> modules;
 
     pending_leaves_t() : execution_plan_id(-1) {}
 
     void reset() {
       execution_plan_id = -1;
       eps.clear();
+      modules.clear();
     }
 
-    void add(const ExecutionPlan &ep) { eps.push_back(ep); }
+    void add(const ExecutionPlan &ep, const Module_ptr &module) {
+      eps.push_back(ep);
+      modules.push_back(module);
+    }
   };
 
 private:
@@ -53,7 +64,7 @@ public:
     leaves.push_back(root);
   }
 
-  void add_leaves(const Context &context) {
+  void add_leaves(const Context &context, const Module_ptr &module) {
     std::vector<search_space_node_t> nodes;
 
     int execution_plan_id = context.has_current()
@@ -67,7 +78,7 @@ public:
 
     auto eps = context.get_next_eps();
     for (auto ep : eps) {
-      pending_leaves.add(ep);
+      pending_leaves.add(ep, module);
     }
   }
 
@@ -83,11 +94,15 @@ public:
     auto leaf = *found_it;
     leaves.erase(found_it);
 
-    for (auto &ep : pending_leaves.eps) {
+    for (unsigned i = 0; i < pending_leaves.eps.size(); i++) {
+      auto &ep = pending_leaves.eps[i];
+      auto &module = pending_leaves.modules[i];
+
       auto score = hc->get_score(ep);
       max_score = std::max((float)score, max_score);
 
-      leaf->space.emplace_back(new search_space_node_t(ep.get_id(), score));
+      leaf->space.emplace_back(
+          new search_space_node_t(ep.get_id(), module, score));
       leaf->space.back()->prev = leaf;
       leaves.push_back(leaf->space.back());
     }
@@ -110,6 +125,7 @@ public:
   const std::vector<std::shared_ptr<search_space_node_t>> &get_leaves() const {
     return leaves;
   }
+
   const std::shared_ptr<search_space_node_t> &get_root() const { return root; }
 };
 }

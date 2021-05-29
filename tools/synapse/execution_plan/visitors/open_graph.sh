@@ -6,34 +6,40 @@ if [[ $# -eq 0 ]] ; then
   exit 1
 fi
 
-TMP_DIR=/tmp
+generated=()
 
-exec_plan_dot_file=$1
-exec_plan_graph="${1%.*}".ps2
+function generate_ps2 {
+  if=$1
+  of="${if%.*}".ps2
 
-mime_type="application/postscript"
-default_app=$(grep -i ^exec $(locate -n 1 $(xdg-mime query default $mime_type | cut -d';' -f 1)) | perl -pe 's/.*=(\S+).*/$1/')
+  dot -Tps2 $if -o $of
+  generated+=("$of")
+}
 
-dot -Tps2 $exec_plan_dot_file -o $exec_plan_graph
+function open_ps2 {
+  f=$1
+  mime_type="application/postscript"
+  default_app=$(grep -i ^exec $(locate -n 1 $(xdg-mime query default $mime_type | cut -d';' -f 1)) | perl -pe 's/.*=(\S+).*/$1/')
+  $default_app $f
+}
 
-if [[ $# -eq 2 ]] ; then
-  search_space_dot_file=$2
-  search_space_graph="${2%.*}".ps2
+for f in "${@}"
+do
+  generate_ps2 "$f"
+done
 
-  twopi -Tps2 $search_space_dot_file -o $search_space_graph  
-  merged_file=$TMP_DIR/out.pdf
-
-  gs -q -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dSAFER -sOutputFile=$merged_file $exec_plan_graph $search_space_graph > /dev/null
-  $default_app $merged_file
-
-  rm $search_space_dot_file
-  rm $search_space_graph
-  rm $merged_file
+if [ "${#generated[@]}" -eq 1 ]; then
+  open_ps2 "${generated[0]}"
 else
-  $default_app $exec_plan_graph
+  merged_file=/tmp/out.pdf
+  gs -q -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dSAFER -sOutputFile=$merged_file "${generated[@]/#/}" > /dev/null
+  open_ps2 $merged_file
+  rm $merged_file
 fi
 
-rm $exec_plan_dot_file
-rm $exec_plan_graph
+for of in "${generated[@]}"
+do
+  rm $of 2> /dev/null
+done
 
 exit 0

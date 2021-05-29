@@ -26,6 +26,7 @@ private:
 
   const SearchSpace *search_space;
   std::string search_space_fpath;
+  std::vector<std::string> bdd_fpaths;
 
   std::map<Target, std::string> node_colors;
 
@@ -35,7 +36,7 @@ private:
                                           "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                           "abcdefghijklmnopqrstuvwxyz";
 
-  std::string get_rand_fname() {
+  std::string get_rand_fname() const {
     std::stringstream ss;
     static unsigned counter = 1;
 
@@ -58,6 +59,10 @@ private:
     std::string dir_path = file_path.substr(0, file_path.rfind("/"));
     std::string script = "open_graph.sh";
     std::string cmd = dir_path + "/" + script + " " + fpath;
+
+    for (auto bdd_fpath : bdd_fpaths) {
+      cmd += " " + bdd_fpath;
+    }
 
     if (search_space) {
       cmd += " " + search_space_fpath;
@@ -149,6 +154,85 @@ private:
     return rgb;
   }
 
+  void dump_bdd(const BDD::Node *node) {
+    std::string leaf_fpath = get_rand_fname();
+    bdd_fpaths.push_back(leaf_fpath);
+    std::ofstream leaf_ofs;
+
+    leaf_ofs.open(leaf_fpath);
+
+    leaf_ofs << "digraph bdd_next {\n";
+    leaf_ofs << "layout=\"dot\";";
+    leaf_ofs << "ratio=\"fill\";\n";
+    leaf_ofs << "size=\"12,12!\";\n";
+    leaf_ofs << "margin=0;\n";
+    leaf_ofs << "node [shape=record,style=filled];\n";
+
+    BDD::GraphvizGenerator bdd_graphviz(leaf_ofs);
+
+    node->visit(bdd_graphviz);
+    leaf_ofs << "}\n";
+
+    leaf_ofs.flush();
+    leaf_ofs.close();
+  }
+
+  void dump_search_space() const {
+    assert(search_space);
+    assert(search_space->get_root());
+
+    std::ofstream search_space_ofs;
+
+    search_space_ofs.open(search_space_fpath);
+
+    search_space_ofs << "digraph SearchSpace {\n";
+    search_space_ofs << "layout=\"twopi\";";
+    search_space_ofs << "ratio=\"fill\";\n";
+    search_space_ofs << "size=\"12,12!\";\n";
+    search_space_ofs << "margin=0;\n";
+    search_space_ofs << "node [shape=record,style=filled];\n";
+
+    std::vector<search_space_node_t *> nodes;
+    nodes.push_back(search_space->get_root().get());
+
+    while (nodes.size()) {
+      auto node = nodes[0];
+      nodes.erase(nodes.begin());
+
+      search_space_ofs << node->execution_plan_id << " [color=\"#";
+
+      auto color = get_color(node->normalized_score);
+
+      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
+      search_space_ofs << color.r;
+      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
+      search_space_ofs << color.g;
+      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
+      search_space_ofs << color.b;
+
+      search_space_ofs << std::dec;
+      search_space_ofs << "\"";
+      if (node->m) {
+        search_space_ofs << ", label=\"" << node->m->get_target_name()
+                         << "::" << node->m->get_name() << "\"";
+      }
+      search_space_ofs << "];\n";
+
+      if (node->prev) {
+        search_space_ofs << node->prev->execution_plan_id << " -> "
+                         << node->execution_plan_id << ";\n";
+      }
+
+      for (auto leaf : node->space) {
+        nodes.push_back(leaf.get());
+      }
+    }
+
+    search_space_ofs << "}\n";
+
+    search_space_ofs.close();
+  }
+
 public:
   static void visualize(const ExecutionPlan &ep) {
     if (ep.get_root()) {
@@ -174,9 +258,8 @@ public:
 
   void visit(ExecutionPlan ep) override {
     ofs << "digraph ExecutionPlan {\n";
-
-    ofs << "label=\"Execution Plan\"\n";
     ofs << "ratio=\"fill\";\n";
+    ofs << "layout=\"dot\";";
     ofs << "size=\"12,12!\";\n";
     ofs << "margin=0;\n";
     ofs << "node [shape=record,style=filled];\n";
@@ -185,6 +268,11 @@ public:
 
     ofs << "}\n";
     ofs.flush();
+
+    for (auto leaf : ep.get_leaves()) {
+      bdd_fpaths.clear();
+      dump_bdd(leaf.next);
+    }
 
     if (search_space) {
       dump_search_space();
@@ -203,59 +291,6 @@ public:
       ofs << id << " -> " << branch->get_id() << ";"
           << "\n";
     }
-  }
-
-  void dump_search_space() {
-    assert(search_space);
-    assert(search_space->get_root());
-
-    std::ofstream search_space_ofs;
-
-    search_space_ofs.open(search_space_fpath);
-
-    search_space_ofs << "digraph SearchSpace {\n";
-
-    search_space_ofs << "label=\"Search Space\";\n";
-    search_space_ofs << "ratio=\"fill\";\n";
-    search_space_ofs << "size=\"12,12!\";\n";
-    search_space_ofs << "margin=0;\n";
-    search_space_ofs << "node [shape=circle,style=filled];\n";
-
-    std::vector<search_space_node_t *> nodes;
-    nodes.push_back(search_space->get_root().get());
-
-    while (nodes.size()) {
-      auto node = nodes[0];
-      nodes.erase(nodes.begin());
-
-      search_space_ofs << node->execution_plan_id << " [color=\"#";
-
-      auto color = get_color(node->normalized_score);
-
-      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
-      search_space_ofs << color.r;
-      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
-      search_space_ofs << color.g;
-      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
-      search_space_ofs << color.b;
-
-      search_space_ofs << std::dec;
-      search_space_ofs << "\"";
-      search_space_ofs << "];\n";
-
-      if (node->prev) {
-        search_space_ofs << node->prev->execution_plan_id << " -> "
-                         << node->execution_plan_id << ";\n";
-      }
-
-      for (auto leaf : node->space) {
-        nodes.push_back(leaf.get());
-      }
-    }
-
-    search_space_ofs << "}\n";
-
-    search_space_ofs.close();
   }
 
   /********************************************
