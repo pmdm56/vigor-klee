@@ -11,6 +11,7 @@ add_executable(synapse
   modules/module.cpp
   execution_plan/execution_plan.cpp
   execution_plan/visitors/visitor.cpp
+  execution_plan/visitors/x86_generator.cpp
   log.cpp
   ../load-call-paths/load-call-paths.cpp
   ../call-paths-to-bdd/call-paths-to-bdd.cpp

@@ -1,10 +1,11 @@
 #pragma once
 
-#include <vector>
 #include <algorithm>
 #include <assert.h>
+#include <vector>
 
 #include "execution_plan/context.h"
+#include "heuristics/heuristic.h"
 
 namespace synapse {
 
@@ -128,4 +129,4 @@ public:
 
   const std::shared_ptr<search_space_node_t> &get_root() const { return root; }
 };
-}
+} // namespace synapse

@@ -9,15 +9,12 @@ namespace synapse {
 namespace targets {
 namespace tofino {
 
-std::vector<Module_ptr> get_modules() {
-  std::vector<Module_ptr> modules {
-    MODULE(A),
-    MODULE(B),
-  };
+inline std::vector<Module_ptr> get_modules() {
+  std::vector<Module_ptr> modules{ MODULE(A), MODULE(B), };
 
   return modules;
 }
 
-}
-}
-}
+} // namespace tofino
+} // namespace targets
+} // namespace synapse

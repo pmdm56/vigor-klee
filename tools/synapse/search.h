@@ -1,9 +1,9 @@
 #pragma once
 
 #include "execution_plan/execution_plan.h"
+#include "execution_plan/visitors/graphviz.h"
 #include "heuristics/heuristic.h"
 #include "log.h"
-#include "execution_plan/visitors/graphviz.h"
 #include "search_space.h"
 
 namespace synapse {
@@ -42,7 +42,7 @@ public:
   }
 
   template <class T> ExecutionPlan search(Heuristic<T> h) {
-    Context context(bdd.get_process());
+    Context context(bdd);
     SearchSpace search_space(h.get_cfg(), context.get_next_eps()[0]);
 
     h.add(context);
@@ -61,7 +61,7 @@ public:
       // Graphviz::visualize(next_ep, search_space);
 
       for (auto module : modules) {
-        auto next_context = module->process_node(next_ep, next_node);
+        auto next_context = module->process_node(next_ep, next_node, bdd);
 
         if (next_context.processed()) {
           Log::dbg() << "MATCH     " << module->get_target_name()
@@ -81,8 +81,8 @@ public:
       Log::dbg() << "=======================================================\n";
     }
 
-    synapse::Graphviz::visualize(h.get(), search_space);
+    // synapse::Graphviz::visualize(h.get(), search_space);
     return h.get();
   }
 };
-}
+} // namespace synapse

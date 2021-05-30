@@ -26,6 +26,8 @@ private:
   ExecutionPlanNode_ptr root;
   std::vector<leaf_t> leaves;
 
+  const BDD::BDD *bdd;
+
   // metadata
 private:
   int depth;
@@ -35,22 +37,25 @@ private:
   static int counter;
 
 public:
-  ExecutionPlan(const BDD::Node *_next) : depth(0), nodes(0), id(counter++) {
+  ExecutionPlan(const BDD::Node *_next, const BDD::BDD *_bdd)
+      : bdd(_bdd), depth(0), nodes(0), id(counter++) {
     leaf_t leaf(_next);
     leaves.push_back(leaf);
   }
 
-  ExecutionPlan(const ExecutionPlan &ep)
-      : root(ep.root), leaves(ep.leaves), depth(ep.depth), nodes(ep.nodes),
-        id(ep.id) {}
+  ExecutionPlan(const ExecutionPlan &ep, const BDD::BDD *_bdd)
+      : root(ep.root), leaves(ep.leaves), bdd(_bdd), depth(ep.depth),
+        nodes(ep.nodes), id(ep.id) {}
 
-  ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf)
+  ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
+                const BDD::BDD *_bdd)
       : ExecutionPlan(ep.clone()) {
     id = counter++;
     add(leaf);
   }
 
-  ExecutionPlan(const ExecutionPlan &ep, const std::vector<leaf_t> &_leaves)
+  ExecutionPlan(const ExecutionPlan &ep, const std::vector<leaf_t> &_leaves,
+                const BDD::BDD *_bdd)
       : ExecutionPlan(ep.clone()) {
     assert(root);
     id = counter++;
@@ -166,6 +171,10 @@ public:
   }
 
   const std::vector<leaf_t> &get_leaves() const { return leaves; }
+  const BDD::BDD *get_bdd() const {
+    assert(bdd);
+    return bdd;
+  }
 
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(*this); }
 

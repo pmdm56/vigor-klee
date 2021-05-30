@@ -1,8 +1,9 @@
 #pragma once
 
-#include "call-paths-to-bdd.h"
-#include "../module.h"
+#include "../../execution_plan/context.h"
 #include "../../log.h"
+#include "../module.h"
+#include "call-paths-to-bdd.h"
 
 namespace synapse {
 namespace targets {
@@ -36,6 +37,6 @@ public:
     visitor.visit(this);
   }
 };
-}
-}
-}
+} // namespace x86
+} // namespace targets
+} // namespace synapse

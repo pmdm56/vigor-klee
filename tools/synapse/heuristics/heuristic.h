@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../execution_plan/context.h"
 #include "../execution_plan/execution_plan.h"
 
 #include <set>
@@ -76,4 +77,4 @@ public:
     return conf->get_score(e);
   }
 };
-}
+} // namespace synapse

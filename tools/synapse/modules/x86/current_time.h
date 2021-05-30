@@ -1,17 +1,25 @@
 #pragma once
 
-#include "call-paths-to-bdd.h"
-#include "../module.h"
+#include "../../execution_plan/context.h"
 #include "../../log.h"
+#include "../module.h"
+#include "call-paths-to-bdd.h"
 
 namespace synapse {
 namespace targets {
 namespace x86 {
 
 class CurrentTime : public Module {
+private:
+  klee::ref<klee::Expr> time;
+
 public:
   CurrentTime()
       : Module(ModuleType::x86_CurrentTime, Target::x86, "CurrentTime") {}
+
+  CurrentTime(klee::ref<klee::Expr> _time)
+      : Module(ModuleType::x86_CurrentTime, Target::x86, "CurrentTime"),
+        time(_time) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -22,11 +30,14 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "current_time") {
-      auto ep_node =
-          ExecutionPlanNode::build(CREATE_SHARED_MODULE(CurrentTime), node);
+      assert(!call.ret.isNull());
+      auto _time = call.ret;
+
+      auto new_module = std::make_shared<CurrentTime>(_time);
+      auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-      auto new_ep = ExecutionPlan(ep, new_leaf);
+      auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
       context->add(new_ep);
     }
@@ -48,7 +59,9 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const override {
     visitor.visit(this);
   }
+
+  const klee::ref<klee::Expr> &get_time() const { return time; }
 };
-}
-}
-}
+} // namespace x86
+} // namespace targets
+} // namespace synapse

@@ -12,8 +12,8 @@ private:
 
 public:
   Context(const ExecutionPlan &ep) : current_ep(&ep), success(false) {}
-  Context(const BDD::Node *node) : current_ep(nullptr) {
-    next_eps.emplace_back(node);
+  Context(const BDD::BDD &bdd) : current_ep(nullptr) {
+    next_eps.emplace_back(bdd.get_process(), &bdd);
   }
 
   void add(const ExecutionPlan &ep) {

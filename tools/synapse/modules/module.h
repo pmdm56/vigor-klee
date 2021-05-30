@@ -4,7 +4,6 @@
 
 #include "../execution_plan/visitors/visitor.h"
 
-#define CREATE_SHARED_MODULE(M) (std::shared_ptr<Module>(new (M)()))
 #define MODULE(X) (std::make_shared<X>())
 
 namespace synapse {
@@ -52,11 +51,13 @@ protected:
   const char *name;
   BDD::Node *node;
 
-  Context *context; // intermediary data
+  Context *context;    // intermediary data
+  const BDD::BDD *bdd; // intermediary data
 
 protected:
   Module(ModuleType _type, Target _target, const char *_name)
-      : type(_type), target(_target), name(_name), context(nullptr) {}
+      : type(_type), target(_target), name(_name), context(nullptr),
+        bdd(nullptr) {}
 
 public:
   Module() {}
@@ -82,10 +83,11 @@ public:
     assert(false && "I should not be here");
   }
 
-  Context process_node(const ExecutionPlan &_ep, const BDD::Node *node);
+  Context process_node(const ExecutionPlan &_ep, const BDD::Node *node,
+                       const BDD::BDD &bdd);
 
   virtual void visit(ExecutionPlanVisitor &visitor) const = 0;
 
   ~Module();
 };
-}
+} // namespace synapse

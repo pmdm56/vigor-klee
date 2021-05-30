@@ -1,15 +1,16 @@
 #pragma once
 
-#include "visitor.h"
-#include "../execution_plan.h"
-#include "../../search_space.h"
-#include "../../log.h"
 #include "../../heuristics/heuristic.h"
+#include "../../log.h"
+#include "../../modules/modules.h"
+#include "../../search_space.h"
+#include "../execution_plan.h"
+#include "visitor.h"
 
 #include <ctime>
-#include <unistd.h>
-#include <math.h>
 #include <fstream>
+#include <math.h>
+#include <unistd.h>
 
 #define VISIT_PRINT_MODULE_NAME(M)                                             \
   void visit(const M *node) override {                                         \
@@ -326,4 +327,4 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::tofino::A)
   VISIT_PRINT_MODULE_NAME(targets::tofino::B)
 };
-}
+} // namespace synapse

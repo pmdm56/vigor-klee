@@ -1,16 +1,23 @@
 #pragma once
 
-#include "call-paths-to-bdd.h"
-#include "../module.h"
+#include "../../execution_plan/context.h"
 #include "../../log.h"
+#include "../module.h"
+#include "call-paths-to-bdd.h"
 
 namespace synapse {
 namespace targets {
 namespace x86 {
 
 class Forward : public Module {
+private:
+  int port;
+
 public:
   Forward() : Module(ModuleType::x86_Forward, Target::x86, "Forward") {}
+
+  Forward(int _port)
+      : Module(ModuleType::x86_Forward, Target::x86, "Forward"), port(_port) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -29,11 +36,13 @@ private:
   BDD::BDDVisitor::Action
   visitReturnProcess(const BDD::ReturnProcess *node) override {
     if (node->get_return_operation() == BDD::ReturnProcess::Operation::FWD) {
-      auto ep_node =
-          ExecutionPlanNode::build(CREATE_SHARED_MODULE(Forward), node);
+      auto _port = node->get_return_value();
+
+      auto new_module = std::make_shared<Forward>(_port);
+      auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-      auto new_ep = ExecutionPlan(ep, new_leaf);
+      auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
       context->add(new_ep);
     }
@@ -45,7 +54,9 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const override {
     visitor.visit(this);
   }
+
+  int get_port() const { return port; }
 };
-}
-}
-}
+} // namespace x86
+} // namespace targets
+} // namespace synapse

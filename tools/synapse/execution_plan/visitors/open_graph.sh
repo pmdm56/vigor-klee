@@ -20,7 +20,7 @@ function open_ps2 {
   f=$1
   mime_type="application/postscript"
   default_app=$(grep -i ^exec $(locate -n 1 $(xdg-mime query default $mime_type | cut -d';' -f 1)) | perl -pe 's/.*=(\S+).*/$1/')
-  $default_app $f
+  $default_app $f > /dev/null
 }
 
 for f in "${@}"

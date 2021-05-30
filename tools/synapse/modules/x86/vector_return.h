@@ -1,17 +1,28 @@
 #pragma once
 
-#include "call-paths-to-bdd.h"
-#include "../module.h"
+#include "../../execution_plan/context.h"
 #include "../../log.h"
+#include "../module.h"
+#include "call-paths-to-bdd.h"
 
 namespace synapse {
 namespace targets {
 namespace x86 {
 
 class VectorReturn : public Module {
+private:
+  klee::ref<klee::Expr> vector_addr;
+  klee::ref<klee::Expr> index;
+  klee::ref<klee::Expr> value;
+
 public:
   VectorReturn()
       : Module(ModuleType::x86_VectorReturn, Target::x86, "VectorReturn") {}
+
+  VectorReturn(klee::ref<klee::Expr> _vector_addr, klee::ref<klee::Expr> _index,
+               klee::ref<klee::Expr> _value)
+      : Module(ModuleType::x86_VectorReturn, Target::x86, "VectorReturn"),
+        vector_addr(_vector_addr), index(_index), value(_value) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -22,11 +33,20 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "vector_return") {
-      auto ep_node =
-          ExecutionPlanNode::build(CREATE_SHARED_MODULE(VectorReturn), node);
+      assert(!call.args["vector"].expr.isNull());
+      assert(!call.args["index"].expr.isNull());
+      assert(!call.args["value"].expr.isNull());
+
+      auto _vector_addr = call.args["vector"].expr;
+      auto _index = call.args["index"].expr;
+      auto _value = call.args["value"].expr;
+
+      auto new_module =
+          std::make_shared<VectorReturn>(_vector_addr, _index, _value);
+      auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-      auto new_ep = ExecutionPlan(ep, new_leaf);
+      auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
       context->add(new_ep);
     }
@@ -49,6 +69,6 @@ public:
     visitor.visit(this);
   }
 };
-}
-}
-}
+} // namespace x86
+} // namespace targets
+} // namespace synapse
