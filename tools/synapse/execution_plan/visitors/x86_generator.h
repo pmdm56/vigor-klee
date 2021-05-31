@@ -70,20 +70,40 @@ struct stack_t {
     return ret;
   }
 
+  void set_value(std::string label, klee::ref<klee::Expr> value) {
+    klee::ref<klee::Expr> ret;
+
+    for (auto it = frames.rbegin(); it != frames.rend(); it++) {
+      for (auto var : *it) {
+        if (var.label == label) {
+          var.value = value;
+          return;
+        }
+      }
+    }
+
+    assert(false);
+  }
+
   klee::ref<klee::Expr> get_value(klee::ref<klee::Expr> addr) {
     klee::ref<klee::Expr> ret;
     auto size = addr->getWidth();
 
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto var : *it) {
-        if (!var.addr.isNull() && var.addr->getWidth() == size &&
-            solver.are_exprs_always_equal(var.addr, addr)) {
+        auto target = var.addr;
+
+        if (var.addr.isNull()) {
+          continue;
+        }
+
+        auto extracted = solver.exprBuilder->Extract(target, 0, size);
+        if (solver.are_exprs_always_equal(extracted, addr)) {
           return var.value;
         }
       }
     }
 
-    not_found_err(addr);
     return ret;
   }
 
@@ -93,21 +113,71 @@ struct stack_t {
 
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto var : *it) {
-        if (!var.addr.isNull() && var.addr->getWidth() == size &&
-            solver.are_exprs_always_equal(var.addr, addr)) {
+        auto target = var.addr;
+
+        if (var.addr.isNull()) {
+          continue;
+        }
+
+        auto extracted = solver.exprBuilder->Extract(target, 0, size);
+        if (solver.are_exprs_always_equal(extracted, addr)) {
           return var.label;
         }
       }
     }
 
-    not_found_err(addr);
     return label;
+  }
+
+  std::string get_by_value(klee::ref<klee::Expr> value) {
+    std::stringstream label_stream;
+
+    auto value_size = value->getWidth();
+
+    for (auto it = frames.rbegin(); it != frames.rend(); it++) {
+      for (auto var : *it) {
+        if (var.value.isNull()) {
+          continue;
+        }
+
+        RetrieveSymbols retriever;
+        retriever.visit(var.value);
+        auto symbols = retriever.get_retrieved_strings();
+
+        if (symbols.size() == 0) {
+          continue;
+        }
+
+        auto var_size = var.value->getWidth();
+
+        if (var_size < value_size) {
+          continue;
+        }
+
+        for (unsigned b = 0; b + value_size <= var_size; b += 8) {
+          auto var_extract =
+              solver.exprBuilder->Extract(var.value, b, value_size);
+
+          if (solver.are_exprs_always_equal(var_extract, value)) {
+            label_stream << var.label << "[" << b / 8 << "]";
+            return label_stream.str();
+          }
+        }
+      }
+    }
+
+    return label_stream.str();
   }
 
   void not_found_err(klee::ref<klee::Expr> addr) const {
     std::cerr << "FAILED search for addr " << expr_to_string(addr, true)
               << "\n";
     std::cerr << "Dumping stack content...\n";
+    dump();
+    assert(false);
+  }
+
+  void dump() const {
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto var : *it) {
         std::cerr << var.label;
@@ -117,7 +187,6 @@ struct stack_t {
         std::cerr << "\n";
       }
     }
-    assert(false);
   }
 };
 
