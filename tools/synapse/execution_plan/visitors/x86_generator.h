@@ -56,6 +56,18 @@ struct stack_t {
     frames.back().emplace_back(label, value, addr);
   }
 
+  bool has_label(std::string label) {
+    for (auto it = frames.rbegin(); it != frames.rend(); it++) {
+      for (auto var : *it) {
+        if (var.label == label) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   klee::ref<klee::Expr> get_value(std::string label) {
     klee::ref<klee::Expr> ret;
 
@@ -178,15 +190,21 @@ struct stack_t {
   }
 
   void dump() const {
+    std::cerr << "============================================\n";
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto var : *it) {
         std::cerr << var.label;
         if (!var.addr.isNull()) {
           std::cerr << " : " << expr_to_string(var.addr, true);
         }
+
+        if (!var.value.isNull()) {
+          std::cerr << " : " << expr_to_string(var.value, true);
+        }
         std::cerr << "\n";
       }
     }
+    std::cerr << "============================================\n";
   }
 };
 

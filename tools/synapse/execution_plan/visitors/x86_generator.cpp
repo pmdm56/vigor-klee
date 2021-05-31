@@ -6,6 +6,8 @@ namespace synapse {
 std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver, bool is_signed);
 std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver);
 
+bool is_read_lsb(klee::ref<klee::Expr> e);
+
 class KleeExprToC : public klee::ExprVisitor::ExprVisitor {
 private:
   std::stringstream code;
@@ -30,6 +32,25 @@ public:
   }
 
   klee::ExprVisitor::Action visitConcat(const klee::ConcatExpr& e) {
+    klee::ref<klee::Expr> eref = const_cast<klee::ConcatExpr *>(&e);
+
+    if (is_read_lsb(eref)) {
+      RetrieveSymbols retriever;
+      retriever.visit(eref);
+      assert(retriever.get_retrieved_strings().size() == 1);
+      auto symbol = retriever.get_retrieved_strings()[0];
+      
+      if (stack.has_label(symbol)) {
+        code << symbol;
+        return klee::ExprVisitor::Action::skipChildren();
+      }
+
+      e.dump(); std::cerr << "\n";
+      std::cerr << "symbol " << symbol << " not in set\n";
+      stack.dump();
+      assert(false && "Not in stack");
+    }
+
     e.dump(); std::cerr << "\n";
     assert(false && "TODO");
     return klee::ExprVisitor::Action::skipChildren();
@@ -432,6 +453,63 @@ public:
   }
 };
 
+bool is_read_lsb(klee::ref<klee::Expr> e) {
+  RetrieveSymbols retriever;
+  retriever.visit(e);
+
+  if (retriever.get_retrieved_strings().size() != 1) {
+    return false;
+  }
+
+  auto sz = e->getWidth();
+  assert(sz % 8 == 0);
+  auto index = (sz / 8) - 1;
+
+  if (e->getKind() != klee::Expr::Kind::Concat) {
+    return false;
+  }
+
+  while (e->getKind() == klee::Expr::Kind::Concat) {
+    auto msb = e->getKid(0);
+    auto lsb = e->getKid(1);
+
+    if (msb->getKind() != klee::Expr::Kind::Read) {
+      return false;
+    }
+
+    auto msb_index = msb->getKid(0);
+
+    if (msb_index->getKind() != klee::Expr::Kind::Constant) {
+      return false;
+    }
+
+    auto const_msb_index = static_cast<klee::ConstantExpr*>(msb_index.get());
+
+    if (const_msb_index->getZExtValue() != index) {
+      return false;
+    }
+
+    index--;
+    e = lsb;
+  }
+
+  if (e->getKind() == klee::Expr::Kind::Read) {
+    auto last_index = e->getKid(0);
+
+    if (last_index->getKind() != klee::Expr::Kind::Constant) {
+      return false;
+    }
+
+    auto const_last_index = static_cast<klee::ConstantExpr*>(last_index.get());
+
+    if (const_last_index->getZExtValue() != index) {
+      return false;
+    }
+  }
+
+  return index == 0;
+}
+
 std::string build(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver, std::vector<std::string>& assignments) {
   std::stringstream assignment_stream;
   std::stringstream var_label;
@@ -459,17 +537,10 @@ std::string build(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_to
 }
 
 std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver, bool is_signed) {
-  std::stringstream ss;
-
-  auto stack_addr_label = stack.get_label(e);
-  if (stack_addr_label.size()) {
-    return stack_addr_label;
-  }
-
   if (e->getKind() == klee::Expr::Kind::Constant) {
+    std::stringstream ss;
     auto constant = static_cast<klee::ConstantExpr *>(e.get());
     assert(constant->getWidth() <= 64);
-
     ss << constant->getZExtValue();
     return ss.str();
   }
@@ -689,14 +760,14 @@ void x86_Generator::visit(ExecutionPlan ep) {
   allocate(ep);
 
   os << "int nf_process(";
-  os << "uint16_t src_devices";
+  os << "uint16_t VIGOR_DEVICE";
   os << ", uint8_t* p";
   os << ", uint16_t pkt_len";
   os << ", int64_t now";
   os << ") {\n";
   lvl++;
 
-  stack.add("src_devices");
+  stack.add("VIGOR_DEVICE");
   stack.add("p");
   stack.add("pkt_len");
   stack.add("now");
@@ -722,11 +793,13 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   auto map_addr = node->get_map_addr();
   auto key = node->get_key();
   auto map_has_this_key = node->get_map_has_this_key();
+  auto value_out = node->get_value_out();
 
   assert(!map_addr.isNull());
   assert(!key.isNull());
   assert(!map_has_this_key.isNull());
-
+  assert(!value_out.isNull());
+  
   auto map = stack.get_label(map_addr);
   if (!map.size()) {
     stack.dump();
@@ -734,15 +807,24 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   assert(map.size());
 
   static int map_has_this_key_counter = 0;
+  static int allocated_index_counter = 0;
   
   std::stringstream map_has_this_key_label_stream;
   map_has_this_key_label_stream << "map_has_this_key";
+
+  std::stringstream allocated_index_stream;
+  allocated_index_stream << "allocated_index";
   
   if (map_has_this_key_counter > 0) {
     map_has_this_key_label_stream << "_" << map_has_this_key_counter;
   }
 
+  if (allocated_index_counter > 0) {
+    allocated_index_stream << "_" << allocated_index_counter;
+  }
+
   stack.add(map_has_this_key_label_stream.str(), map_has_this_key);
+  stack.add(allocated_index_stream.str(), value_out);
 
   std::vector<std::string> key_assignments;
   auto key_label = build(key, stack, solver, key_assignments);
@@ -753,16 +835,19 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   }
 
   pad();
-  os << "int " << map_has_this_key_label_stream.str() << ";\n";
-
+  os << "int " << allocated_index_stream.str() << ";\n";
+  
   pad();
+  os << "int " << map_has_this_key_label_stream.str();
+  os << " = ";
   os << "map_get(";
   os << map;
   os << ", &" << key_label;
-  os << ", &" << map_has_this_key_label_stream.str();
+  os << ", &" << allocated_index_stream.str();
   os << ");\n";
 
   map_has_this_key_counter++;
+  allocated_index_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::CurrentTime *node) {
@@ -815,8 +900,12 @@ void x86_Generator::visit(const targets::x86::PacketReturnChunk *node) {
 }
 
 void x86_Generator::visit(const targets::x86::IfThen *node) {
+  auto condition = node->get_condition();
+
   pad();
-  os << "if () {\n";
+  os << "if (";
+  os << transpile(condition, stack, solver);
+  os << ") {\n";
   lvl++;
 
   pending_ifs.push(true);
@@ -852,7 +941,7 @@ void x86_Generator::visit(const targets::x86::Broadcast *node) {
 
 void x86_Generator::visit(const targets::x86::Drop *node) {
   pad();
-  os << "return src_devices;\n";
+  os << "return device;\n";
 
   lvl--;
   pad();
