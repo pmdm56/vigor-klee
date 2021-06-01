@@ -68,13 +68,13 @@ public:
       auto msb_sz = msb->getWidth();
       auto lsb_sz = lsb->getWidth();
 
-      if (offset + sz <= lsb_sz && offset > 0) {
-        expr = lsb;
-      }
-
-      else if (offset + sz == lsb_sz && offset == 0) {
+      if (offset + sz == lsb_sz && offset == 0) {
         expr = lsb;
         break;
+      }
+
+      if (offset + sz <= lsb_sz) {
+        expr = lsb;
       }
 
       else if (offset >= lsb_sz) {
@@ -88,19 +88,92 @@ public:
       }
     }
 
-    code << transpile(expr, stack, solver);
+    if (offset == 0 && expr->getWidth() == sz) {
+      code << transpile(expr, stack, solver);
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+
+    if (expr->getWidth() <= 64) {
+      uint64_t mask = 0;
+      for (unsigned b = 0; b < expr->getWidth(); b++) {
+        mask <<= 1;
+        mask |= 1;
+      }
+
+      assert(mask > 0);
+      if (offset > 0) {
+        code << "(";
+      }
+      code << transpile(expr, stack, solver);
+      if (offset > 0) {
+        code << " >> " << offset << ")";
+      }
+      code << " & " << mask << "u";
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+
+    if (expr->getKind() == klee::Expr::Kind::Constant) {
+      auto extract = solver.exprBuilder->Extract(expr, offset, sz);
+      auto value = solver.value_from_expr(extract);
+
+      // checking if this is really the ONLY answer
+      assert(solver.are_exprs_always_equal(extract, solver.exprBuilder->Constant(value, sz)));
+
+      code << value;
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+
+    std::cerr << "expr   " << expr_to_string(expr, true) << "\n" ;
+    std::cerr << "offset " << offset << "\n";
+    std::cerr << "sz     " << sz << "\n";
+    assert(false && "expr size > 64 but not constant");
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitZExt(const klee::ZExtExpr& e) {
-    e.dump(); std::cerr << "\n";
-    assert(false && "TODO");
+    auto sz = e.getWidth();
+    auto expr = e.getKid(0);
+    assert(sz % 8 == 0);
+
+    code << "(";
+
+    switch (sz) {
+      case klee::Expr::Int8: code << "uint8_t"; break;
+      case klee::Expr::Int16: code << "uint16_t"; break;
+      case klee::Expr::Int32: code << "uint32_t"; break;
+      case klee::Expr::Int64: code << "uint64_t"; break;
+      default: assert(false);
+    }
+
+    code << ")";
+    code << "(";
+    code << transpile(expr, stack, solver);
+    code << ")";
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitSExt(const klee::SExtExpr& e) {
-    e.dump(); std::cerr << "\n";
-    assert(false && "TODO");
+    auto sz = e.getWidth();
+    auto expr = e.getKid(0);
+    assert(sz % 8 == 0);
+
+    code << "(";
+
+    switch (sz) {
+      case klee::Expr::Int8: code << "int8_t"; break;
+      case klee::Expr::Int16: code << "int16_t"; break;
+      case klee::Expr::Int32: code << "int32_t"; break;
+      case klee::Expr::Int64: code << "int64_t"; break;
+      default: assert(false);
+    }
+
+    code << ")";
+    code << "(";
+    code << transpile(expr, stack, solver);
+    code << ")";
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -275,20 +348,77 @@ public:
   }
 
   klee::ExprVisitor::Action visitShl(const klee::ShlExpr& e) {
-    e.dump(); std::cerr << "\n";
-    assert(false && "TODO");
+    assert(e.getNumKids() == 2);
+    
+    auto lhs = e.getKid(0);
+    auto rhs = e.getKid(1);
+
+    auto lhs_parsed = transpile(lhs, stack, solver);
+    auto rhs_parsed = transpile(rhs, stack, solver);
+
+    code << "(" << lhs_parsed << ")";
+    code << " << ";
+    code << "(" << rhs_parsed << ")";
+    
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitLShr(const klee::LShrExpr& e) {
-    e.dump(); std::cerr << "\n";
-    assert(false && "TODO");
+    assert(e.getNumKids() == 2);
+    
+    auto lhs = e.getKid(0);
+    auto rhs = e.getKid(1);
+
+    auto lhs_parsed = transpile(lhs, stack, solver);
+    auto rhs_parsed = transpile(rhs, stack, solver);
+
+    code << "(" << lhs_parsed << ")";
+    code << " >> ";
+    code << "(" << rhs_parsed << ")";
+    
     return klee::ExprVisitor::Action::skipChildren();
   }
 
   klee::ExprVisitor::Action visitAShr(const klee::AShrExpr& e) {
-    e.dump(); std::cerr << "\n";
-    assert(false && "TODO");
+    assert(e.getNumKids() == 2);
+
+    auto lhs = e.getKid(0);
+    auto rhs = e.getKid(1);
+
+    auto sz = e.getWidth();
+    assert(sz % 8 == 0);
+
+    auto lhs_parsed = transpile(lhs, stack, solver);
+    auto rhs_parsed = transpile(rhs, stack, solver);
+
+    std::stringstream sign_bit_stream;
+    sign_bit_stream << "(" << lhs_parsed << ")";
+    sign_bit_stream << " >> ";
+    sign_bit_stream << sz - 1;
+
+    auto sign_bit = sign_bit_stream.str();
+
+    std::stringstream mask_stream;
+    mask_stream << "(";
+    mask_stream << "(";
+    mask_stream << "(" << sign_bit << ")";
+    mask_stream << " << ";
+    mask_stream << "(" << rhs_parsed << ")";
+    mask_stream << ")";
+    mask_stream << " - ";
+    mask_stream << "(1 & " << "(" << sign_bit << ")" << ")";
+    mask_stream << ")";
+    mask_stream << " << ";
+    mask_stream << "(" << sz - 1 << " - " << "(" << rhs_parsed << ")" << ")";
+
+    code << "(";
+    code << "(" << lhs_parsed << ")";
+    code << " >> ";
+    code << "(" << rhs_parsed << ")";
+    code << ")";
+    code << " | ";
+    code << "(" << mask_stream.str() << ")";
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
@@ -545,9 +675,9 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solve
     return ss.str();
   }
 
-  auto stack_value = stack.get_by_value(e);
-  if (stack_value.size()) {
-    return stack_value;
+  auto stack_label = stack.get_by_value(e);
+  if (stack_label.size()) {
+    return stack_label;
   }
 
   KleeExprToC kleeExprToC(stack, solver);
@@ -763,14 +893,14 @@ void x86_Generator::visit(ExecutionPlan ep) {
   os << "uint16_t VIGOR_DEVICE";
   os << ", uint8_t* p";
   os << ", uint16_t pkt_len";
-  os << ", int64_t now";
+  os << ", int64_t next_time";
   os << ") {\n";
   lvl++;
 
   stack.add("VIGOR_DEVICE");
   stack.add("p");
   stack.add("pkt_len");
-  stack.add("now");
+  stack.add("next_time");
 
   ExecutionPlanVisitor::visit(ep);
 }
@@ -851,7 +981,7 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
 }
 
 void x86_Generator::visit(const targets::x86::CurrentTime *node) {
-  stack.set_value("now", node->get_time());
+  stack.set_value("next_time", node->get_time());
 }
 
 void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
@@ -869,6 +999,7 @@ void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
   os << ");\n";
 
   stack.add(label_stream.str(), node->get_chunk(), node->get_chunk_addr());
+  chunk_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::PacketReturnChunk *node) {
@@ -951,9 +1082,58 @@ void x86_Generator::visit(const targets::x86::Drop *node) {
 }
 
 void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
+  auto dchain_addr = node->get_dchain_addr();
+  auto vector_addr = node->get_vector_addr();
+  auto map_addr = node->get_map_addr();
+  auto time = node->get_time();
+  auto number_of_freed_flows = node->get_number_of_freed_flows();
+
+  assert(!dchain_addr.isNull());
+  assert(!vector_addr.isNull());
+  assert(!map_addr.isNull());
+  assert(!time.isNull());
+  assert(!number_of_freed_flows.isNull());
+  
+  auto dchain = stack.get_label(dchain_addr);
+  if (!dchain.size()) {
+    stack.dump();
+  }
+  assert(dchain.size());
+
+  auto vector = stack.get_label(vector_addr);
+  if (!vector.size()) {
+    stack.dump();
+  }
+  assert(vector.size());
+
+  auto map = stack.get_label(map_addr);
+  if (!map.size()) {
+    stack.dump();
+  }
+  assert(map.size());
+
+  static int number_of_freed_flows_counter = 0;
+  
+  std::stringstream number_of_freed_flows_stream;
+  number_of_freed_flows_stream << "number_of_freed_flows";
+
+  if (number_of_freed_flows_counter > 0) {
+    number_of_freed_flows_stream << "_" << number_of_freed_flows_counter;
+  }
+
+  stack.add(number_of_freed_flows_stream.str(), number_of_freed_flows);
+
   pad();
+  os << "int " << number_of_freed_flows_stream.str();
+  os << " = ";
   os << "expire_items_single_map(";
+  os << dchain;
+  os << ", " << vector;
+  os << ", " << map;
+  os << ", " << transpile(time, stack, solver);
   os << ");\n";
+
+  number_of_freed_flows_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::RteEtherAddrHash *node) {
@@ -981,9 +1161,56 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
 }
 
 void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
+  auto dchain_addr = node->get_dchain_addr();
+  auto time = node->get_time();
+  auto index_out = node->get_index_out();
+  auto success = node->get_success();
+
+  assert(!dchain_addr.isNull());
+  assert(!time.isNull());
+  assert(!index_out.isNull());
+  assert(!success.isNull());
+  
+  auto dchain = stack.get_label(dchain_addr);
+  if (!dchain.size()) {
+    stack.dump();
+  }
+  assert(dchain.size());
+
+  static int out_of_space_counter = 1; // I don't know why, but vigor start this at 1
+  static int new_index_counter = 0;
+  
+  std::stringstream out_of_space_stream;
+  out_of_space_stream << "out_of_space";
+
+  std::stringstream new_index_stream;
+  new_index_stream << "new_index";
+  
+  if (out_of_space_counter > 0) {
+    out_of_space_stream << "_" << out_of_space_counter;
+  }
+
+  if (new_index_counter > 0) {
+    new_index_stream << "_" << new_index_counter;
+  }
+
+  stack.add(out_of_space_stream.str(), success);
+  stack.add(new_index_stream.str(), index_out);
+
   pad();
+  os << "int " << new_index_stream.str() << ";\n";
+  
+  pad();
+  os << "int " << out_of_space_stream.str();
+  os << " = ";
   os << "dchain_allocate_new_index(";
+  os << dchain;
+  os << ", &" << new_index_stream.str();
+  os << ", " << transpile(time, stack, solver);
   os << ");\n";
+
+  out_of_space_counter++;
+  new_index_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::MapPut *node) {

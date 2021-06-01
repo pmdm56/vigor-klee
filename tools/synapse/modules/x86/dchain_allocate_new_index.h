@@ -76,6 +76,14 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const override {
     visitor.visit(this);
   }
+
+  const klee::ref<klee::Expr> &get_dchain_addr() const { return dchain_addr; }
+
+  const klee::ref<klee::Expr> &get_time() const { return time; }
+
+  const klee::ref<klee::Expr> &get_index_out() const { return index_out; }
+
+  const klee::ref<klee::Expr> &get_success() const { return success; }
 };
 } // namespace x86
 } // namespace targets

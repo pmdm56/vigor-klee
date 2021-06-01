@@ -86,7 +86,7 @@ struct stack_t {
     klee::ref<klee::Expr> ret;
 
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
-      for (auto var : *it) {
+      for (auto &var : *it) {
         if (var.label == label) {
           var.value = value;
           return;
@@ -166,12 +166,26 @@ struct stack_t {
           continue;
         }
 
+        if (var_size == value_size &&
+            solver.are_exprs_always_equal(var.value, value)) {
+          return var.label;
+        }
+
         for (unsigned b = 0; b + value_size <= var_size; b += 8) {
           auto var_extract =
               solver.exprBuilder->Extract(var.value, b, value_size);
 
           if (solver.are_exprs_always_equal(var_extract, value)) {
-            label_stream << var.label << "[" << b / 8 << "]";
+            if (!var.addr.isNull()) {
+              label_stream << var.label << "[" << b / 8 << "]";
+            } else {
+              uint64_t mask = 0;
+              for (unsigned bmask = 0; bmask < value_size; bmask++) {
+                mask <<= 1;
+                mask |= 1;
+              }
+              label_stream << var.label << " & " << mask;
+            }
             return label_stream.str();
           }
         }
