@@ -47,6 +47,8 @@ public:
       }
 
       klee::ref<klee::Expr> eref = const_cast<klee::ConcatExpr *>(&e);
+
+      Log::err() << "\n";
       Log::err() << expr_to_string(eref, true) << "\n";
       Log::err() << "symbol " << symbol << " not in set\n";
       stack.err_dump();
@@ -744,13 +746,6 @@ void x86_Generator::close_if_clauses() {
 }
 
 void x86_Generator::allocate_map(call_t call, std::ostream& global_state, std::ostream& buffer) {
-  static int map_counter = 0;
-  
-  std::stringstream label_stream;
-  label_stream << "map_" << map_counter++;
-
-  global_state << "struct Map* " << label_stream.str() << ";\n";
-
   assert(call.args["keq"].fn_ptr_name.first);
   assert(call.args["khash"].fn_ptr_name.first);
   assert(!call.args["capacity"].expr.isNull());
@@ -761,25 +756,26 @@ void x86_Generator::allocate_map(call_t call, std::ostream& global_state, std::o
   auto capacity = call.args["capacity"].expr;
   auto map_out = call.args["map_out"].out;
 
+  static int map_counter = 0;
+  
+  std::stringstream map_stream;
+  map_stream << "map_" << map_counter++;
+
+  auto map_label = map_stream.str();
+  klee::ref<klee::Expr> dummy;
+  stack.add(map_label, dummy, map_out);
+
+  global_state << "struct Map* " << map_label << ";\n";
+
   buffer << "map_allocate(";
   buffer << keq;
   buffer << ", " << khash;
   buffer << ", " << transpile(capacity, stack, solver);
-  buffer << ", &" << label_stream.str();
+  buffer << ", &" << map_label;
   buffer << ")";
-
-  klee::ref<klee::Expr> dummy;
-  stack.add(label_stream.str(), dummy, map_out);
 }
 
 void x86_Generator::allocate_vector(call_t call, std::ostream& global_state, std::ostream& buffer) {
-  static int vector_counter = 0;
-
-  std::stringstream label_stream;
-  label_stream << "vector_" << vector_counter++;
-
-  global_state << "struct Vector* " << label_stream.str() << ";\n";
-
   assert(!call.args["elem_size"].expr.isNull());
   assert(!call.args["capacity"].expr.isNull());
   assert(call.args["init_elem"].fn_ptr_name.first);
@@ -790,39 +786,48 @@ void x86_Generator::allocate_vector(call_t call, std::ostream& global_state, std
   auto init_elem = call.args["init_elem"].fn_ptr_name.second;
   auto vector_out = call.args["vector_out"].out;
 
+  static int vector_counter = 0;
+
+  std::stringstream vector_stream;
+  vector_stream << "vector_" << vector_counter++;
+
+  auto vector_label = vector_stream.str();
+  klee::ref<klee::Expr> dummy;
+  stack.add(vector_label, dummy, vector_out);
+
+  global_state << "struct Vector* " << vector_label << ";\n";
+
   buffer << "vector_allocate(";
   buffer << transpile(elem_size, stack, solver);
   buffer << ", " << transpile(capacity, stack, solver);
   buffer << ", " << transpile(capacity, stack, solver);
   buffer << ", " << init_elem;
-  buffer << ", &" << label_stream.str();
+  buffer << ", &" << vector_label;
   buffer << ")";
-
-  klee::ref<klee::Expr> dummy;
-  stack.add(label_stream.str(), dummy, vector_out);
 }
 
 void x86_Generator::allocate_dchain(call_t call, std::ostream& global_state, std::ostream& buffer) {
-  static int dchain_counter = 0;
-
-  std::stringstream label_stream;
-  label_stream << "dchain_" << dchain_counter++;
-
-  global_state << "struct DoubleChain* " << label_stream.str() << ";\n";
-
   assert(!call.args["index_range"].expr.isNull());
   assert(!call.args["chain_out"].out.isNull());
 
   auto index_range = call.args["index_range"].expr;
   auto chain_out = call.args["chain_out"].out;
 
+  static int dchain_counter = 0;
+
+  std::stringstream dchain_stream;
+  dchain_stream << "dchain_" << dchain_counter++;
+
+  auto dchain_label = dchain_stream.str();
+  klee::ref<klee::Expr> dummy;
+  stack.add(dchain_label, dummy, chain_out);
+
+  global_state << "struct DoubleChain* " << dchain_label << ";\n";
+
   buffer << "dchain_allocate(";
   buffer << transpile(index_range, stack, solver);
-  buffer << ", &" << label_stream.str();
+  buffer << ", &" << dchain_label;
   buffer << ")";
-
-  klee::ref<klee::Expr> dummy;
-  stack.add(label_stream.str(), dummy, chain_out);
 }
 
 void x86_Generator::allocate_cht(call_t call, std::ostream& global_state, std::ostream& buffer) {
@@ -915,18 +920,23 @@ void x86_Generator::allocate(const ExecutionPlan& ep) {
 void x86_Generator::visit(ExecutionPlan ep) {
   allocate(ep);
 
+  std::string vigor_device_label = "VIGOR_DEVICE";
+  std::string packet_label = "p";
+  std::string pkt_len_label = "pkt_len";
+  std::string next_time_label = "next_time";
+
+  stack.add(vigor_device_label);
+  stack.add(packet_label);
+  stack.add(pkt_len_label);
+  stack.add(next_time_label);
+
   os << "int nf_process(";
-  os << "uint16_t VIGOR_DEVICE";
-  os << ", uint8_t* p";
-  os << ", uint16_t pkt_len";
-  os << ", int64_t next_time";
+  os << "uint16_t " << vigor_device_label;
+  os << ", uint8_t* " << packet_label;
+  os << ", uint16_t " << pkt_len_label;
+  os << ", int64_t " << next_time_label;
   os << ") {\n";
   lvl++;
-
-  stack.add("VIGOR_DEVICE");
-  stack.add("p");
-  stack.add("pkt_len");
-  stack.add("next_time");
 
   ExecutionPlanVisitor::visit(ep);
 }
@@ -979,8 +989,11 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
     allocated_index_stream << "_" << allocated_index_counter;
   }
 
-  stack.add(map_has_this_key_label_stream.str(), map_has_this_key);
-  stack.add(allocated_index_stream.str(), value_out);
+  auto map_has_this_key_label = map_has_this_key_label_stream.str();
+  auto allocated_index_label = allocated_index_stream.str();
+
+  stack.add(map_has_this_key_label, map_has_this_key);
+  stack.add(allocated_index_label, value_out);
 
   std::vector<std::string> key_assignments;
   auto key_label = build(key, stack, solver, key_assignments);
@@ -991,15 +1004,15 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   }
 
   pad();
-  os << "int " << allocated_index_stream.str() << ";\n";
+  os << "int " << allocated_index_label << ";\n";
   
   pad();
-  os << "int " << map_has_this_key_label_stream.str();
+  os << "int " << map_has_this_key_label;
   os << " = ";
   os << "map_get(";
   os << map;
   os << ", (void*)" << key_label;
-  os << ", &" << allocated_index_stream.str();
+  os << ", &" << allocated_index_label;
   os << ");\n";
 
   map_has_this_key_counter++;
@@ -1026,18 +1039,20 @@ void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
 
   static int chunk_counter = 0;
 
-  std::stringstream label_stream;
-  label_stream << "chunk_" << chunk_counter;
+  std::stringstream chunk_stream;
+  chunk_stream << "chunk_" << chunk_counter;
+
+  auto chunk_label = chunk_stream.str();
+  stack.add(chunk_label, chunk, chunk_addr);
 
   pad();
 
-  os << "uint8_t* " << label_stream.str() << " = (uint8_t*)";
+  os << "uint8_t* " << chunk_label << " = (uint8_t*)";
   os << "nf_borrow_next_chunk(";
   os << p_label;
   os << ", " << transpile(length, stack, solver);
   os << ");\n";
 
-  stack.add(label_stream.str(), chunk, chunk_addr);
   chunk_counter++;
 }
 
@@ -1160,10 +1175,11 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
     number_of_freed_flows_stream << "_" << number_of_freed_flows_counter;
   }
 
-  stack.add(number_of_freed_flows_stream.str(), number_of_freed_flows);
+  auto number_of_freed_flows_label = number_of_freed_flows_stream.str();
+  stack.add(number_of_freed_flows_label, number_of_freed_flows);
 
   pad();
-  os << "int " << number_of_freed_flows_stream.str();
+  os << "int " << number_of_freed_flows_label;
   os << " = ";
   os << "expire_items_single_map(";
   os << dchain;
@@ -1176,10 +1192,38 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
 }
 
 void x86_Generator::visit(const targets::x86::RteEtherAddrHash *node) {
+  auto obj = node->get_obj();
+  auto hash = node->get_hash();
+
+  assert(!obj.isNull());
+  assert(!hash.isNull());
+
+  static int hash_counter = 0;
+  
+  std::stringstream hash_stream;
+  hash_stream << "hash";
+
+  if (hash_counter > 0) {
+    hash_stream << "_" << hash_counter;
+  }
+
+  auto hash_label = hash_stream.str();
+  stack.add(hash_label, hash);
+
+  std::vector<std::string> obj_assignments;
+  auto obj_label = build(obj, stack, solver, obj_assignments);
+
+  for (auto obj_assignment : obj_assignments) {
+    pad();
+    os << obj_assignment << "\n";
+  }
+
   pad();
+  os << "uint32_t " << hash_label;
+  os << " = ";
   os << "rte_ether_addr_hash(";
+  os << "(void*) &" << obj_label;
   os << ");\n";
-  assert(false && "TODO");
 }
 
 void x86_Generator::visit(const targets::x86::DchainRejuvenateIndex *node) {
@@ -1234,7 +1278,8 @@ void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
     value_out_stream << "_" << value_out_counter;
   }
 
-  stack.add(value_out_stream.str(), borrowed_cell, value_out);
+  auto value_out_label = value_out_stream.str();
+  stack.add(value_out_label, borrowed_cell, value_out);
 
   pad();
   os << "uint8_t " << value_out_stream.str() << "[" << borrowed_cell_sz / 8 << "];\n";
@@ -1243,7 +1288,7 @@ void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
   os << "vector_borrow(";
   os << vector;
   os << ", " << transpile(index, stack, solver);
-  os << ", (void **)&" << value_out_stream.str();
+  os << ", (void **)&" << value_out_label;
   os << ");\n";
 
   value_out_counter++;
@@ -1275,8 +1320,6 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
   assert(!value.isNull());
 
   std::vector<std::string> assignments;
-
-
   apply_changes(old_value, value, stack, solver, assignments);
 
   for (auto assignment : assignments) {
@@ -1326,18 +1369,21 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
     new_index_stream << "_" << new_index_counter;
   }
 
-  stack.add(out_of_space_stream.str(), success);
-  stack.add(new_index_stream.str(), index_out);
+  auto out_of_space_label = out_of_space_stream.str();
+  auto new_index_label = new_index_stream.str();
+
+  stack.add(out_of_space_label, success);
+  stack.add(new_index_label, index_out);
 
   pad();
-  os << "int " << new_index_stream.str() << ";\n";
+  os << "int " << new_index_label << ";\n";
   
   pad();
-  os << "int " << out_of_space_stream.str();
+  os << "int " << out_of_space_label;
   os << " = ";
   os << "dchain_allocate_new_index(";
   os << dchain;
-  os << ", &" << new_index_stream.str();
+  os << ", &" << new_index_label;
   os << ", " << transpile(time, stack, solver);
   os << ");\n";
 

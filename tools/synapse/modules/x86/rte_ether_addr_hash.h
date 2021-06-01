@@ -63,6 +63,9 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const override {
     visitor.visit(this);
   }
+
+  const klee::ref<klee::Expr> &get_obj() const { return obj; }
+  const klee::ref<klee::Expr> &get_hash() const { return hash; }
 };
 } // namespace x86
 } // namespace targets

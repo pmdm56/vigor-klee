@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
   synapse::MostCompact most_compact;
 
   se.add_target(synapse::Target::x86);
-  se.add_target(synapse::Target::Tofino);
+  // se.add_target(synapse::Target::Tofino);
 
   // auto winner = se.search(dfs);
   auto winner = se.search(most_compact);

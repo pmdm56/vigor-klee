@@ -8,6 +8,7 @@
 #include <fstream>
 #include <math.h>
 #include <unistd.h>
+#include <regex>
 
 #define VISIT_IGNORE_MODULE(M)                                                 \
   void visit(const M *node) override {}
@@ -34,29 +35,66 @@ typedef std::vector<variable_t> frame_t;
 struct stack_t {
   std::vector<frame_t> frames;
   BDD::solver_toolbox_t &solver;
+  std::regex pattern;
 
-  stack_t(BDD::solver_toolbox_t &_solver) : solver(_solver) { push(); }
+  std::map<std::string, std::string> cp_var_to_code_translation;
+
+  stack_t(BDD::solver_toolbox_t &_solver)
+      : solver(_solver), pattern("^(.*)(_\\d+?)$") {
+    push();
+
+    cp_var_to_code_translation = { { "rte_ether_addr_hash", "hash" },
+                                   { "VIGOR_DEVICE", "device" },
+                                   { "next_time", "now" } };
+  }
 
   void push() { frames.emplace_back(); }
   void pop() { frames.pop_back(); }
 
-  void add(std::string label) {
+  void translate(std::string &var) const {
+    std::string name = var;
+    std::string suffix;
+
+    std::smatch sm;
+    std::regex_match(var, sm, pattern);
+
+    if (sm.size() > 0) {
+      assert(sm.size() == 3);
+      name = sm[1];
+      suffix = sm[2];
+    }
+
+    auto it = cp_var_to_code_translation.find(name);
+    if (it != cp_var_to_code_translation.end()) {
+      name = it->second;
+    }
+
+    var.resize(name.size() + suffix.size());
+    var = name + suffix;
+  }
+
+  void add(std::string &label) {
     assert(frames.size());
+    translate(label);
     frames.back().emplace_back(label);
   }
 
-  void add(std::string label, klee::ref<klee::Expr> value) {
+  void add(std::string &label, klee::ref<klee::Expr> value) {
     assert(frames.size());
+    translate(label);
     frames.back().emplace_back(label, value);
   }
 
-  void add(std::string label, klee::ref<klee::Expr> value,
+  void add(std::string &label, klee::ref<klee::Expr> value,
            klee::ref<klee::Expr> addr) {
     assert(frames.size());
+    translate(label);
     frames.back().emplace_back(label, value, addr);
   }
 
-  bool has_label(std::string label) {
+  bool has_label(std::string &label) {
+    translate(label);
+
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto var : *it) {
         if (var.label == label) {
@@ -70,6 +108,7 @@ struct stack_t {
 
   klee::ref<klee::Expr> get_value(std::string label) {
     klee::ref<klee::Expr> ret;
+    translate(label);
 
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto var : *it) {
@@ -83,6 +122,8 @@ struct stack_t {
   }
 
   void set_value(std::string label, klee::ref<klee::Expr> value) {
+    translate(label);
+
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto &var : *it) {
         if (var.label == label) {
@@ -96,6 +137,8 @@ struct stack_t {
   }
 
   void set_addr(std::string label, klee::ref<klee::Expr> addr) {
+    translate(label);
+
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto &var : *it) {
         if (var.label == label) {
