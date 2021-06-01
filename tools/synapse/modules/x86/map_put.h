@@ -70,6 +70,11 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const override {
     visitor.visit(this);
   }
+
+  const klee::ref<klee::Expr> &get_map_addr() const { return map_addr; }
+  const klee::ref<klee::Expr> &get_key_addr() const { return key_addr; }
+  const klee::ref<klee::Expr> &get_key() const { return key; }
+  const klee::ref<klee::Expr> &get_value() const { return value; }
 };
 } // namespace x86
 } // namespace targets

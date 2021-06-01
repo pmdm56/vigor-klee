@@ -1,5 +1,6 @@
 #include "x86_generator.h"
 #include "../../modules/x86/x86.h"
+#include "../../log.h"
 
 namespace synapse {
 
@@ -45,9 +46,10 @@ public:
         return klee::ExprVisitor::Action::skipChildren();
       }
 
-      e.dump(); std::cerr << "\n";
-      std::cerr << "symbol " << symbol << " not in set\n";
-      stack.dump();
+      klee::ref<klee::Expr> eref = const_cast<klee::ConcatExpr *>(&e);
+      Log::err() << expr_to_string(eref, true) << "\n";
+      Log::err() << "symbol " << symbol << " not in set\n";
+      stack.err_dump();
       assert(false && "Not in stack");
     }
 
@@ -640,6 +642,30 @@ bool is_read_lsb(klee::ref<klee::Expr> e) {
   return index == 0;
 }
 
+void apply_changes(const klee::ref<klee::Expr> &before, const klee::ref<klee::Expr> &after,
+                   stack_t& stack, BDD::solver_toolbox_t& solver, std::vector<std::string>& assignments) {
+  assert(before->getWidth() == after->getWidth());
+
+  std::stringstream assignment_stream;
+  auto size = before->getWidth();
+
+  for (unsigned int b = 0; b < size; b += 8) {
+    auto before_byte = solver.exprBuilder->Extract(before, b, klee::Expr::Int8);
+    auto after_byte = solver.exprBuilder->Extract(after, b, klee::Expr::Int8);
+
+    if (solver.are_exprs_always_equal(before_byte, after_byte)) {
+      continue;
+    }
+
+    auto before_parsed = transpile(before_byte, stack, solver);
+    auto after_parsed = transpile(after_byte, stack, solver);
+
+    assignment_stream << before_parsed << " = " << after_parsed;
+    assignments.push_back(assignment_stream.str());
+    assignment_stream.str(std::string());
+  }
+}
+
 std::string build(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver, std::vector<std::string>& assignments) {
   std::stringstream assignment_stream;
   std::stringstream var_label;
@@ -932,9 +958,9 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   
   auto map = stack.get_label(map_addr);
   if (!map.size()) {
-    stack.dump();
+    stack.err_dump();
+    assert(false && "Not found in stack");
   }
-  assert(map.size());
 
   static int map_has_this_key_counter = 0;
   static int allocated_index_counter = 0;
@@ -972,7 +998,7 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   os << " = ";
   os << "map_get(";
   os << map;
-  os << ", &" << key_label;
+  os << ", (void*)" << key_label;
   os << ", &" << allocated_index_stream.str();
   os << ");\n";
 
@@ -985,6 +1011,19 @@ void x86_Generator::visit(const targets::x86::CurrentTime *node) {
 }
 
 void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
+  auto p_addr = node->get_p_addr();
+  auto chunk = node->get_chunk();
+  auto chunk_addr = node->get_chunk_addr();
+  auto length = node->get_length();
+
+  assert(!p_addr.isNull());
+  assert(!chunk.isNull());
+  assert(!chunk_addr.isNull());
+  assert(!length.isNull());
+  
+  auto p_label = "p";
+  stack.set_addr(p_label, p_addr);
+
   static int chunk_counter = 0;
 
   std::stringstream label_stream;
@@ -994,11 +1033,11 @@ void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
 
   os << "uint8_t* " << label_stream.str() << " = (uint8_t*)";
   os << "nf_borrow_next_chunk(";
-  os << "p";
-  os << ", " << transpile(node->get_length(), stack, solver);
+  os << p_label;
+  os << ", " << transpile(length, stack, solver);
   os << ");\n";
 
-  stack.add(label_stream.str(), node->get_chunk(), node->get_chunk_addr());
+  stack.add(label_stream.str(), chunk, chunk_addr);
   chunk_counter++;
 }
 
@@ -1096,21 +1135,21 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   
   auto dchain = stack.get_label(dchain_addr);
   if (!dchain.size()) {
-    stack.dump();
+    stack.err_dump();
+    assert(false && "Not found in stack");
   }
-  assert(dchain.size());
 
   auto vector = stack.get_label(vector_addr);
   if (!vector.size()) {
-    stack.dump();
+    stack.err_dump();
+    assert(false && "Not found in stack");
   }
-  assert(vector.size());
 
   auto map = stack.get_label(map_addr);
   if (!map.size()) {
-    stack.dump();
+    stack.err_dump();
+    assert(false && "Not found in stack");
   }
-  assert(map.size());
 
   static int number_of_freed_flows_counter = 0;
   
@@ -1140,23 +1179,116 @@ void x86_Generator::visit(const targets::x86::RteEtherAddrHash *node) {
   pad();
   os << "rte_ether_addr_hash(";
   os << ");\n";
+  assert(false && "TODO");
 }
 
 void x86_Generator::visit(const targets::x86::DchainRejuvenateIndex *node) {
+  auto dchain_addr = node->get_dchain_addr();
+  auto time = node->get_time();
+  auto index = node->get_index();
+
+  assert(!dchain_addr.isNull());
+  assert(!time.isNull());
+  assert(!index.isNull());
+  
+  auto dchain = stack.get_label(dchain_addr);
+  if (!dchain.size()) {
+    stack.err_dump();
+    assert(false && "Not found in stack");
+  }
+
   pad();
   os << "dchain_rejuvenate_index(";
+  os << dchain;
+  os << ", " << transpile(index, stack, solver);
+  os << ", " << transpile(time, stack, solver);
   os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
+  auto vector_addr = node->get_vector_addr();
+  auto index = node->get_index();
+  auto value_out = node->get_value_out();
+  auto borrowed_cell = node->get_borrowed_cell();
+
+  assert(!vector_addr.isNull());
+  assert(!index.isNull());
+  assert(!value_out.isNull());
+  assert(!borrowed_cell.isNull());
+
+  auto vector = stack.get_label(vector_addr);
+  if (!vector.size()) {
+    stack.err_dump();
+    assert(false && "Not found in stack");
+  }
+
+  auto borrowed_cell_sz = borrowed_cell->getWidth();
+  assert(borrowed_cell_sz % 8 == 0);
+
+  std::stringstream value_out_stream;
+  value_out_stream << "vector_data_reset";
+
+  static int value_out_counter;
+
+  if (value_out_counter > 0) {
+    value_out_stream << "_" << value_out_counter;
+  }
+
+  stack.add(value_out_stream.str(), borrowed_cell, value_out);
+
+  pad();
+  os << "uint8_t " << value_out_stream.str() << "[" << borrowed_cell_sz / 8 << "];\n";
+
   pad();
   os << "vector_borrow(";
+  os << vector;
+  os << ", " << transpile(index, stack, solver);
+  os << ", (void **)&" << value_out_stream.str();
   os << ");\n";
+
+  value_out_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::VectorReturn *node) {
+  auto vector_addr = node->get_vector_addr();
+  auto index = node->get_index();
+  auto value_addr = node->get_value_addr();
+  auto value = node->get_value();
+
+  assert(!vector_addr.isNull());
+  assert(!index.isNull());
+  assert(!value_addr.isNull());
+
+  auto vector = stack.get_label(vector_addr);
+  if (!vector.size()) {
+    stack.err_dump();
+    assert(false && "Not found in stack");
+  }
+
+  auto value_label = stack.get_label(value_addr);
+  if (!value_label.size()) {
+    stack.err_dump();
+    assert(false && "Not found in stack");
+  }
+
+  auto old_value = stack.get_value(value_addr);
+  assert(!value.isNull());
+
+  std::vector<std::string> assignments;
+
+
+  apply_changes(old_value, value, stack, solver, assignments);
+
+  for (auto assignment : assignments) {
+    pad();
+    os << assignment << "\n";
+  }
+
   pad();
   os << "vector_return(";
+  os << vector;
+  os << ", " << transpile(index, stack, solver);
+  os << ", (void *)" << value_label;
   os << ");\n";
 }
 
@@ -1173,9 +1305,9 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
   
   auto dchain = stack.get_label(dchain_addr);
   if (!dchain.size()) {
-    stack.dump();
+    stack.err_dump();
+    assert(false && "Not found in stack");
   }
-  assert(dchain.size());
 
   static int out_of_space_counter = 1; // I don't know why, but vigor start this at 1
   static int new_index_counter = 0;
@@ -1214,27 +1346,79 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
 }
 
 void x86_Generator::visit(const targets::x86::MapPut *node) {
+  auto map_addr = node->get_map_addr();
+  auto key_addr = node->get_key_addr();
+  auto key = node->get_key();
+  auto value = node->get_value();
+
+  assert(!map_addr.isNull());
+  assert(!key_addr.isNull());
+  assert(!key.isNull());
+  assert(!value.isNull());
+  
+  auto map = stack.get_label(map_addr);
+  if (!map.size()) {
+    stack.err_dump();
+    assert(false && "Not found in stack");
+  }
+
+  std::vector<std::string> key_assignments;
+  auto key_label = build(key, stack, solver, key_assignments);
+
+  for (auto key_assignment : key_assignments) {
+    pad();
+    os << key_assignment << "\n";
+  }
+
   pad();
   os << "map_put(";
+  os << map;
+  os << ", (void*)" << key_label;
+  os << ", " << transpile(value, stack, solver);
   os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {
+  auto p_addr = node->get_p_addr();
+  auto unread_length = node->get_unread_length();
+
+  assert(!p_addr.isNull());
+  assert(!unread_length.isNull());
+
+  auto p_label = stack.get_label(p_addr);
+
+  
+  std::stringstream unread_len_stream;
+  unread_len_stream << "unread_len";
+
+  static int unread_len_stream_counter = 0;
+  
+  if (unread_len_stream_counter > 0) {
+    unread_len_stream << "_" << unread_len_stream_counter;
+  }
+
   pad();
+  os << "uint32_t " << unread_len_stream.str();
+  os << " = ";
   os << "packet_get_unread_length(";
+  os << p_label;
   os << ");\n";
+  
+  unread_len_stream_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::SetIpv4UdpTcpChecksum *node) {
   pad();
   os << "rte_ipv4_udptcp_cksum(";
   os << ");\n";
+  assert(false && "TODO");
 }
 
 void x86_Generator::visit(const targets::x86::DchainIsIndexAllocated *node) {
   pad();
   os << "dchain_is_index_allocated(";
   os << ");\n";
+  assert(false && "TODO");
 }
 
 } // namespace synapse

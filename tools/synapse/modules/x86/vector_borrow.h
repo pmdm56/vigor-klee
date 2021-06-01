@@ -73,6 +73,13 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const override {
     visitor.visit(this);
   }
+
+  const klee::ref<klee::Expr> &get_vector_addr() const { return vector_addr; }
+  const klee::ref<klee::Expr> &get_index() const { return index; }
+  const klee::ref<klee::Expr> &get_value_out() const { return value_out; }
+  const klee::ref<klee::Expr> &get_borrowed_cell() const {
+    return borrowed_cell;
+  }
 };
 } // namespace x86
 } // namespace targets

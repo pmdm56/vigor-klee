@@ -83,12 +83,23 @@ struct stack_t {
   }
 
   void set_value(std::string label, klee::ref<klee::Expr> value) {
-    klee::ref<klee::Expr> ret;
-
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto &var : *it) {
         if (var.label == label) {
           var.value = value;
+          return;
+        }
+      }
+    }
+
+    assert(false);
+  }
+
+  void set_addr(std::string label, klee::ref<klee::Expr> addr) {
+    for (auto it = frames.rbegin(); it != frames.rend(); it++) {
+      for (auto &var : *it) {
+        if (var.label == label) {
+          var.addr = addr;
           return;
         }
       }
@@ -196,29 +207,30 @@ struct stack_t {
   }
 
   void not_found_err(klee::ref<klee::Expr> addr) const {
-    std::cerr << "FAILED search for addr " << expr_to_string(addr, true)
-              << "\n";
-    std::cerr << "Dumping stack content...\n";
-    dump();
+    Log::err() << "FAILED search for addr " << expr_to_string(addr, true)
+               << "\n";
+    Log::err() << "Dumping stack content...\n";
+    err_dump();
     assert(false);
   }
 
-  void dump() const {
-    std::cerr << "============================================\n";
+  void err_dump() const {
+    Log::err() << "============================================\n";
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
       for (auto var : *it) {
-        std::cerr << var.label;
+        std::stringstream ss;
+        ss << var.label;
         if (!var.addr.isNull()) {
-          std::cerr << " : " << expr_to_string(var.addr, true);
+          ss << " : " << expr_to_string(var.addr, true);
         }
 
         if (!var.value.isNull()) {
-          std::cerr << " : " << expr_to_string(var.value, true);
+          ss << " : " << expr_to_string(var.value, true);
         }
-        std::cerr << "\n";
+        Log::err() << ss.str() << "\n";
       }
     }
-    std::cerr << "============================================\n";
+    Log::err() << "============================================\n";
   }
 };
 

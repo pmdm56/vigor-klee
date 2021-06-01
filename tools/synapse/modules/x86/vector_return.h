@@ -13,6 +13,7 @@ class VectorReturn : public Module {
 private:
   klee::ref<klee::Expr> vector_addr;
   klee::ref<klee::Expr> index;
+  klee::ref<klee::Expr> value_addr;
   klee::ref<klee::Expr> value;
 
 public:
@@ -20,9 +21,10 @@ public:
       : Module(ModuleType::x86_VectorReturn, Target::x86, "VectorReturn") {}
 
   VectorReturn(klee::ref<klee::Expr> _vector_addr, klee::ref<klee::Expr> _index,
-               klee::ref<klee::Expr> _value)
+               klee::ref<klee::Expr> _value_addr, klee::ref<klee::Expr> _value)
       : Module(ModuleType::x86_VectorReturn, Target::x86, "VectorReturn"),
-        vector_addr(_vector_addr), index(_index), value(_value) {}
+        vector_addr(_vector_addr), index(_index), value_addr(_value_addr),
+        value(_value) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -36,13 +38,15 @@ private:
       assert(!call.args["vector"].expr.isNull());
       assert(!call.args["index"].expr.isNull());
       assert(!call.args["value"].expr.isNull());
+      assert(!call.args["value"].in.isNull());
 
       auto _vector_addr = call.args["vector"].expr;
       auto _index = call.args["index"].expr;
-      auto _value = call.args["value"].expr;
+      auto _value_addr = call.args["value"].expr;
+      auto _value = call.args["value"].in;
 
-      auto new_module =
-          std::make_shared<VectorReturn>(_vector_addr, _index, _value);
+      auto new_module = std::make_shared<VectorReturn>(_vector_addr, _index,
+                                                       _value_addr, _value);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
@@ -68,6 +72,11 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const override {
     visitor.visit(this);
   }
+
+  const klee::ref<klee::Expr> &get_vector_addr() const { return vector_addr; }
+  const klee::ref<klee::Expr> &get_index() const { return index; }
+  const klee::ref<klee::Expr> &get_value_addr() const { return value_addr; }
+  const klee::ref<klee::Expr> &get_value() const { return value; }
 };
 } // namespace x86
 } // namespace targets

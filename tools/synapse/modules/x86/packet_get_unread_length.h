@@ -11,6 +11,7 @@ namespace x86 {
 
 class PacketGetUnreadLength : public Module {
 private:
+  klee::ref<klee::Expr> p_addr;
   klee::ref<klee::Expr> unread_length;
 
 public:
@@ -18,10 +19,11 @@ public:
       : Module(ModuleType::x86_PacketGetUnreadLength, Target::x86,
                "PacketGetUnreadLength") {}
 
-  PacketGetUnreadLength(klee::ref<klee::Expr> _unread_length)
+  PacketGetUnreadLength(klee::ref<klee::Expr> _p_addr,
+                        klee::ref<klee::Expr> _unread_length)
       : Module(ModuleType::x86_PacketGetUnreadLength, Target::x86,
                "PacketGetUnreadLength"),
-        unread_length(_unread_length) {}
+        p_addr(_p_addr), unread_length(_unread_length) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -33,9 +35,13 @@ private:
 
     if (call.function_name == "packet_get_unread_length") {
       assert(!call.ret.isNull());
+      assert(!call.args["p"].expr.isNull());
+
+      auto _p_addr = call.args["p"].expr;
       auto _unread_length = call.ret;
 
-      auto new_module = std::make_shared<PacketGetUnreadLength>(_unread_length);
+      auto new_module =
+          std::make_shared<PacketGetUnreadLength>(_p_addr, _unread_length);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
@@ -60,6 +66,11 @@ private:
 public:
   virtual void visit(ExecutionPlanVisitor &visitor) const override {
     visitor.visit(this);
+  }
+
+  const klee::ref<klee::Expr> &get_p_addr() const { return p_addr; }
+  const klee::ref<klee::Expr> &get_unread_length() const {
+    return unread_length;
   }
 };
 } // namespace x86
