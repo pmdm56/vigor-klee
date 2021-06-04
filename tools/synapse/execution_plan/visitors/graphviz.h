@@ -251,7 +251,7 @@ private:
     // search_space_ofs << "ratio=\"fill\";\n";
     // search_space_ofs << "size=\"12,12!\";\n";
     // search_space_ofs << "margin=0;\n";
-    search_space_ofs << "node [shape=circle,style=filled];\n";
+    search_space_ofs << "node [shape=ellipse,style=filled];\n";
 
     std::vector<search_space_node_t *> nodes;
     nodes.push_back(search_space->get_root().get());
@@ -260,24 +260,23 @@ private:
       auto node = nodes[0];
       nodes.erase(nodes.begin());
 
-      search_space_ofs << node->execution_plan_id << " [color=\"#";
+      search_space_ofs << node->execution_plan_id;
+      // search_space_ofs << " [color=\"#";
+      // auto color = get_color(node->score);
+      // search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
+      // search_space_ofs << color.r;
+      // search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
+      // search_space_ofs << color.g;
+      // search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
+      // search_space_ofs << color.b;
+      // search_space_ofs << std::dec;
+      // search_space_ofs << "\"";
 
-      auto color = get_color(node->normalized_score);
-
-      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
-      search_space_ofs << color.r;
-      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
-      search_space_ofs << color.g;
-      search_space_ofs << std::setw(2) << std::setfill('0') << std::hex;
-      search_space_ofs << color.b;
-
-      search_space_ofs << std::dec;
+      search_space_ofs << " [label=\"";
+      search_space_ofs << node->score;
       search_space_ofs << "\"";
+
       if (node->m) {
-        if (!node->m->get_node()) {
-          std::cerr << "\n" << node->m->get_target_name()
-                    << "::" << node->m->get_name() << " NO NODE\n";
-        }
         assert(node->m->get_node());
         search_space_ofs << ", tooltip=\""
                          << get_bdd_node_name(node->m->get_node()) << " -> "
@@ -316,8 +315,6 @@ public:
     if (!ep.get_root()) {
       return;
     }
-
-    _search_space.normalize();
 
     Graphviz gv(&_search_space);
     ep.visit(gv);

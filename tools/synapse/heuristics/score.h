@@ -8,13 +8,17 @@ namespace synapse {
 
 class Score {
 public:
+  // The order of the elements in this enum matters.
+  // It defines a lexicographic order.
   enum Category {
     SentToController,
+    NumberOfNodes,
+    Depth,
   };
 
 private:
   const Category FIRST_CATEGORY = SentToController;
-  const Category LAST_CATEGORY = SentToController;
+  const Category LAST_CATEGORY = NumberOfNodes;
 
 private:
   std::map<Category, int> values;
@@ -73,13 +77,7 @@ std::ostream &operator<<(std::ostream &os, const Score &score) {
     auto category = static_cast<Score::Category>(category_int);
 
     if (category != score.FIRST_CATEGORY) {
-      os << ", ";
-    }
-
-    switch (category) {
-    case Score::Category::SentToController:
-      os << "SentToController=";
-      break;
+      os << ",";
     }
 
     os << score.get(category);

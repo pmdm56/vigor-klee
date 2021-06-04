@@ -9,7 +9,7 @@
 namespace synapse {
 
 struct HeuristicConfiguration {
-  virtual int get_score(const ExecutionPlan &e) const = 0;
+  virtual Score get_score(const ExecutionPlan &e) const = 0;
 
   virtual bool operator()(const ExecutionPlan &e1,
                           const ExecutionPlan &e2) const {
@@ -73,7 +73,7 @@ public:
 
   const T *get_cfg() const { return &configuration; }
 
-  int get_score(const ExecutionPlan &e) const {
+  Score get_score(const ExecutionPlan &e) const {
     auto conf = static_cast<const HeuristicConfiguration *>(&configuration);
     return conf->get_score(e);
   }

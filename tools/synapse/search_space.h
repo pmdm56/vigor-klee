@@ -6,6 +6,7 @@
 
 #include "execution_plan/context.h"
 #include "heuristics/heuristic.h"
+#include "heuristics/score.h"
 
 namespace synapse {
 
@@ -15,14 +16,13 @@ struct search_space_node_t {
   int execution_plan_id;
   Module_ptr m;
 
-  int score;
-  float normalized_score;
+  Score score;
 
-  search_space_node_t(int _execution_plan_id, int _score)
-      : execution_plan_id(_execution_plan_id), score(_score),
-        normalized_score(-1) {}
+  search_space_node_t(int _execution_plan_id, Score _score)
+      : execution_plan_id(_execution_plan_id), score(_score) {}
 
-  search_space_node_t(int _execution_plan_id, const Module_ptr &_m, int _score)
+  search_space_node_t(int _execution_plan_id, const Module_ptr &_m,
+                      Score _score)
       : search_space_node_t(_execution_plan_id, _score) {
     m = _m;
   }
@@ -55,12 +55,11 @@ private:
   pending_leaves_t pending_leaves;
 
   const HeuristicConfiguration *hc;
-  float max_score;
 
 public:
   SearchSpace(const HeuristicConfiguration *_hc, const ExecutionPlan &ep)
-      : root(new search_space_node_t(ep.get_id(), _hc->get_score(ep))), hc(_hc),
-        max_score(_hc->get_score(ep)) {
+      : root(new search_space_node_t(ep.get_id(), _hc->get_score(ep))),
+        hc(_hc) {
     leaves.push_back(root);
   }
 
@@ -100,28 +99,13 @@ public:
       auto &ep = pending_leaves.eps[i];
       auto &module = pending_leaves.modules[i];
 
-      auto score = hc->get_score(ep);
-      max_score = std::max((float)score, max_score);
-
       leaf->space.emplace_back(
-          new search_space_node_t(ep.get_id(), module, score));
+          new search_space_node_t(ep.get_id(), module, hc->get_score(ep)));
       leaf->space.back()->prev = leaf;
       leaves.push_back(leaf->space.back());
     }
 
     pending_leaves.reset();
-  }
-
-  void normalize() {
-    std::vector<std::shared_ptr<search_space_node_t>> nodes;
-    nodes.push_back(root);
-
-    while (nodes.size()) {
-      auto node = nodes[0];
-      nodes.erase(nodes.begin());
-      node->normalized_score = (float)node->score / max_score;
-      nodes.insert(nodes.end(), node->space.begin(), node->space.end());
-    }
   }
 
   const std::vector<std::shared_ptr<search_space_node_t>> &get_leaves() const {
