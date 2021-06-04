@@ -21,12 +21,12 @@ public:
       : Module(ModuleType::x86_PacketBorrowNextChunk, Target::x86,
                "PacketBorrowNextChunk") {}
 
-  PacketBorrowNextChunk(klee::ref<klee::Expr> _p_addr,
+  PacketBorrowNextChunk(const BDD::Node *node, klee::ref<klee::Expr> _p_addr,
                         klee::ref<klee::Expr> _chunk_addr,
                         klee::ref<klee::Expr> _chunk,
                         klee::ref<klee::Expr> _length)
       : Module(ModuleType::x86_PacketBorrowNextChunk, Target::x86,
-               "PacketBorrowNextChunk"),
+               "PacketBorrowNextChunk", node),
         p_addr(_p_addr), chunk_addr(_chunk_addr), chunk(_chunk),
         length(_length) {}
 
@@ -50,13 +50,13 @@ private:
       auto _length = call.args["length"].expr;
 
       auto new_module = std::make_shared<PacketBorrowNextChunk>(
-          _p_addr, _chunk_addr, _chunk, _length);
+          node, _p_addr, _chunk_addr, _chunk, _length);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

@@ -13,7 +13,8 @@ class MapGet;
 class CurrentTime;
 class PacketBorrowNextChunk;
 class PacketReturnChunk;
-class IfThen;
+class If;
+class Then;
 class Else;
 class Forward;
 class Broadcast;
@@ -45,7 +46,8 @@ public:
   virtual void visit(const targets::x86::CurrentTime *node) {}
   virtual void visit(const targets::x86::PacketBorrowNextChunk *node) {}
   virtual void visit(const targets::x86::PacketReturnChunk *node) {}
-  virtual void visit(const targets::x86::IfThen *node) {}
+  virtual void visit(const targets::x86::If *node) {}
+  virtual void visit(const targets::x86::Then *node) {}
   virtual void visit(const targets::x86::Else *node) {}
   virtual void visit(const targets::x86::Forward *node) {}
   virtual void visit(const targets::x86::Broadcast *node) {}

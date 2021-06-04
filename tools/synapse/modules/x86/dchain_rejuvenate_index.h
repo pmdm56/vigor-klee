@@ -20,11 +20,12 @@ public:
       : Module(ModuleType::x86_DchainRejuvenateIndex, Target::x86,
                "DchainRejuvenate") {}
 
-  DchainRejuvenateIndex(klee::ref<klee::Expr> _dchain_addr,
+  DchainRejuvenateIndex(const BDD::Node *node,
+                        klee::ref<klee::Expr> _dchain_addr,
                         klee::ref<klee::Expr> _index,
                         klee::ref<klee::Expr> _time)
       : Module(ModuleType::x86_DchainRejuvenateIndex, Target::x86,
-               "DchainRejuvenate"),
+               "DchainRejuvenate", node),
         dchain_addr(_dchain_addr), index(_index), time(_time) {}
 
 private:
@@ -44,14 +45,14 @@ private:
       auto _index = call.args["index"].expr;
       auto _time = call.args["time"].expr;
 
-      auto new_module =
-          std::make_shared<DchainRejuvenateIndex>(_dchain_addr, _index, _time);
+      auto new_module = std::make_shared<DchainRejuvenateIndex>(
+          node, _dchain_addr, _index, _time);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

@@ -6,40 +6,41 @@ if [[ $# -eq 0 ]] ; then
   exit 1
 fi
 
+file_ext="svg"
+
 generated=()
 
-function generate_ps2 {
+function generate {
   if=$1
-  of="${if%.*}".ps2
+  of="${if%.*}".$file_ext
 
-  dot -Tps2 $if -o $of
+  dot -T$file_ext $if -o $of
   generated+=("$of")
 }
 
-function open_ps2 {
+function open {
   f=$1
-  mime_type="application/postscript"
-  default_app=$(grep -i ^exec $(locate -n 1 $(xdg-mime query default $mime_type | cut -d';' -f 1)) | perl -pe 's/.*=(\S+).*/$1/')
-  $default_app $f > /dev/null
+  xdg-open $f & > /dev/null
 }
 
 for f in "${@}"
 do
-  generate_ps2 "$f"
+  generate "$f"
 done
 
-if [ "${#generated[@]}" -eq 1 ]; then
-  open_ps2 "${generated[0]}"
-else
-  merged_file=/tmp/out.pdf
-  gs -q -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dSAFER -sOutputFile=$merged_file "${generated[@]/#/}" > /dev/null
-  open_ps2 $merged_file
-  rm $merged_file
-fi
+#if [ "${#generated[@]}" -eq 1 ]; then
+#  open "${generated[0]}"
+#else
+#  merged_file=/tmp/out.pdf
+#  gs -q -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dSAFER -sOutputFile=$merged_file "${generated[@]/#/}" > /dev/null
+#  open $merged_file
+#  rm $merged_file
+#fi
 
 for of in "${generated[@]}"
 do
-  rm $of 2> /dev/null
+  open $of
+  #rm $of 2> /dev/null
 done
 
 exit 0

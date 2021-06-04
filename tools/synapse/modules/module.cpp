@@ -16,7 +16,10 @@ Context Module::process_node(const ExecutionPlan& ep, const BDD::Node* node, con
   }
 
   bdd = &_bdd;
-  node->visit(*this);
+
+  if (context->can_process_platform(target)) {
+    node->visit(*this);
+  }
 
   return *context;
 }

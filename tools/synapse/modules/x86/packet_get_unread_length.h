@@ -19,10 +19,10 @@ public:
       : Module(ModuleType::x86_PacketGetUnreadLength, Target::x86,
                "PacketGetUnreadLength") {}
 
-  PacketGetUnreadLength(klee::ref<klee::Expr> _p_addr,
+  PacketGetUnreadLength(const BDD::Node *node, klee::ref<klee::Expr> _p_addr,
                         klee::ref<klee::Expr> _unread_length)
       : Module(ModuleType::x86_PacketGetUnreadLength, Target::x86,
-               "PacketGetUnreadLength"),
+               "PacketGetUnreadLength", node),
         p_addr(_p_addr), unread_length(_unread_length) {}
 
 private:
@@ -40,14 +40,14 @@ private:
       auto _p_addr = call.args["p"].expr;
       auto _unread_length = call.ret;
 
-      auto new_module =
-          std::make_shared<PacketGetUnreadLength>(_p_addr, _unread_length);
+      auto new_module = std::make_shared<PacketGetUnreadLength>(node, _p_addr,
+                                                                _unread_length);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

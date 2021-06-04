@@ -18,8 +18,10 @@ public:
   RteEtherAddrHash()
       : Module(ModuleType::x86_RteEtherAddrHash, Target::x86, "EtherHash") {}
 
-  RteEtherAddrHash(klee::ref<klee::Expr> _obj, klee::ref<klee::Expr> _hash)
-      : Module(ModuleType::x86_RteEtherAddrHash, Target::x86, "EtherHash"),
+  RteEtherAddrHash(const BDD::Node *node, klee::ref<klee::Expr> _obj,
+                   klee::ref<klee::Expr> _hash)
+      : Module(ModuleType::x86_RteEtherAddrHash, Target::x86, "EtherHash",
+               node),
         obj(_obj), hash(_hash) {}
 
 private:
@@ -37,13 +39,13 @@ private:
       auto _obj = call.args["obj"].in;
       auto _hash = call.ret;
 
-      auto new_module = std::make_shared<RteEtherAddrHash>(_obj, _hash);
+      auto new_module = std::make_shared<RteEtherAddrHash>(node, _obj, _hash);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

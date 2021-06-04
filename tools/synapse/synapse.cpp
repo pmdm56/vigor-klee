@@ -60,13 +60,13 @@ int main(int argc, char **argv) {
   synapse::MostCompact most_compact;
 
   se.add_target(synapse::Target::x86);
-  // se.add_target(synapse::Target::Tofino);
+  se.add_target(synapse::Target::Tofino);
 
   // auto winner = se.search(dfs);
   auto winner = se.search(most_compact);
 
-  synapse::x86_Generator x86_generator(std::cerr);
-  winner.visit(x86_generator);
+  // synapse::x86_Generator x86_generator(std::cerr);
+  // winner.visit(x86_generator);
 
   for (auto call_path : call_paths) {
     delete call_path;

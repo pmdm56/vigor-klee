@@ -5,21 +5,22 @@
 #include "../module.h"
 #include "call-paths-to-bdd.h"
 
+#include "then.h"
 #include "else.h"
 
 namespace synapse {
 namespace targets {
 namespace x86 {
 
-class IfThen : public Module {
+class If : public Module {
 private:
   klee::ref<klee::Expr> condition;
 
 public:
-  IfThen() : Module(ModuleType::x86_IfThen, Target::x86, "IfThen") {}
+  If() : Module(ModuleType::x86_If, Target::x86, "If") {}
 
-  IfThen(klee::ref<klee::Expr> _condition)
-      : Module(ModuleType::x86_IfThen, Target::x86, "IfThen"),
+  If(const BDD::Node *node, klee::ref<klee::Expr> _condition)
+      : Module(ModuleType::x86_If, Target::x86, "If", node),
         condition(_condition) {}
 
 private:
@@ -27,21 +28,26 @@ private:
     assert(!node->get_condition().isNull());
     auto _condition = node->get_condition();
 
-    auto new_ifthen_module = std::make_shared<IfThen>(_condition);
-    auto new_else_module = std::shared_ptr<Else>(new Else());
+    auto new_if_module = std::make_shared<If>(node, _condition);
+    auto new_then_module = std::make_shared<Then>(node);
+    auto new_else_module = std::make_shared<Else>(node);
 
-    auto ifthen_ep_node = ExecutionPlanNode::build(new_ifthen_module, node);
+    auto if_ep_node = ExecutionPlanNode::build(new_if_module, node);
+    auto then_ep_node = ExecutionPlanNode::build(new_then_module, node);
     auto else_ep_node = ExecutionPlanNode::build(new_else_module, node);
 
-    auto ifthen_leaf =
-        ExecutionPlan::leaf_t(ifthen_ep_node, node->get_on_true());
+    auto if_leaf = ExecutionPlan::leaf_t(if_ep_node, nullptr);
+    auto then_leaf = ExecutionPlan::leaf_t(then_ep_node, node->get_on_true());
     auto else_leaf = ExecutionPlan::leaf_t(else_ep_node, node->get_on_false());
 
-    std::vector<ExecutionPlan::leaf_t> new_leaves{ ifthen_leaf, else_leaf };
+    std::vector<ExecutionPlan::leaf_t> if_leaves{ if_leaf };
+    std::vector<ExecutionPlan::leaf_t> then_else_leaves{ then_leaf, else_leaf };
 
     auto ep = context->get_current();
-    auto new_ep = ExecutionPlan(ep, new_leaves, bdd);
-    context->add(new_ep);
+    auto ep_if = ExecutionPlan(ep, if_leaves, bdd);
+    auto ep_if_then_else = ExecutionPlan(ep_if, then_else_leaves, bdd);
+
+    context->add(ep_if_then_else, if_leaf);
 
     return BDD::BDDVisitor::Action::STOP;
   }

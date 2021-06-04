@@ -69,7 +69,7 @@ public:
                      << next_context.size() << " exec plans"
                      << "\n";
           h.add(next_context);
-          search_space.add_leaves(next_context, module);
+          search_space.add_leaves(next_context);
           processed = true;
         }
       }
@@ -81,7 +81,7 @@ public:
       Log::dbg() << "=======================================================\n";
     }
 
-    // synapse::Graphviz::visualize(h.get(), search_space);
+    synapse::Graphviz::visualize(h.get(), search_space);
     return h.get();
   }
 };

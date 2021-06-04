@@ -20,11 +20,12 @@ public:
       : Module(ModuleType::x86_DchainIsIndexAllocated, Target::x86,
                "DchainIsIndexAllocated") {}
 
-  DchainIsIndexAllocated(klee::ref<klee::Expr> _dchain_addr,
+  DchainIsIndexAllocated(const BDD::Node *node,
+                         klee::ref<klee::Expr> _dchain_addr,
                          klee::ref<klee::Expr> _index,
                          klee::ref<klee::Expr> _is_allocated)
       : Module(ModuleType::x86_DchainIsIndexAllocated, Target::x86,
-               "DchainIsIndexAllocated"),
+               "DchainIsIndexAllocated", node),
         dchain_addr(_dchain_addr), index(_index), is_allocated(_is_allocated) {}
 
 private:
@@ -45,13 +46,13 @@ private:
       auto _is_allocated = call.ret;
 
       auto new_module = std::make_shared<DchainIsIndexAllocated>(
-          _dchain_addr, _index, _is_allocated);
+          node, _dchain_addr, _index, _is_allocated);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

@@ -164,9 +164,9 @@ private:
 
     leaf_ofs << "digraph bdd_next {\n";
     leaf_ofs << "layout=\"dot\";";
-    leaf_ofs << "ratio=\"fill\";\n";
-    leaf_ofs << "size=\"12,12!\";\n";
-    leaf_ofs << "margin=0;\n";
+    // leaf_ofs << "ratio=\"fill\";\n";
+    // leaf_ofs << "size=\"12,12!\";\n";
+    // leaf_ofs << "margin=0;\n";
     leaf_ofs << "node [shape=record,style=filled];\n";
 
     BDD::GraphvizGenerator bdd_graphviz(leaf_ofs);
@@ -176,6 +176,66 @@ private:
 
     leaf_ofs.flush();
     leaf_ofs.close();
+  }
+
+  std::string get_bdd_node_name(const BDD::Node *node) const {
+    assert(node);
+    std::stringstream ss;
+
+    switch (node->get_type()) {
+    case BDD::Node::NodeType::BRANCH: {
+      auto branch = static_cast<const BDD::Branch *>(node);
+      ss << "if(";
+      ss << expr_to_string(branch->get_condition(), true);
+      ss << ")";
+      break;
+    }
+    case BDD::Node::NodeType::CALL: {
+      auto call = static_cast<const BDD::Call *>(node);
+      ss << call->get_call().function_name;
+      int i = 0;
+      for (auto arg : call->get_call().args) {
+        if (i > 0) {
+          ss << ", ";
+        }
+        ss << expr_to_string(arg.second.expr, true);
+        i++;
+      }
+      break;
+    }
+    case BDD::Node::NodeType::RETURN_PROCESS: {
+      auto return_process = static_cast<const BDD::ReturnProcess *>(node);
+
+      switch (return_process->get_return_operation()) {
+      case BDD::ReturnProcess::Operation::BCAST: {
+        ss << "broadcast()";
+        break;
+      }
+      case BDD::ReturnProcess::Operation::DROP: {
+        ss << "drop()";
+        break;
+      }
+      case BDD::ReturnProcess::Operation::FWD: {
+        ss << "forward(";
+        ss << return_process->get_return_value();
+        ss << ")";
+        break;
+      }
+      default:
+        assert(false);
+      }
+
+      break;
+    }
+    case BDD::Node::NodeType::RETURN_INIT:
+      Log::err() << "return init\n";
+      [[fallthrough]];
+    case BDD::Node::NodeType::RETURN_RAW:
+      Log::err() << "return raw\n";
+      assert(false);
+    }
+
+    return ss.str();
   }
 
   void dump_search_space() const {
@@ -188,10 +248,10 @@ private:
 
     search_space_ofs << "digraph SearchSpace {\n";
     search_space_ofs << "layout=\"twopi\";";
-    search_space_ofs << "ratio=\"fill\";\n";
-    search_space_ofs << "size=\"12,12!\";\n";
-    search_space_ofs << "margin=0;\n";
-    search_space_ofs << "node [shape=record,style=filled];\n";
+    // search_space_ofs << "ratio=\"fill\";\n";
+    // search_space_ofs << "size=\"12,12!\";\n";
+    // search_space_ofs << "margin=0;\n";
+    search_space_ofs << "node [shape=circle,style=filled];\n";
 
     std::vector<search_space_node_t *> nodes;
     nodes.push_back(search_space->get_root().get());
@@ -214,8 +274,17 @@ private:
       search_space_ofs << std::dec;
       search_space_ofs << "\"";
       if (node->m) {
-        search_space_ofs << ", label=\"" << node->m->get_target_name()
+        if (!node->m->get_node()) {
+          std::cerr << "\n" << node->m->get_target_name()
+                    << "::" << node->m->get_name() << " NO NODE\n";
+        }
+        assert(node->m->get_node());
+        search_space_ofs << ", tooltip=\""
+                         << get_bdd_node_name(node->m->get_node()) << " -> "
+                         << node->m->get_target_name()
                          << "::" << node->m->get_name() << "\"";
+        // search_space_ofs << ", label=\"" << node->m->get_target_name()
+        //                  << "::" << node->m->get_name() << "\"";
       }
       search_space_ofs << "];\n";
 
@@ -259,10 +328,10 @@ public:
 
   void visit(ExecutionPlan ep) override {
     ofs << "digraph ExecutionPlan {\n";
-    ofs << "ratio=\"fill\";\n";
+    // ofs << "ratio=\"fill\";\n";
     ofs << "layout=\"dot\";";
-    ofs << "size=\"12,12!\";\n";
-    ofs << "margin=0;\n";
+    // ofs << "size=\"12,12!\";\n";
+    // ofs << "margin=0;\n";
     ofs << "node [shape=record,style=filled];\n";
 
     ExecutionPlanVisitor::visit(ep);
@@ -303,7 +372,8 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::x86::CurrentTime)
   VISIT_PRINT_MODULE_NAME(targets::x86::PacketBorrowNextChunk)
   VISIT_PRINT_MODULE_NAME(targets::x86::PacketReturnChunk)
-  VISIT_PRINT_MODULE_NAME(targets::x86::IfThen)
+  VISIT_PRINT_MODULE_NAME(targets::x86::If)
+  VISIT_PRINT_MODULE_NAME(targets::x86::Then)
   VISIT_PRINT_MODULE_NAME(targets::x86::Else)
   VISIT_PRINT_MODULE_NAME(targets::x86::Forward)
   VISIT_PRINT_MODULE_NAME(targets::x86::Broadcast)

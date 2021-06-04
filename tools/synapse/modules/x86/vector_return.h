@@ -20,9 +20,10 @@ public:
   VectorReturn()
       : Module(ModuleType::x86_VectorReturn, Target::x86, "VectorReturn") {}
 
-  VectorReturn(klee::ref<klee::Expr> _vector_addr, klee::ref<klee::Expr> _index,
-               klee::ref<klee::Expr> _value_addr, klee::ref<klee::Expr> _value)
-      : Module(ModuleType::x86_VectorReturn, Target::x86, "VectorReturn"),
+  VectorReturn(const BDD::Node *node, klee::ref<klee::Expr> _vector_addr,
+               klee::ref<klee::Expr> _index, klee::ref<klee::Expr> _value_addr,
+               klee::ref<klee::Expr> _value)
+      : Module(ModuleType::x86_VectorReturn, Target::x86, "VectorReturn", node),
         vector_addr(_vector_addr), index(_index), value_addr(_value_addr),
         value(_value) {}
 
@@ -45,14 +46,14 @@ private:
       auto _value_addr = call.args["value"].expr;
       auto _value = call.args["value"].in;
 
-      auto new_module = std::make_shared<VectorReturn>(_vector_addr, _index,
-                                                       _value_addr, _value);
+      auto new_module = std::make_shared<VectorReturn>(
+          node, _vector_addr, _index, _value_addr, _value);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

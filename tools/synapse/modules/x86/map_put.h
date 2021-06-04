@@ -19,9 +19,10 @@ private:
 public:
   MapPut() : Module(ModuleType::x86_MapPut, Target::x86, "MapPut") {}
 
-  MapPut(klee::ref<klee::Expr> _map_addr, klee::ref<klee::Expr> _key_addr,
-         klee::ref<klee::Expr> _key, klee::ref<klee::Expr> _value)
-      : Module(ModuleType::x86_MapPut, Target::x86, "MapPut"),
+  MapPut(const BDD::Node *node, klee::ref<klee::Expr> _map_addr,
+         klee::ref<klee::Expr> _key_addr, klee::ref<klee::Expr> _key,
+         klee::ref<klee::Expr> _value)
+      : Module(ModuleType::x86_MapPut, Target::x86, "MapPut", node),
         map_addr(_map_addr), key_addr(_key_addr), key(_key), value(_value) {}
 
 private:
@@ -44,13 +45,13 @@ private:
       auto _value = call.args["value"].expr;
 
       auto new_module =
-          std::make_shared<MapPut>(_map_addr, _key_addr, _key, _value);
+          std::make_shared<MapPut>(node, _map_addr, _key_addr, _key, _value);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

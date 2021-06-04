@@ -19,10 +19,10 @@ private:
 public:
   MapGet() : Module(ModuleType::x86_MapGet, Target::x86, "MapGet") {}
 
-  MapGet(klee::ref<klee::Expr> _map_addr, klee::ref<klee::Expr> _key,
-         klee::ref<klee::Expr> _map_has_this_key,
+  MapGet(const BDD::Node *node, klee::ref<klee::Expr> _map_addr,
+         klee::ref<klee::Expr> _key, klee::ref<klee::Expr> _map_has_this_key,
          klee::ref<klee::Expr> _value_out)
-      : Module(ModuleType::x86_MapGet, Target::x86, "MapGet"),
+      : Module(ModuleType::x86_MapGet, Target::x86, "MapGet", node),
         map_addr(_map_addr), key(_key), map_has_this_key(_map_has_this_key),
         value_out(_value_out) {}
 
@@ -45,14 +45,14 @@ private:
       auto _map_has_this_key = call.ret;
       auto _value_out = call.args["value_out"].out;
 
-      auto new_module = std::make_shared<MapGet>(_map_addr, _key,
+      auto new_module = std::make_shared<MapGet>(node, _map_addr, _key,
                                                  _map_has_this_key, _value_out);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

@@ -19,10 +19,10 @@ public:
       : Module(ModuleType::x86_PacketReturnChunk, Target::x86,
                "PacketReturnChunk") {}
 
-  PacketReturnChunk(klee::ref<klee::Expr> _chunk_addr,
+  PacketReturnChunk(const BDD::Node *node, klee::ref<klee::Expr> _chunk_addr,
                     klee::ref<klee::Expr> _chunk)
       : Module(ModuleType::x86_PacketReturnChunk, Target::x86,
-               "PacketReturnChunk"),
+               "PacketReturnChunk", node),
         chunk_addr(_chunk_addr), chunk(_chunk) {}
 
 private:
@@ -41,13 +41,13 @@ private:
       auto _chunk = call.args["the_chunk"].in;
 
       auto new_module =
-          std::make_shared<PacketReturnChunk>(_chunk_addr, _chunk);
+          std::make_shared<PacketReturnChunk>(node, _chunk_addr, _chunk);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

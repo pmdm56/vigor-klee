@@ -10,8 +10,9 @@
 #include "packet_get_unread_length.h"
 #include "packet_return_chunk.h"
 
+#include "if.h"
+#include "then.h"
 #include "else.h"
-#include "if_then.h"
 
 #include "broadcast.h"
 #include "drop.h"
@@ -34,16 +35,16 @@ namespace x86 {
 
 inline std::vector<Module_ptr> get_modules() {
   std::vector<Module_ptr> modules{
-    MODULE(MapGet),                 MODULE(CurrentTime),
-    MODULE(PacketBorrowNextChunk),  MODULE(PacketReturnChunk),
-    MODULE(IfThen),                 MODULE(Else),
-    MODULE(Forward),                MODULE(Broadcast),
-    MODULE(Drop),                   MODULE(ExpireItemsSingleMap),
-    MODULE(RteEtherAddrHash),       MODULE(DchainRejuvenateIndex),
-    MODULE(VectorBorrow),           MODULE(VectorReturn),
-    MODULE(DchainAllocateNewIndex), MODULE(MapPut),
-    MODULE(PacketGetUnreadLength),  MODULE(SetIpv4UdpTcpChecksum),
-    MODULE(DchainIsIndexAllocated),
+    MODULE(MapGet),                MODULE(CurrentTime),
+    MODULE(PacketBorrowNextChunk), MODULE(PacketReturnChunk),
+    MODULE(If),                    MODULE(Then),
+    MODULE(Else),                  MODULE(Forward),
+    MODULE(Broadcast),             MODULE(Drop),
+    MODULE(ExpireItemsSingleMap),  MODULE(RteEtherAddrHash),
+    MODULE(DchainRejuvenateIndex), MODULE(VectorBorrow),
+    MODULE(VectorReturn),          MODULE(DchainAllocateNewIndex),
+    MODULE(MapPut),                MODULE(PacketGetUnreadLength),
+    MODULE(SetIpv4UdpTcpChecksum), MODULE(DchainIsIndexAllocated),
   };
 
   return modules;

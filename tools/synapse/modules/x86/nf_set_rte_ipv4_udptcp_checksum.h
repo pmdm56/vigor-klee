@@ -20,11 +20,12 @@ public:
       : Module(ModuleType::x86_SetIpv4UdpTcpChecksum, Target::x86,
                "SetIpChecksum") {}
 
-  SetIpv4UdpTcpChecksum(klee::ref<klee::Expr> _ip_header_addr,
+  SetIpv4UdpTcpChecksum(const BDD::Node *node,
+                        klee::ref<klee::Expr> _ip_header_addr,
                         klee::ref<klee::Expr> _l4_header_addr,
                         klee::ref<klee::Expr> _checksum)
       : Module(ModuleType::x86_SetIpv4UdpTcpChecksum, Target::x86,
-               "SetIpChecksum"),
+               "SetIpChecksum", node),
         ip_header_addr(_ip_header_addr), l4_header_addr(_l4_header_addr),
         checksum(_checksum) {}
 
@@ -46,13 +47,13 @@ private:
       auto _checksum = call.ret;
 
       auto new_module = std::make_shared<SetIpv4UdpTcpChecksum>(
-          _ip_header_addr, _l4_header_addr, _checksum);
+          node, _ip_header_addr, _l4_header_addr, _checksum);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

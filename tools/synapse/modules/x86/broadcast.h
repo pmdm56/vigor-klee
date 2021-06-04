@@ -13,6 +13,9 @@ class Broadcast : public Module {
 public:
   Broadcast() : Module(ModuleType::x86_Broadcast, Target::x86, "Broadcast") {}
 
+  Broadcast(const BDD::Node *node)
+      : Module(ModuleType::x86_Broadcast, Target::x86, "Broadcast", node) {}
+
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
     return BDD::BDDVisitor::Action::STOP;
@@ -30,13 +33,13 @@ private:
   BDD::BDDVisitor::Action
   visitReturnProcess(const BDD::ReturnProcess *node) override {
     if (node->get_return_operation() == BDD::ReturnProcess::Operation::BCAST) {
-      auto new_module = std::make_shared<Broadcast>();
+      auto new_module = std::make_shared<Broadcast>(node);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto ep = context->get_current();
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

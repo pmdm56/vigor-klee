@@ -113,6 +113,7 @@ public:
         code << " >> " << offset << ")";
       }
       code << " & " << mask << "u";
+
       return klee::ExprVisitor::Action::skipChildren();
     }
 
@@ -1084,7 +1085,7 @@ void x86_Generator::visit(const targets::x86::PacketReturnChunk *node) {
   }
 }
 
-void x86_Generator::visit(const targets::x86::IfThen *node) {
+void x86_Generator::visit(const targets::x86::If *node) {
   auto condition = node->get_condition();
 
   pad();
@@ -1095,6 +1096,8 @@ void x86_Generator::visit(const targets::x86::IfThen *node) {
 
   pending_ifs.push(true);
 }
+
+void x86_Generator::visit(const targets::x86::Then *node) {}
 
 void x86_Generator::visit(const targets::x86::Else *node) {
   pad();

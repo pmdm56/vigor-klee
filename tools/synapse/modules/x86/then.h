@@ -5,15 +5,18 @@
 #include "../module.h"
 #include "call-paths-to-bdd.h"
 
+#include "else.h"
+
 namespace synapse {
 namespace targets {
 namespace x86 {
 
-class Else : public Module {
+class Then : public Module {
 public:
-  Else() : Module(ModuleType::x86_Else, Target::x86, "Else") {}
-  Else(const BDD::Node *node)
-      : Module(ModuleType::x86_Else, Target::x86, "Else", node) {}
+  Then() : Module(ModuleType::x86_Then, Target::x86, "Then") {}
+
+  Then(const BDD::Node *node)
+      : Module(ModuleType::x86_Then, Target::x86, "Then", node) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {

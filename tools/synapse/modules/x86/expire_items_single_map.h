@@ -21,12 +21,14 @@ public:
   ExpireItemsSingleMap()
       : Module(ModuleType::x86_ExpireItemsSingleMap, Target::x86, "Expire") {}
 
-  ExpireItemsSingleMap(klee::ref<klee::Expr> _dchain_addr,
+  ExpireItemsSingleMap(const BDD::Node *node,
+                       klee::ref<klee::Expr> _dchain_addr,
                        klee::ref<klee::Expr> _vector_addr,
                        klee::ref<klee::Expr> _map_addr,
                        klee::ref<klee::Expr> _time,
                        klee::ref<klee::Expr> _number_of_freed_flows)
-      : Module(ModuleType::x86_ExpireItemsSingleMap, Target::x86, "Expire"),
+      : Module(ModuleType::x86_ExpireItemsSingleMap, Target::x86, "Expire",
+               node),
         dchain_addr(_dchain_addr), vector_addr(_vector_addr),
         map_addr(_map_addr), time(_time),
         number_of_freed_flows(_number_of_freed_flows) {}
@@ -53,13 +55,14 @@ private:
       auto _number_of_freed_flows = call.ret;
 
       auto new_module = std::make_shared<ExpireItemsSingleMap>(
-          _dchain_addr, _vector_addr, _map_addr, _time, _number_of_freed_flows);
+          node, _dchain_addr, _vector_addr, _map_addr, _time,
+          _number_of_freed_flows);
       auto ep_node = ExecutionPlanNode::build(new_module, node);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep);
+      context->add(new_ep, new_leaf);
     }
 
     return BDD::BDDVisitor::Action::STOP;

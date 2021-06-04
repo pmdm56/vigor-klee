@@ -12,7 +12,6 @@ namespace synapse {
 struct search_space_node_t {
   std::vector<std::shared_ptr<search_space_node_t>> space;
   std::shared_ptr<search_space_node_t> prev;
-  bool active;
   int execution_plan_id;
   Module_ptr m;
 
@@ -20,7 +19,7 @@ struct search_space_node_t {
   float normalized_score;
 
   search_space_node_t(int _execution_plan_id, int _score)
-      : active(false), execution_plan_id(_execution_plan_id), score(_score),
+      : execution_plan_id(_execution_plan_id), score(_score),
         normalized_score(-1) {}
 
   search_space_node_t(int _execution_plan_id, const Module_ptr &_m, int _score)
@@ -65,7 +64,7 @@ public:
     leaves.push_back(root);
   }
 
-  void add_leaves(const Context &context, const Module_ptr &module) {
+  void add_leaves(const Context &context) {
     std::vector<search_space_node_t> nodes;
 
     int execution_plan_id = context.has_current()
@@ -79,6 +78,8 @@ public:
 
     auto eps = context.get_next_eps();
     for (auto ep : eps) {
+      auto leaf = context.get_processed_leaf();
+      auto module = leaf->leaf->get_module();
       pending_leaves.add(ep, module);
     }
   }

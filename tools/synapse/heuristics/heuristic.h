@@ -2,6 +2,7 @@
 
 #include "../execution_plan/context.h"
 #include "../execution_plan/execution_plan.h"
+#include "score.h"
 
 #include <set>
 

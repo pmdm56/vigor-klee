@@ -238,7 +238,14 @@ struct stack_t {
                 mask <<= 1;
                 mask |= 1;
               }
-              label_stream << var.label << " & " << mask;
+              if (b > 0) {
+                label_stream << "(";
+              }
+              label_stream << var.label;
+              if (b > 0) {
+                label_stream << " >> " << b << ")";
+              }
+              label_stream << " & " << mask;
             }
             return label_stream.str();
           }
@@ -311,7 +318,8 @@ public:
   void visit(const targets::x86::CurrentTime *node) override;
   void visit(const targets::x86::PacketBorrowNextChunk *node) override;
   void visit(const targets::x86::PacketReturnChunk *node) override;
-  void visit(const targets::x86::IfThen *node) override;
+  void visit(const targets::x86::If *node) override;
+  void visit(const targets::x86::Then *node) override;
   void visit(const targets::x86::Else *node) override;
   void visit(const targets::x86::Forward *node) override;
   void visit(const targets::x86::Broadcast *node) override;
