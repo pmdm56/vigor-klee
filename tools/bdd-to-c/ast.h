@@ -18,7 +18,11 @@
 
 class AST {
 private:
-  enum Context { INIT, PROCESS, DONE };
+  enum Context {
+    INIT,
+    PROCESS,
+    DONE
+  };
 
   typedef std::pair<Variable_ptr, klee::ref<klee::Expr>> local_variable_t;
   typedef std::vector<std::vector<local_variable_t>> stack_t;
@@ -27,7 +31,8 @@ private:
   std::string output_path;
   std::map<std::string, std::string> callpath_var_translation;
   std::map<std::pair<std::string, TargetOption>, std::string> fname_translation;
-  std::map<std::pair<std::string, TargetOption>, std::string> struct_translation;
+  std::map<std::pair<std::string, TargetOption>, std::string>
+  struct_translation;
 
   std::vector<unsigned int> layer;
 
@@ -57,28 +62,27 @@ public:
   chunk_t get_chunk_from_local(unsigned int idx);
   klee::ref<klee::Expr> get_expr_from_local_by_addr(unsigned int addr);
 
-  Variable_ptr get_from_local_by_addr(const std::string& symbol, unsigned int addr);
-  Variable_ptr get_from_local(const std::string& symbol, bool partial=false);
+  Variable_ptr get_from_local_by_addr(const std::string &symbol,
+                                      unsigned int addr);
+  Variable_ptr get_from_local(const std::string &symbol, bool partial = false);
 
   Expr_ptr get_from_local(klee::ref<klee::Expr> expr);
 
-  void associate_expr_to_local(const std::string& symbol, klee::ref<klee::Expr> expr);
+  void associate_expr_to_local(const std::string &symbol,
+                               klee::ref<klee::Expr> expr);
 
   Variable_ptr get_from_state(unsigned int addr);
-  Variable_ptr get_from_state(const std::string& symbol);
-  const std::vector<Variable_ptr>& get_state() const { return state; }
+  Variable_ptr get_from_state(const std::string &symbol);
+  const std::vector<Variable_ptr> &get_state() const { return state; }
 
   std::string from_cp_symbol(std::string name);
 
 private:
   Variable_ptr generate_new_symbol(klee::ref<klee::Expr> expr);
   Variable_ptr generate_new_symbol(std::string symbol, Type_ptr type,
-                                   unsigned int ptr_lvl, unsigned int counter_begins);
-  Variable_ptr generate_new_symbol(const std::string& symbol, Type_ptr type);
-
-  void push_to_state(Variable_ptr var);
-  void push_to_local(Variable_ptr var);
-  void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);
+                                   unsigned int ptr_lvl,
+                                   unsigned int counter_begins);
+  Variable_ptr generate_new_symbol(const std::string &symbol, Type_ptr type);
 
   Node_ptr init_state_node_from_call(call_t call, TargetOption target);
   Node_ptr process_state_node_from_call(call_t call, TargetOption target);
@@ -105,14 +109,12 @@ public:
 
     context_switch(INIT);
 
-    callpath_var_translation = {
-      { "src_devices", "device" },
-      { "p", "packet" },
-      { "pkt_len", "packet_length" },
-      { "unmber_of_freed_flows", "number_of_freed_flows" },
-      { "value_out", "map_value_out" },
-      { "val_out", "vector_value_out" }
-    };
+    callpath_var_translation = { { "src_devices", "device" }, { "p", "packet" },
+                                 { "pkt_len", "packet_length" },
+                                 { "unmber_of_freed_flows",
+                                   "number_of_freed_flows" },
+                                 { "value_out", "map_value_out" },
+                                 { "val_out", "vector_value_out" } };
 
     fname_translation = {
 
@@ -120,27 +122,30 @@ public:
        *                                double chain
        ****************************************************************************/
       { { "dchain_allocate", TargetOption::LOCKS }, "dchain_locks_allocate" },
-      { { "dchain_allocate", TargetOption::TM },    "dchain_tm_allocate" },
-
-      { { "dchain_allocate_new_index", TargetOption::LOCKS }, "dchain_locks_allocate_new_index" },
-      { { "dchain_allocate_new_index", TargetOption::TM },    "dchain_tm_allocate_new_index" },
-
-      { { "dchain_rejuvenate_index", TargetOption::LOCKS }, "dchain_locks_rejuvenate_index" },
-      { { "dchain_rejuvenate_index", TargetOption::TM },    "dchain_tm_rejuvenate_index" },
-
-      { { "dchain_expire_one_index", TargetOption::LOCKS }, "dchain_locks_expire_one_index" },
-      { { "dchain_expire_one_index", TargetOption::TM },    "dchain_tm_expire_one_index" },
-
-      { { "dchain_is_index_allocated", TargetOption::LOCKS }, "dchain_locks_is_index_allocated" },
-      { { "dchain_is_index_allocated", TargetOption::TM },    "dchain_tm_is_index_allocated" },
-
-      { { "dchain_free_index", TargetOption::LOCKS }, "dchain_locks_free_index" },
-      { { "dchain_free_index", TargetOption::TM },    "dchain_tm_free_index" },
+      { { "dchain_allocate", TargetOption::TM }, "dchain_tm_allocate" },
+      { { "dchain_allocate_new_index", TargetOption::LOCKS },
+        "dchain_locks_allocate_new_index" },
+      { { "dchain_allocate_new_index", TargetOption::TM },
+        "dchain_tm_allocate_new_index" },
+      { { "dchain_rejuvenate_index", TargetOption::LOCKS },
+        "dchain_locks_rejuvenate_index" },
+      { { "dchain_rejuvenate_index", TargetOption::TM },
+        "dchain_tm_rejuvenate_index" },
+      { { "dchain_expire_one_index", TargetOption::LOCKS },
+        "dchain_locks_expire_one_index" },
+      { { "dchain_expire_one_index", TargetOption::TM },
+        "dchain_tm_expire_one_index" },
+      { { "dchain_is_index_allocated", TargetOption::LOCKS },
+        "dchain_locks_is_index_allocated" },
+      { { "dchain_is_index_allocated", TargetOption::TM },
+        "dchain_tm_is_index_allocated" },
+      { { "dchain_free_index", TargetOption::LOCKS },
+        "dchain_locks_free_index" },
+      { { "dchain_free_index", TargetOption::TM }, "dchain_tm_free_index" },
 
       /****************************************************************************
        *                                map
        ****************************************************************************/
-
       { { "map_allocate", TargetOption::LOCKS }, "map_locks_allocate" },
       { { "map_get", TargetOption::LOCKS }, "map_locks_get" },
       { { "map_put", TargetOption::LOCKS }, "map_locks_put" },
@@ -150,7 +155,6 @@ public:
       /****************************************************************************
        *                                vector
        ****************************************************************************/
-
       { { "vector_allocate", TargetOption::LOCKS }, "vector_locks_allocate" },
       { { "vector_borrow", TargetOption::LOCKS }, "vector_locks_borrow" },
       { { "vector_return", TargetOption::LOCKS }, "vector_locks_return" },
@@ -158,14 +162,13 @@ public:
       /****************************************************************************
        *                                expirator
        ****************************************************************************/
-
       { { "expire_items", TargetOption::LOCKS }, "expire_items_locks" },
-      { { "expire_items_single_map", TargetOption::LOCKS }, "expire_items_single_map_locks" },
+      { { "expire_items_single_map", TargetOption::LOCKS },
+        "expire_items_single_map_locks" },
 
       /****************************************************************************
        *                                double map
        ****************************************************************************/
-
       { { "dmap_allocate", TargetOption::LOCKS }, "dmap_locks_allocate" },
       { { "dmap_get_a", TargetOption::LOCKS }, "dmap_locks_get_a" },
       { { "dmap_get_b", TargetOption::LOCKS }, "dmap_locks_get_b" },
@@ -178,7 +181,6 @@ public:
     struct_translation = {
       { { "DoubleChain", TargetOption::LOCKS }, "DoubleChainLocks" },
       { { "DoubleChain", TargetOption::TM }, "DoubleChainTM" },
-
       { { "Map", TargetOption::LOCKS }, "MapLocks" },
       { { "Vector", TargetOption::LOCKS }, "VectorLocks" },
       { { "DoubleMap", TargetOption::LOCKS }, "DoubleMapLocks" }
@@ -188,12 +190,14 @@ public:
   void context_switch(Context ctx);
   void commit(Node_ptr body);
 
-  void set_global_code(Node_ptr _global_code) {
-    global_code = _global_code;
-  }
+  void set_global_code(Node_ptr _global_code) { global_code = _global_code; }
 
   void push();
   void pop();
+
+  void push_to_state(Variable_ptr var);
+  void push_to_local(Variable_ptr var);
+  void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);
 
   Node_ptr node_from_call(call_t call, TargetOption target);
 
@@ -202,15 +206,18 @@ public:
   void dump_stack() const {
     std::cerr << "\n";
 
-    std::cerr << "Global variables" << "\n";
-    for (const auto& gv : state) {
+    std::cerr << "Global variables"
+              << "\n";
+    for (const auto &gv : state) {
       gv->debug(std::cerr, 2);
     }
     std::cerr << "\n";
 
-    std::cerr << "Stack variables" << "\n";
-    for (const auto& stack : local_variables) {
-      std::cerr << "  ===================================" << "\n";
+    std::cerr << "Stack variables"
+              << "\n";
+    for (const auto &stack : local_variables) {
+      std::cerr << "  ==================================="
+                << "\n";
       for (const auto var : stack) {
         var.first->debug(std::cerr, 2);
         if (!var.second.isNull()) {
@@ -241,7 +248,7 @@ public:
     }
   }
 
-  void print_xml(std::ostream& os) const {
+  void print_xml(std::ostream &os) const {
     if (nf_init) {
       nf_init->debug(os);
       os << "\n";
@@ -258,33 +265,42 @@ public:
 
     std::string attempt_flag_name = "write_attempt";
     std::string state_flag_name = "write_state";
-      
+
     auto type = PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL);
     auto ret = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
 
     auto attempt_flag_renamed = Variable::build(attempt_flag_name, type);
     auto state_flag_renamed = Variable::build(state_flag_name, type);
 
-    std::vector<ExpressionType_ptr> attempt_flag_args = { attempt_flag_renamed };
+    std::vector<ExpressionType_ptr> attempt_flag_args = {
+      attempt_flag_renamed
+    };
     std::vector<ExpressionType_ptr> state_flag_args = { state_flag_renamed };
 
-    auto grab_attempt_flag = FunctionCall::build("RTE_PER_LCORE", attempt_flag_args, ret);
-    auto grab_state_flag = FunctionCall::build("RTE_PER_LCORE", state_flag_args, ret);
+    auto grab_attempt_flag =
+        FunctionCall::build("RTE_PER_LCORE", attempt_flag_args, ret);
+    auto grab_state_flag =
+        FunctionCall::build("RTE_PER_LCORE", state_flag_args, ret);
 
     grab_attempt_flag->set_terminate_line(true);
     grab_state_flag->set_terminate_line(true);
 
-    auto pointer_to_bool_type = Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL));
+    auto pointer_to_bool_type = Pointer::build(
+        PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL));
 
-    auto attempt_flag = Variable::build(attempt_flag_name + "_ptr", pointer_to_bool_type);
-    auto state_flag = Variable::build(state_flag_name + "_ptr", pointer_to_bool_type);
+    auto attempt_flag =
+        Variable::build(attempt_flag_name + "_ptr", pointer_to_bool_type);
+    auto state_flag =
+        Variable::build(state_flag_name + "_ptr", pointer_to_bool_type);
 
     auto attempt_flag_decl = VariableDecl::build(attempt_flag);
     auto state_flag_decl = VariableDecl::build(state_flag);
 
-    auto attempt_flag_assignment = Assignment::build(attempt_flag_decl, AddressOf::build(grab_attempt_flag));
-    auto state_flag_assignment = Assignment::build(state_flag_decl, AddressOf::build(grab_state_flag));
-    
+    auto attempt_flag_assignment = Assignment::build(
+        attempt_flag_decl, AddressOf::build(grab_attempt_flag));
+    auto state_flag_assignment =
+        Assignment::build(state_flag_decl, AddressOf::build(grab_state_flag));
+
     attempt_flag_assignment->set_terminate_line(true);
     state_flag_assignment->set_terminate_line(true);
 
@@ -298,16 +314,21 @@ public:
     std::string attempt_flag_name = "write_attempt";
     std::string state_flag_name = "write_state";
 
-    auto pointer_to_bool_type = Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL));
-    auto ret = Return::build(Constant::build(PrimitiveType::PrimitiveKind::INT, 1));
+    auto pointer_to_bool_type = Pointer::build(
+        PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL));
+    auto ret =
+        Return::build(Constant::build(PrimitiveType::PrimitiveKind::INT, 1));
 
-    auto attempt_flag = Variable::build(attempt_flag_name + "_ptr", pointer_to_bool_type);
-    auto state_flag = Variable::build(state_flag_name + "_ptr", pointer_to_bool_type);
+    auto attempt_flag =
+        Variable::build(attempt_flag_name + "_ptr", pointer_to_bool_type);
+    auto state_flag =
+        Variable::build(state_flag_name + "_ptr", pointer_to_bool_type);
 
     auto read_attempt_flag = Read::build(attempt_flag);
     auto read_state_flag = Read::build(state_flag);
 
-    auto cond = LogicalAnd::build(read_attempt_flag, Not::build(read_state_flag));
+    auto cond =
+        LogicalAnd::build(read_attempt_flag, Not::build(read_state_flag));
 
     return Branch::build(cond, ret);
   }
@@ -316,12 +337,15 @@ public:
     std::string attempt_flag_name = "write_attempt";
     std::string state_flag_name = "write_state";
 
-    auto pointer_to_bool_type = Pointer::build(PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL));
+    auto pointer_to_bool_type = Pointer::build(
+        PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL));
     auto one = Constant::build(PrimitiveType::PrimitiveKind::INT, 1);
     auto ret = Return::build(one);
 
-    auto attempt_flag = Variable::build(attempt_flag_name + "_ptr", pointer_to_bool_type);
-    auto state_flag = Variable::build(state_flag_name + "_ptr", pointer_to_bool_type);
+    auto attempt_flag =
+        Variable::build(attempt_flag_name + "_ptr", pointer_to_bool_type);
+    auto state_flag =
+        Variable::build(state_flag_name + "_ptr", pointer_to_bool_type);
 
     auto read_attempt_flag = Read::build(attempt_flag);
     auto read_state_flag = Read::build(state_flag);
