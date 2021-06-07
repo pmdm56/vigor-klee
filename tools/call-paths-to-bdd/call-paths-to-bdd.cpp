@@ -2,17 +2,17 @@
 
 namespace BDD {
 
-std::vector<std::string> call_paths_t::skip_functions {
-  "loop_invariant_consume",
-  "loop_invariant_produce",
-  "packet_receive",
-  "packet_state_total_length",
-  "packet_free",
-  "packet_send"
-};
+std::vector<std::string> call_paths_t::skip_functions{
+    "loop_invariant_consume",
+    "loop_invariant_produce",
+    "packet_receive",
+    "packet_state_total_length",
+    "packet_free",
+    "packet_send"};
 
-bool call_paths_t::is_skip_function(const std::string& fname) {
-  auto found_it = std::find(call_paths_t::skip_functions.begin(), call_paths_t::skip_functions.end(), fname);
+bool call_paths_t::is_skip_function(const std::string &fname) {
+  auto found_it = std::find(call_paths_t::skip_functions.begin(),
+                            call_paths_t::skip_functions.end(), fname);
   return found_it != call_paths_t::skip_functions.end();
 }
 
@@ -21,7 +21,8 @@ bool solver_toolbox_t::is_expr_always_true(klee::ref<klee::Expr> expr) const {
   return is_expr_always_true(no_constraints, expr);
 }
 
-bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints, klee::ref<klee::Expr> expr) const {
+bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints,
+                                           klee::ref<klee::Expr> expr) const {
   klee::Query sat_query(constraints, expr);
 
   bool result;
@@ -31,17 +32,17 @@ bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints, 
   return result;
 }
 
-bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints,
-                                           klee::ref<klee::Expr> expr,
-                                           ReplaceSymbols& symbol_replacer) const {
-    klee::ConstraintManager replaced_constraints;
+bool solver_toolbox_t::is_expr_always_true(
+    klee::ConstraintManager constraints, klee::ref<klee::Expr> expr,
+    ReplaceSymbols &symbol_replacer) const {
+  klee::ConstraintManager replaced_constraints;
 
-    for (auto constr : constraints) {
-      replaced_constraints.addConstraint(symbol_replacer.visit(constr));
-    }
-
-    return is_expr_always_true(replaced_constraints, expr);
+  for (auto constr : constraints) {
+    replaced_constraints.addConstraint(symbol_replacer.visit(constr));
   }
+
+  return is_expr_always_true(replaced_constraints, expr);
+}
 
 bool solver_toolbox_t::is_expr_always_false(klee::ref<klee::Expr> expr) const {
   klee::ConstraintManager no_constraints;
@@ -59,19 +60,20 @@ bool solver_toolbox_t::is_expr_always_false(klee::ConstraintManager constraints,
   return result;
 }
 
-bool solver_toolbox_t::is_expr_always_false(klee::ConstraintManager constraints,
-                                            klee::ref<klee::Expr> expr,
-                                            ReplaceSymbols& symbol_replacer) const {
-    klee::ConstraintManager replaced_constraints;
+bool solver_toolbox_t::is_expr_always_false(
+    klee::ConstraintManager constraints, klee::ref<klee::Expr> expr,
+    ReplaceSymbols &symbol_replacer) const {
+  klee::ConstraintManager replaced_constraints;
 
-    for (auto constr : constraints) {
-      replaced_constraints.addConstraint(symbol_replacer.visit(constr));
-    }
-
-    return is_expr_always_false(replaced_constraints, expr);
+  for (auto constr : constraints) {
+    replaced_constraints.addConstraint(symbol_replacer.visit(constr));
   }
 
-bool solver_toolbox_t::are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee::ref<klee::Expr> expr2) const {
+  return is_expr_always_false(replaced_constraints, expr);
+}
+
+bool solver_toolbox_t::are_exprs_always_equal(
+    klee::ref<klee::Expr> expr1, klee::ref<klee::Expr> expr2) const {
   if (expr1.isNull() != expr2.isNull()) {
     return false;
   }
@@ -82,7 +84,8 @@ bool solver_toolbox_t::are_exprs_always_equal(klee::ref<klee::Expr> expr1, klee:
 
   RetrieveSymbols symbol_retriever;
   symbol_retriever.visit(expr1);
-  std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
+  std::vector<klee::ref<klee::ReadExpr>> symbols =
+      symbol_retriever.get_retrieved();
 
   ReplaceSymbols symbol_replacer(symbols);
   klee::ref<klee::Expr> replaced = symbol_replacer.visit(expr2);
@@ -104,7 +107,7 @@ uint64_t solver_toolbox_t::value_from_expr(klee::ref<klee::Expr> expr) const {
 void CallPathsGroup::group_call_paths() {
   assert(call_paths.size());
 
-  for (const auto& cp : call_paths.cp) {
+  for (const auto &cp : call_paths.cp) {
     on_true.clear();
     on_false.clear();
 
@@ -117,7 +120,8 @@ void CallPathsGroup::group_call_paths() {
     for (unsigned int icp = 0; icp < call_paths.size(); icp++) {
       auto pair = call_paths.get(icp);
 
-      if (pair.first->calls.size() && are_calls_equal(pair.first->calls[0], call)) {
+      if (pair.first->calls.size() &&
+          are_calls_equal(pair.first->calls[0], call)) {
         on_true.push_back(pair);
         continue;
       }
@@ -162,17 +166,19 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
     auto c1_arg = c1.args[arg_name];
     auto c2_arg = c2.args[arg_name];
 
-    if (!c1_arg.out.isNull()) {
+    if (!c1_arg.out.isNull() &&
+        !solver_toolbox.are_exprs_always_equal(c1_arg.in, c1_arg.out)) {
       continue;
     }
 
     // comparison between modifications to the received packet
-    if (c1.function_name == "packet_return_chunk" && arg_name == "the_chunk" &&
+    if (!c1_arg.in.isNull() &&
         !solver_toolbox.are_exprs_always_equal(c1_arg.in, c2_arg.in)) {
       return false;
     }
 
-    if (!solver_toolbox.are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
+    if (c1_arg.in.isNull() &&
+        !solver_toolbox.are_exprs_always_equal(c1_arg.expr, c2_arg.expr)) {
       return false;
     }
   }
@@ -183,7 +189,8 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
 klee::ref<klee::Expr> CallPathsGroup::find_discriminating_constraint() {
   assert(on_true.size());
 
-  auto possible_discriminating_constraints = get_possible_discriminating_constraints();
+  auto possible_discriminating_constraints =
+      get_possible_discriminating_constraints();
 
   for (auto constraint : possible_discriminating_constraints) {
     if (check_discriminating_constraint(constraint)) {
@@ -194,7 +201,8 @@ klee::ref<klee::Expr> CallPathsGroup::find_discriminating_constraint() {
   return klee::ref<klee::Expr>();
 }
 
-std::vector<klee::ref<klee::Expr>> CallPathsGroup::get_possible_discriminating_constraints() const {
+std::vector<klee::ref<klee::Expr>>
+CallPathsGroup::get_possible_discriminating_constraints() const {
   std::vector<klee::ref<klee::Expr>> possible_discriminating_constraints;
   assert(on_true.size());
 
@@ -207,9 +215,10 @@ std::vector<klee::ref<klee::Expr>> CallPathsGroup::get_possible_discriminating_c
   return possible_discriminating_constraints;
 }
 
-bool CallPathsGroup::satisfies_constraint(std::vector<call_path_t*> call_paths,
-                                          klee::ref<klee::Expr> constraint) const {
-  for (const auto& call_path : call_paths) {
+bool CallPathsGroup::satisfies_constraint(
+    std::vector<call_path_t *> call_paths,
+    klee::ref<klee::Expr> constraint) const {
+  for (const auto &call_path : call_paths) {
     if (!satisfies_constraint(call_path, constraint)) {
       return false;
     }
@@ -217,20 +226,24 @@ bool CallPathsGroup::satisfies_constraint(std::vector<call_path_t*> call_paths,
   return true;
 }
 
-bool CallPathsGroup::satisfies_constraint(call_path_t* call_path, klee::ref<klee::Expr> constraint) const {
+bool CallPathsGroup::satisfies_constraint(
+    call_path_t *call_path, klee::ref<klee::Expr> constraint) const {
   RetrieveSymbols symbol_retriever;
   symbol_retriever.visit(constraint);
-  std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
+  std::vector<klee::ref<klee::ReadExpr>> symbols =
+      symbol_retriever.get_retrieved();
 
   ReplaceSymbols symbol_replacer(symbols);
   auto not_constraint = solver_toolbox.exprBuilder->Not(constraint);
 
-  return solver_toolbox.is_expr_always_false(call_path->constraints, not_constraint, symbol_replacer);
+  return solver_toolbox.is_expr_always_false(call_path->constraints,
+                                             not_constraint, symbol_replacer);
 }
 
-bool CallPathsGroup::satisfies_not_constraint(std::vector<call_path_t*> call_paths,
-                                              klee::ref<klee::Expr> constraint) const {
-  for (const auto& call_path : call_paths) {
+bool CallPathsGroup::satisfies_not_constraint(
+    std::vector<call_path_t *> call_paths,
+    klee::ref<klee::Expr> constraint) const {
+  for (const auto &call_path : call_paths) {
     if (!satisfies_not_constraint(call_path, constraint)) {
       return false;
     }
@@ -238,18 +251,22 @@ bool CallPathsGroup::satisfies_not_constraint(std::vector<call_path_t*> call_pat
   return true;
 }
 
-bool CallPathsGroup::satisfies_not_constraint(call_path_t* call_path, klee::ref<klee::Expr> constraint) const {
+bool CallPathsGroup::satisfies_not_constraint(
+    call_path_t *call_path, klee::ref<klee::Expr> constraint) const {
   RetrieveSymbols symbol_retriever;
   symbol_retriever.visit(constraint);
-  std::vector<klee::ref<klee::ReadExpr>> symbols = symbol_retriever.get_retrieved();
+  std::vector<klee::ref<klee::ReadExpr>> symbols =
+      symbol_retriever.get_retrieved();
 
   ReplaceSymbols symbol_replacer(symbols);
   auto not_constraint = solver_toolbox.exprBuilder->Not(constraint);
 
-  return solver_toolbox.is_expr_always_true(call_path->constraints, not_constraint, symbol_replacer);
+  return solver_toolbox.is_expr_always_true(call_path->constraints,
+                                            not_constraint, symbol_replacer);
 }
 
-bool CallPathsGroup::check_discriminating_constraint(klee::ref<klee::Expr> constraint) {
+bool CallPathsGroup::check_discriminating_constraint(
+    klee::ref<klee::Expr> constraint) {
   assert(on_true.size());
   assert(on_false.size());
 
@@ -268,7 +285,7 @@ bool CallPathsGroup::check_discriminating_constraint(klee::ref<klee::Expr> const
   }
 
   if (_on_false.size() && satisfies_not_constraint(_on_false.cp, constraint)) {
-    on_true  = _on_true;
+    on_true = _on_true;
     on_false = _on_false;
     return true;
   }
@@ -278,32 +295,30 @@ bool CallPathsGroup::check_discriminating_constraint(klee::ref<klee::Expr> const
 
 constexpr char BDD::INIT_CONTEXT_MARKER[];
 
-std::vector<std::string> BDD::skip_conditions_with_symbol {
-  "received_a_packet",
-  "loop_termination"
-};
+std::vector<std::string> BDD::skip_conditions_with_symbol{"received_a_packet",
+                                                          "loop_termination"};
 
-std::string BDD::get_fname(const Node* node) {
+std::string BDD::get_fname(const Node *node) {
   assert(node->get_type() == Node::NodeType::CALL);
-  const Call* call = static_cast<const Call*>(node);
+  const Call *call = static_cast<const Call *>(node);
   return call->get_call().function_name;
 }
 
-bool BDD::is_skip_function(const Node* node) {
+bool BDD::is_skip_function(const Node *node) {
   auto fname = BDD::get_fname(node);
   return call_paths_t::is_skip_function(fname);
 }
 
-bool BDD::is_skip_condition(const Node* node) {
+bool BDD::is_skip_condition(const Node *node) {
   assert(node->get_type() == Node::NodeType::BRANCH);
-  const Branch* branch = static_cast<const Branch*>(node);
+  const Branch *branch = static_cast<const Branch *>(node);
   auto cond = branch->get_condition();
 
   RetrieveSymbols retriever;
   retriever.visit(cond);
 
   auto symbols = retriever.get_retrieved_strings();
-  for (const auto& symbol : symbols) {
+  for (const auto &symbol : symbols) {
     auto found_it = std::find(BDD::skip_conditions_with_symbol.begin(),
                               BDD::skip_conditions_with_symbol.end(), symbol);
     if (found_it != BDD::skip_conditions_with_symbol.end()) {
@@ -314,10 +329,10 @@ bool BDD::is_skip_condition(const Node* node) {
   return false;
 }
 
-call_t BDD::get_successful_call(std::vector<call_path_t*> call_paths) const {
+call_t BDD::get_successful_call(std::vector<call_path_t *> call_paths) const {
   assert(call_paths.size());
 
-  for (const auto& cp : call_paths) {
+  for (const auto &cp : call_paths) {
     assert(cp->calls.size());
     call_t call = cp->calls[0];
 
@@ -338,16 +353,16 @@ call_t BDD::get_successful_call(std::vector<call_path_t*> call_paths) const {
   return call_paths[0]->calls[0];
 }
 
-Node* BDD::populate(call_paths_t call_paths) {
-  Node* local_root = nullptr;
-  Node* local_leaf = nullptr;
+Node *BDD::populate(call_paths_t call_paths) {
+  Node *local_root = nullptr;
+  Node *local_leaf = nullptr;
 
-  ReturnRaw* return_raw = new ReturnRaw(get_and_inc_id(), call_paths);
+  ReturnRaw *return_raw = new ReturnRaw(get_and_inc_id(), call_paths);
 
   while (call_paths.cp.size()) {
     CallPathsGroup group(call_paths, solver_toolbox);
 
-    auto on_true  = group.get_on_true();
+    auto on_true = group.get_on_true();
     auto on_false = group.get_on_false();
 
     if (on_true.cp.size() == call_paths.cp.size()) {
@@ -357,7 +372,8 @@ Node* BDD::populate(call_paths_t call_paths) {
         break;
       }
 
-      Call* node = new Call(get_and_inc_id(), get_successful_call(on_true.cp), on_true.cp);
+      Call *node = new Call(get_and_inc_id(), get_successful_call(on_true.cp),
+                            on_true.cp);
 
       // root node
       if (local_root == nullptr) {
@@ -369,17 +385,18 @@ Node* BDD::populate(call_paths_t call_paths) {
         local_leaf = node;
       }
 
-      for (auto& cp : call_paths.cp) {
+      for (auto &cp : call_paths.cp) {
         assert(cp->calls.size());
         cp->calls.erase(cp->calls.begin());
       }
     } else {
       auto discriminating_constraint = group.get_discriminating_constraint();
 
-      Branch* node = new Branch(get_and_inc_id(), discriminating_constraint, call_paths.cp);
+      Branch *node = new Branch(get_and_inc_id(), discriminating_constraint,
+                                call_paths.cp);
 
-      Node* on_true_root  = populate(on_true);
-      Node* on_false_root = populate(on_false);
+      Node *on_true_root = populate(on_true);
+      Node *on_false_root = populate(on_false);
 
       node->add_on_true(on_true_root);
       node->add_on_false(on_false_root);
@@ -405,10 +422,10 @@ Node* BDD::populate(call_paths_t call_paths) {
   return local_root;
 }
 
-Node* BDD::populate_init(const Node* root) {
-  Node* local_root = nullptr;
-  Node* local_leaf = nullptr;
-  Node* new_node;
+Node *BDD::populate_init(const Node *root) {
+  Node *local_root = nullptr;
+  Node *local_leaf = nullptr;
+  Node *new_node;
 
   while (root != nullptr) {
     new_node = nullptr;
@@ -430,12 +447,12 @@ Node* BDD::populate_init(const Node* root) {
       break;
     };
     case Node::NodeType::BRANCH: {
-      const Branch* root_branch = static_cast<const Branch*>(root);
+      const Branch *root_branch = static_cast<const Branch *>(root);
 
-      Node* on_true_node  = populate_init(root_branch->get_on_true());
-      Node* on_false_node = populate_init(root_branch->get_on_false());
+      Node *on_true_node = populate_init(root_branch->get_on_true());
+      Node *on_false_node = populate_init(root_branch->get_on_false());
 
-      Branch* branch = static_cast<Branch*>(root->clone());
+      Branch *branch = static_cast<Branch *>(root->clone());
 
       branch->replace_on_true(on_true_node);
       branch->replace_on_false(on_false_node);
@@ -446,7 +463,7 @@ Node* BDD::populate_init(const Node* root) {
       break;
     };
     case Node::NodeType::RETURN_RAW: {
-      const ReturnRaw* root_return_raw = static_cast<const ReturnRaw*>(root);
+      const ReturnRaw *root_return_raw = static_cast<const ReturnRaw *>(root);
       new_node = new ReturnInit(get_and_inc_id(), root_return_raw);
 
       root = nullptr;
@@ -474,10 +491,10 @@ Node* BDD::populate_init(const Node* root) {
   return local_root;
 }
 
-Node* BDD::populate_process(const Node* root, bool store) {
-  Node* local_root = nullptr;
-  Node* local_leaf = nullptr;
-  Node* new_node;
+Node *BDD::populate_process(const Node *root, bool store) {
+  Node *local_root = nullptr;
+  Node *local_leaf = nullptr;
+  Node *new_node;
 
   while (root != nullptr) {
     new_node = nullptr;
@@ -500,12 +517,13 @@ Node* BDD::populate_process(const Node* root, bool store) {
       break;
     };
     case Node::NodeType::BRANCH: {
-      const Branch* root_branch = static_cast<const Branch*>(root);
+      const Branch *root_branch = static_cast<const Branch *>(root);
       assert(root_branch->get_on_true());
       assert(root_branch->get_on_false());
 
-      Node* on_true_node  = populate_process(root_branch->get_on_true(), store);
-      Node* on_false_node = populate_process(root_branch->get_on_false(), store);
+      Node *on_true_node = populate_process(root_branch->get_on_true(), store);
+      Node *on_false_node =
+          populate_process(root_branch->get_on_false(), store);
 
       assert(on_true_node);
       assert(on_false_node);
@@ -516,11 +534,15 @@ Node* BDD::populate_process(const Node* root, bool store) {
       if (on_true_node->get_type() == Node::NodeType::RETURN_PROCESS &&
           on_false_node->get_type() == Node::NodeType::RETURN_PROCESS) {
 
-        ReturnProcess* on_true_ret_process  = static_cast<ReturnProcess*>(on_true_node);
-        ReturnProcess* on_false_ret_process = static_cast<ReturnProcess*>(on_false_node);
+        ReturnProcess *on_true_ret_process =
+            static_cast<ReturnProcess *>(on_true_node);
+        ReturnProcess *on_false_ret_process =
+            static_cast<ReturnProcess *>(on_false_node);
 
-        equal |= (on_true_ret_process->get_return_operation() == on_false_ret_process->get_return_operation() &&
-                  on_true_ret_process->get_return_value() == on_false_ret_process->get_return_value());
+        equal |= (on_true_ret_process->get_return_operation() ==
+                      on_false_ret_process->get_return_operation() &&
+                  on_true_ret_process->get_return_value() ==
+                      on_false_ret_process->get_return_value());
       }
 
       if (store && equal) {
@@ -528,7 +550,7 @@ Node* BDD::populate_process(const Node* root, bool store) {
       }
 
       else if (store && !skip) {
-        Branch* branch = static_cast<Branch*>(root->clone());
+        Branch *branch = static_cast<Branch *>(root->clone());
 
         branch->replace_on_true(on_true_node);
         branch->replace_on_false(on_false_node);
@@ -537,20 +559,26 @@ Node* BDD::populate_process(const Node* root, bool store) {
       }
 
       else {
-        auto on_true_empty = on_true_node->get_type() == Node::NodeType::RETURN_INIT ||
-                             on_true_node->get_type() == Node::NodeType::RETURN_PROCESS;
+        auto on_true_empty =
+            on_true_node->get_type() == Node::NodeType::RETURN_INIT ||
+            on_true_node->get_type() == Node::NodeType::RETURN_PROCESS;
 
-        auto on_false_empty = on_false_node->get_type() == Node::NodeType::RETURN_INIT ||
-                              on_false_node->get_type() == Node::NodeType::RETURN_PROCESS;
+        auto on_false_empty =
+            on_false_node->get_type() == Node::NodeType::RETURN_INIT ||
+            on_false_node->get_type() == Node::NodeType::RETURN_PROCESS;
 
         if (on_true_node->get_type() == Node::NodeType::RETURN_PROCESS) {
-          ReturnProcess* on_true_return_process = static_cast<ReturnProcess*>(on_true_node);
-          on_true_empty |= (on_true_return_process->get_return_operation() == ReturnProcess::Operation::ERR);
+          ReturnProcess *on_true_return_process =
+              static_cast<ReturnProcess *>(on_true_node);
+          on_true_empty |= (on_true_return_process->get_return_operation() ==
+                            ReturnProcess::Operation::ERR);
         }
 
         if (on_false_node->get_type() == Node::NodeType::RETURN_PROCESS) {
-          ReturnProcess* on_false_return_process = static_cast<ReturnProcess*>(on_false_node);
-          on_false_empty |= (on_false_return_process->get_return_operation() == ReturnProcess::Operation::ERR);
+          ReturnProcess *on_false_return_process =
+              static_cast<ReturnProcess *>(on_false_node);
+          on_false_empty |= (on_false_return_process->get_return_operation() ==
+                             ReturnProcess::Operation::ERR);
         }
 
         assert(on_true_empty || on_false_empty);
@@ -561,7 +589,7 @@ Node* BDD::populate_process(const Node* root, bool store) {
       break;
     };
     case Node::NodeType::RETURN_RAW: {
-      const ReturnRaw* root_return_raw = static_cast<const ReturnRaw*>(root);
+      const ReturnRaw *root_return_raw = static_cast<const ReturnRaw *>(root);
       new_node = new ReturnProcess(get_and_inc_id(), root_return_raw);
 
       root = nullptr;
@@ -586,8 +614,9 @@ Node* BDD::populate_process(const Node* root, bool store) {
   return local_root;
 }
 
-void BDDVisitor::visit(const Branch* node) {
-  if (!node) return;
+void BDDVisitor::visit(const Branch *node) {
+  if (!node)
+    return;
 
   auto action = visitBranch(node);
 
@@ -597,38 +626,42 @@ void BDDVisitor::visit(const Branch* node) {
   }
 }
 
-void BDDVisitor::visit(const Call* node) {
-  if (!node) return;
+void BDDVisitor::visit(const Call *node) {
+  if (!node)
+    return;
 
   auto action = visitCall(node);
-  
+
   if (action == VISIT_CHILDREN) {
     node->get_next()->visit(*this);
   }
 }
 
-void BDDVisitor::visit(const ReturnInit* node) {
-  if (!node) return;
+void BDDVisitor::visit(const ReturnInit *node) {
+  if (!node)
+    return;
 
   visitReturnInit(node);
   assert(!node->get_next());
 }
 
-void BDDVisitor::visit(const ReturnProcess* node) {
-  if (!node) return;
+void BDDVisitor::visit(const ReturnProcess *node) {
+  if (!node)
+    return;
 
   visitReturnProcess(node);
   assert(!node->get_next());
 }
 
-void BDDVisitor::visit(const ReturnRaw* node) {
-  if (!node) return;
+void BDDVisitor::visit(const ReturnRaw *node) {
+  if (!node)
+    return;
 
   visitReturnRaw(node);
   assert(!node->get_next());
 }
 
-void BDDVisitor::visit(const BDD& bdd) {
+void BDDVisitor::visit(const BDD &bdd) {
   assert(bdd.get_init());
   visitInitRoot(bdd.get_init());
 
@@ -636,14 +669,16 @@ void BDDVisitor::visit(const BDD& bdd) {
   visitProcessRoot(bdd.get_process());
 }
 
-void BDDVisitor::visitInitRoot(const Node* root) {
-  if (!root) return;
+void BDDVisitor::visitInitRoot(const Node *root) {
+  if (!root)
+    return;
   root->visit(*this);
 }
 
-void BDDVisitor::visitProcessRoot(const Node* root) {
-  if (!root) return;
+void BDDVisitor::visitProcessRoot(const Node *root) {
+  if (!root)
+    return;
   root->visit(*this);
 }
 
-}
+} // namespace BDD

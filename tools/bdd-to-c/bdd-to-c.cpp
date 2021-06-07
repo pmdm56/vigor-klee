@@ -321,6 +321,22 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
       assignment->set_terminate_line(true);
       intro_nodes_init.push_back(assignment);
     }
+
+    auto u64_ptr = Pointer::build(u64);
+
+    auto call_path_hit_counter = ast.get_from_state("call_path_hit_counter");
+    auto call_path_hit_counter_ptr = Variable::build("call_path_hit_counter_ptr", u64_ptr);
+    auto call_path_hit_counter_sz = Variable::build("call_path_hit_counter_sz", u32);
+    auto call_paths_sz = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, bdd.get_call_paths().size());
+
+    auto call_path_hit_counter_ptr_val = Assignment::build(call_path_hit_counter_ptr, call_path_hit_counter);
+    auto call_path_hit_counter_sz_val = Assignment::build(call_path_hit_counter_sz, call_paths_sz);
+
+    call_path_hit_counter_ptr_val->set_terminate_line(true);
+    call_path_hit_counter_sz_val->set_terminate_line(true);
+
+    intro_nodes_init.push_back(call_path_hit_counter_ptr_val);
+    intro_nodes_init.push_back(call_path_hit_counter_sz_val);
   }
 
   if (target == LOCKS || target == TM) {
