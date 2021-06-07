@@ -419,13 +419,37 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
     assert(call.args["khash"].fn_ptr_name.first);
     Type_ptr void_type =
         PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
-
+    std::cerr << "before\n";
     Expr_ptr keq =
         Variable::build(call.args["keq"].fn_ptr_name.second, void_type);
     assert(keq);
+
+    auto keq_ret_type =
+        PrimitiveType::build(PrimitiveType::PrimitiveKind::BOOL);
+    std::vector<FunctionArgDecl_ptr> keq_args{
+        FunctionArgDecl::build("a", Pointer::build(void_type)),
+        FunctionArgDecl::build("b", Pointer::build(void_type)),
+    };
+
+    auto keq_decl = Function::build(call.args["keq"].fn_ptr_name.second,
+                                    keq_args, keq_ret_type);
+    keq_decl->set_terminate_line(true);
+    push_global_code(keq_decl);
+
     Expr_ptr khash =
         Variable::build(call.args["khash"].fn_ptr_name.second, void_type);
     assert(khash);
+
+    auto khash_ret_type =
+        PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
+    std::vector<FunctionArgDecl_ptr> khash_args{
+        FunctionArgDecl::build("obj", Pointer::build(void_type)),
+    };
+    auto kash_decl = Function::build(call.args["khash"].fn_ptr_name.second,
+                                     khash_args, khash_ret_type);
+    kash_decl->set_terminate_line(true);
+    push_global_code(kash_decl);
+
     Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
     assert(capacity);
 
@@ -456,9 +480,21 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
     assert(elem_size);
     Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
     assert(capacity);
+
     Expr_ptr init_elem =
         Variable::build(call.args["init_elem"].fn_ptr_name.second, void_type);
     assert(init_elem);
+
+    auto init_elem_ret_type =
+        PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+    std::vector<FunctionArgDecl_ptr> init_elem_args{
+        FunctionArgDecl::build("obj", Pointer::build(void_type)),
+    };
+    auto init_elem_decl =
+        Function::build(call.args["init_elem"].fn_ptr_name.second,
+                        init_elem_args, init_elem_ret_type);
+    init_elem_decl->set_terminate_line(true);
+    push_global_code(init_elem_decl);
 
     Type_ptr vector_type = Struct::build(translate_struct("Vector", target));
     Variable_ptr new_vector = generate_new_symbol("vector", vector_type, 1, 0);

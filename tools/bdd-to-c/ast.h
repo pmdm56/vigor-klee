@@ -6,15 +6,15 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <regex>
-#include <vector>
 #include <memory>
+#include <regex>
 #include <stack>
+#include <vector>
 
 #include "call-paths-to-bdd.h"
+#include "klee_transpiler.h"
 #include "load-call-paths.h"
 #include "nodes.h"
-#include "klee_transpiler.h"
 
 class AST {
 private:
@@ -43,7 +43,7 @@ private:
   std::vector<Variable_ptr> state;
   stack_t local_variables;
 
-  Node_ptr global_code;
+  std::vector<Node_ptr> global_code;
   Node_ptr nf_init;
   Node_ptr nf_process;
 
@@ -190,7 +190,9 @@ public:
   void context_switch(Context ctx);
   void commit(Node_ptr body);
 
-  void set_global_code(Node_ptr _global_code) { global_code = _global_code; }
+  void push_global_code(Node_ptr _global_code) {
+    global_code.push_back(_global_code);
+  }
 
   void push();
   void pop();
@@ -229,9 +231,10 @@ public:
   }
 
   void print(std::ostream &os) const {
-    if (global_code) {
+    if (global_code.size()) {
       os << "\n";
-      global_code->synthesize(os);
+      auto block = Block::build(global_code, false);
+      block->synthesize(os);
       os << "\n";
     }
 

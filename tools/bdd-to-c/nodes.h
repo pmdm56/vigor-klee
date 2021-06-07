@@ -1282,15 +1282,7 @@ private:
 
   FunctionCall(const std::string &_name,
                const std::vector<ExpressionType_ptr> &_args, Type_ptr _ret)
-      : Expression(FUNCTION_CALL, _ret), name(_name), args(_args) {
-
-    /*
-    for (const auto& arg : _args) {
-      Expr_ptr cloned = arg->clone();
-      args.push_back(std::move(cloned));
-    }
-    */
-  }
+      : Expression(FUNCTION_CALL, _ret), name(_name), args(_args) {}
 
 public:
   void synthesize_expr(std::ostream &ofs, unsigned int lvl = 0) const override {
@@ -2884,7 +2876,7 @@ public:
 
 typedef std::shared_ptr<FunctionArgDecl> FunctionArgDecl_ptr;
 
-class Function : public Node {
+class Function : public Expression {
 private:
   std::string name;
 
@@ -2896,11 +2888,16 @@ private:
   Function(const std::string &_name,
            const std::vector<FunctionArgDecl_ptr> &_args, Block_ptr _body,
            Type_ptr _return_type)
-      : Node(FUNCTION), name(_name), args(_args),
+      : Expression(FUNCTION, _return_type), name(_name), args(_args),
         body(Block::build(_body, true)), return_type(_return_type) {}
 
+  Function(const std::string &_name,
+           const std::vector<FunctionArgDecl_ptr> &_args, Type_ptr _return_type)
+      : Expression(FUNCTION, _return_type), name(_name), args(_args),
+        return_type(_return_type) {}
+
 public:
-  void synthesize(std::ostream &ofs, unsigned int lvl = 0) const override {
+  void synthesize_expr(std::ostream &ofs, unsigned int lvl = 0) const override {
     indent(ofs, lvl);
 
     return_type->synthesize(ofs, lvl);
@@ -2920,7 +2917,9 @@ public:
 
     ofs << ") ";
 
-    body->synthesize(ofs, lvl);
+    if (body) {
+      body->synthesize(ofs, lvl);
+    }
   }
 
   void debug(std::ostream &ofs, unsigned int lvl = 0) const override {
@@ -2939,16 +2938,39 @@ public:
       arg->debug(ofs, lvl + 2);
     }
 
-    body->debug(ofs, lvl + 2);
+    if (body) {
+      body->debug(ofs, lvl + 2);
+    }
 
     indent(ofs, lvl);
     ofs << "</function>";
+  }
+
+  Expr_ptr simplify(AST *ast) const override { return clone(); }
+
+  Expr_ptr clone() const override {
+    Expression *e;
+
+    if (body) {
+      e = new Function(name, args, body, return_type);
+    } else {
+      e = new Function(name, args, return_type);
+    }
+
+    return Expr_ptr(e);
   }
 
   static std::shared_ptr<Function>
   build(const std::string &_name, const std::vector<FunctionArgDecl_ptr> &_args,
         Block_ptr _body, Type_ptr _return_type) {
     Function *function = new Function(_name, _args, _body, _return_type);
+    return std::shared_ptr<Function>(function);
+  }
+
+  static std::shared_ptr<Function>
+  build(const std::string &_name, const std::vector<FunctionArgDecl_ptr> &_args,
+        Type_ptr _return_type) {
+    Function *function = new Function(_name, _args, _return_type);
     return std::shared_ptr<Function>(function);
   }
 };

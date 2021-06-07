@@ -221,8 +221,6 @@ Node_ptr build_ast(AST &ast, const BDD::Node *root, TargetOption target) {
 
 void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
   auto init_root = build_ast(ast, bdd.get_init(), target);
-
-  Node_ptr global_code;
   std::vector<Node_ptr> intro_nodes;
 
   switch (target) {
@@ -238,21 +236,16 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
   case LOCKS:
   case TM:
   case SEQUENTIAL: {
-    std::vector<Node_ptr> nodes;
-
     auto state = ast.get_state();
     for (auto gv : state) {
       VariableDecl_ptr decl = VariableDecl::build(gv);
       decl->set_terminate_line(true);
-      nodes.push_back(decl);
+      ast.push_global_code(decl);
     }
 
-    global_code = Block::build(nodes, false);
     break;
   }
   case SHARED_NOTHING: {
-    std::vector<Node_ptr> nodes;
-
     auto state = ast.get_state();
     for (const auto &var : state) {
       // global
@@ -266,7 +259,7 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
 
       auto def = FunctionCall::build("RTE_DEFINE_PER_LCORE", args, ret);
       def->set_terminate_line(true);
-      nodes.push_back(def);
+      ast.push_global_code(def);
 
       // intro
       auto grab = FunctionCall::build("RTE_PER_LCORE", args, ret);
@@ -279,7 +272,6 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
       intro_nodes.push_back(assignment);
     }
 
-    global_code = Block::build(nodes, false);
     break;
   }
   }
@@ -325,12 +317,17 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
     auto u64_ptr = Pointer::build(u64);
 
     auto call_path_hit_counter = ast.get_from_state("call_path_hit_counter");
-    auto call_path_hit_counter_ptr = Variable::build("call_path_hit_counter_ptr", u64_ptr);
-    auto call_path_hit_counter_sz = Variable::build("call_path_hit_counter_sz", u32);
-    auto call_paths_sz = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, bdd.get_call_paths().size());
+    auto call_path_hit_counter_ptr =
+        Variable::build("call_path_hit_counter_ptr", u64_ptr);
+    auto call_path_hit_counter_sz =
+        Variable::build("call_path_hit_counter_sz", u32);
+    auto call_paths_sz = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T,
+                                         bdd.get_call_paths().size());
 
-    auto call_path_hit_counter_ptr_val = Assignment::build(call_path_hit_counter_ptr, call_path_hit_counter);
-    auto call_path_hit_counter_sz_val = Assignment::build(call_path_hit_counter_sz, call_paths_sz);
+    auto call_path_hit_counter_ptr_val =
+        Assignment::build(call_path_hit_counter_ptr, call_path_hit_counter);
+    auto call_path_hit_counter_sz_val =
+        Assignment::build(call_path_hit_counter_sz, call_paths_sz);
 
     call_path_hit_counter_ptr_val->set_terminate_line(true);
     call_path_hit_counter_sz_val->set_terminate_line(true);
@@ -360,8 +357,6 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
   intro_nodes_init.push_back(Block::build(init_root, false));
 
   init_root = Block::build(intro_nodes_init);
-
-  ast.set_global_code(global_code);
   ast.commit(init_root);
 
   auto process_root = build_ast(ast, bdd.get_process(), target);
