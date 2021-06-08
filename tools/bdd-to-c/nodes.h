@@ -2499,7 +2499,7 @@ private:
       ofs << " & 0x";
       assert(size > 0);
       assert(size % 8 == 0);
-      ofs << std::string(size / 8, 'f');
+      ofs << std::string(size / 4, 'f');
     }
   }
 
