@@ -315,6 +315,12 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
     auto saved_sz = saved->getWidth();
     auto wanted_sz = wanted->getWidth();
 
+    RetrieveSymbols retriever;
+    retriever.visit(saved);
+    if (retriever.get_retrieved_strings().size() == 0) {
+      return -1;
+    }
+
     if (wanted_sz > saved_sz) {
       return -1;
     }
@@ -353,6 +359,7 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
 
       Constant_ptr idx =
           Constant::build(PrimitiveType::PrimitiveKind::UINT64_T, offset / 8);
+
       Read_ptr extracted =
           Read::build(it->first, type_from_size(expr->getWidth()), idx);
 

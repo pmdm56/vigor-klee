@@ -292,7 +292,6 @@ Expr_ptr Concat::simplify(AST* ast) const {
       Read_ptr r = Read::build(rread->get_expr(), type, rread->get_idx());
       return r->simplify(ast);
     }
-
   }
 
   if (left_simplified->get_kind() == READ && right_simplified->get_kind() == CONCAT) {
@@ -308,6 +307,7 @@ Expr_ptr Concat::simplify(AST* ast) const {
         Concat* left_concat = new Concat(left_simplified, right_concat_left);
         Expr_ptr left_concat_simplified = left_concat->simplify(ast);
         Concat* final_concat = new Concat(left_concat_simplified, right_concat_right);
+
         return final_concat->simplify(ast);
       }
 

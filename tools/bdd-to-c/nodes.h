@@ -2497,9 +2497,9 @@ private:
 
     if (size != expr->get_type()->get_size()) {
       ofs << " & 0x";
-      ofs << std::hex;
-      ofs << ((1 << size) - 1);
-      ofs << std::dec;
+      assert(size > 0);
+      assert(size % 8 == 0);
+      ofs << std::string(size / 8, 'f');
     }
   }
 
