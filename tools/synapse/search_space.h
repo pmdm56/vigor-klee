@@ -77,8 +77,7 @@ public:
 
     auto eps = context.get_next_eps();
     for (auto ep : eps) {
-      auto leaf = context.get_processed_leaf();
-      auto module = leaf->leaf->get_module();
+      auto module = context.get_processed_module();
       pending_leaves.add(ep, module);
     }
   }

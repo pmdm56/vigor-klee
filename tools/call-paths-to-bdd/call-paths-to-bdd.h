@@ -5,3 +5,4 @@
 #include "./bdd.h"
 #include "./printer-debug.h"
 #include "./graphviz-generator.h"
+#include "./symbol-factory.h"

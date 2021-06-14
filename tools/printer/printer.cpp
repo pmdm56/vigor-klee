@@ -1,5 +1,4 @@
 #include "printer.h"
-
 #include <regex>
 
 bool get_bytes_read(klee::ref<klee::Expr> expr, std::vector<unsigned>& bytes) {

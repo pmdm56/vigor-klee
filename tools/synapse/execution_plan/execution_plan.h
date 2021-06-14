@@ -6,6 +6,8 @@
 #include "visitors/visitor.h"
 #include "../log.h"
 
+#include <unordered_set>
+
 namespace synapse {
 
 class ExecutionPlan {
@@ -28,23 +30,35 @@ private:
 
   const BDD::BDD *bdd;
 
-  // metadata
+  // Implementation details
 private:
-  int depth;
-  int nodes;
-  int id;
+  std::unordered_set<uint64_t> processed_bdd_nodes;
+
+  // When reordering nodes, it can happen that a function call
+  // that is called on different call paths is collapsed into
+  // a single one. We have to merge both their out expressions
+  // into a single one.
+  std::map<std::string, std::string> colapsed_symbols;
+
+  // Metadata
+private:
+  unsigned depth;
+  unsigned nodes;
+  unsigned id;
+  unsigned reordered_nodes;
 
   static int counter;
 
 public:
   ExecutionPlan(const BDD::Node *_next, const BDD::BDD *_bdd)
-      : bdd(_bdd), depth(0), nodes(0), id(counter++) {
+      : bdd(_bdd), depth(0), nodes(0), id(counter++), reordered_nodes(0) {
     leaf_t leaf(_next);
     leaves.push_back(leaf);
   }
 
   ExecutionPlan(const ExecutionPlan &ep, const BDD::BDD *_bdd)
-      : root(ep.root), leaves(ep.leaves), bdd(_bdd), depth(ep.depth),
+      : root(ep.root), leaves(ep.leaves), bdd(_bdd),
+        processed_bdd_nodes(ep.processed_bdd_nodes), depth(ep.depth),
         nodes(ep.nodes), id(ep.id) {}
 
   ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
@@ -104,7 +118,22 @@ private:
     return copy;
   }
 
+  void update_processed_nodes() {
+    assert(leaves.size());
+    if (!leaves[0].next)
+      return;
+
+    auto processed_node = leaves[0].next;
+
+    auto processed_node_id = processed_node->get_id();
+    auto search = processed_bdd_nodes.find(processed_node_id);
+    assert(search == processed_bdd_nodes.end());
+    processed_bdd_nodes.insert(processed_node_id);
+  }
+
   void add(const leaf_t &leaf) {
+    update_processed_nodes();
+
     if (!root) {
       assert(leaves.size() == 1);
       assert(!leaves[0].leaf);
@@ -128,6 +157,8 @@ private:
   void add(const std::vector<leaf_t> &_leaves) {
     assert(root);
     assert(leaves.size());
+
+    update_processed_nodes();
 
     Branches branches;
     for (auto &leaf : _leaves) {

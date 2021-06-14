@@ -2,6 +2,14 @@
 
 namespace BDD {
 
+std::vector<std::string> SymbolFactory::ignored_symbols{"VIGOR_DEVICE"};
+
+bool SymbolFactory::should_ignore(std::string symbol) {
+  auto found_it =
+      std::find(ignored_symbols.begin(), ignored_symbols.end(), symbol);
+  return found_it != ignored_symbols.end();
+}
+
 std::vector<std::string> call_paths_t::skip_functions{
     "loop_invariant_consume",
     "loop_invariant_produce",
@@ -27,6 +35,67 @@ bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints,
 
   bool result;
   bool success = solver->mustBeTrue(sat_query, result);
+  assert(success);
+
+  return result;
+}
+
+bool solver_toolbox_t::are_exprs_always_equal(
+    klee::ref<klee::Expr> e1, klee::ref<klee::Expr> e2,
+    klee::ConstraintManager c1, klee::ConstraintManager c2) const {
+  klee::ConstraintManager constraints;
+
+  RetrieveSymbols symbol_retriever1;
+  RetrieveSymbols symbol_retriever2;
+
+  symbol_retriever1.visit(e1);
+  symbol_retriever2.visit(e2);
+
+  std::vector<klee::ref<klee::ReadExpr>> symbols1 =
+      symbol_retriever1.get_retrieved();
+
+  std::vector<klee::ref<klee::ReadExpr>> symbols2 =
+      symbol_retriever2.get_retrieved();
+
+  ReplaceSymbols symbol_replacer1(symbols1);
+  ReplaceSymbols symbol_replacer2(symbols2);
+
+  for (auto c : c1) {
+    constraints.addConstraint(symbol_replacer1.visit(c));
+  }
+
+  for (auto c : c2) {
+    constraints.addConstraint(symbol_replacer2.visit(c));
+  }
+
+  auto eq = exprBuilder->Eq(e1, e2);
+  klee::Query sat_query(constraints, eq);
+
+  bool result;
+  bool success = solver->mustBeTrue(sat_query, result);
+  assert(success);
+
+  return result;
+}
+
+bool solver_toolbox_t::are_exprs_always_not_equal(
+    klee::ref<klee::Expr> e1, klee::ref<klee::Expr> e2,
+    klee::ConstraintManager c1, klee::ConstraintManager c2) const {
+  klee::ConstraintManager constraints;
+
+  for (auto c : c1) {
+    constraints.addConstraint(c);
+  }
+
+  for (auto c : c2) {
+    constraints.addConstraint(c);
+  }
+
+  auto eq = exprBuilder->Eq(e1, e2);
+  klee::Query sat_query(constraints, eq);
+
+  bool result;
+  bool success = solver->mustBeFalse(sat_query, result);
   assert(success);
 
   return result;
@@ -82,6 +151,10 @@ bool solver_toolbox_t::are_exprs_always_equal(
     return true;
   }
 
+  if (expr1->getWidth() != expr2->getWidth()) {
+    return false;
+  }
+
   RetrieveSymbols symbol_retriever;
   symbol_retriever.visit(expr1);
   std::vector<klee::ref<klee::ReadExpr>> symbols =
@@ -90,7 +163,8 @@ bool solver_toolbox_t::are_exprs_always_equal(
   ReplaceSymbols symbol_replacer(symbols);
   klee::ref<klee::Expr> replaced = symbol_replacer.visit(expr2);
 
-  return is_expr_always_true(exprBuilder->Eq(expr1, replaced));
+  auto eq = exprBuilder->Eq(expr1, replaced);
+  return is_expr_always_true(eq);
 }
 
 uint64_t solver_toolbox_t::value_from_expr(klee::ref<klee::Expr> expr) const {
@@ -102,6 +176,78 @@ uint64_t solver_toolbox_t::value_from_expr(klee::ref<klee::Expr> expr) const {
 
   assert(success);
   return value_expr->getZExtValue();
+}
+
+bool solver_toolbox_t::are_calls_equal(call_t c1, call_t c2) const {
+  std::cerr << "\n";
+  std::cerr << "c1:           " << c1 << "\n";
+  std::cerr << "c2:           " << c2 << "\n";
+
+  if (c1.function_name != c2.function_name) {
+    return false;
+  }
+
+  for (auto arg : c1.args) {
+    auto found = c2.args.find(arg.first);
+    if (found == c2.args.end()) {
+      return false;
+    }
+
+    auto arg1 = arg.second;
+    auto arg2 = found->second;
+
+    auto expr1 = arg1.expr;
+    auto expr2 = arg2.expr;
+
+    auto in1 = arg1.in;
+    auto in2 = arg2.in;
+
+    auto out1 = arg1.out;
+    auto out2 = arg2.out;
+
+    if (expr1.isNull() != expr2.isNull()) {
+      return false;
+    }
+
+    if (in1.isNull() != in2.isNull()) {
+      return false;
+    }
+
+    if (out1.isNull() != out2.isNull()) {
+      return false;
+    }
+
+    if (in1.isNull() && out1.isNull() &&
+        !are_exprs_always_equal(expr1, expr2)) {
+      std::cerr << "expr diff c1: " << expr_to_string(expr1, true) << "\n";
+      std::cerr << "expr diff c2: " << expr_to_string(expr2, true) << "\n";
+      return false;
+    }
+
+    if (!in1.isNull() && !are_exprs_always_equal(in1, in2)) {
+      std::cerr << "in diff c1:   " << expr_to_string(in1, true) << "\n";
+      std::cerr << "in diff c2:   " << expr_to_string(in2, true) << "\n";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+symbols_t Node::get_all_generated_symbols() const {
+  symbols_t symbols;
+  const Node *node = this;
+
+  while (node) {
+    if (node->get_type() == Node::NodeType::CALL) {
+      const Call *call = static_cast<const Call *>(node);
+      auto more_symbols = call->get_generated_symbols();
+      symbols.insert(symbols.end(), more_symbols.begin(), more_symbols.end());
+    }
+    node = node->get_prev();
+  }
+
+  return symbols;
 }
 
 void CallPathsGroup::group_call_paths() {
@@ -372,8 +518,10 @@ Node *BDD::populate(call_paths_t call_paths) {
         break;
       }
 
-      Call *node = new Call(get_and_inc_id(), get_successful_call(on_true.cp),
-                            on_true.cp);
+      auto call = get_successful_call(on_true.cp);
+      auto generated_symbols = symbol_factory.process(call);
+      Call *node =
+          new Call(get_and_inc_id(), call, generated_symbols, on_true.cp);
 
       // root node
       if (local_root == nullptr) {
@@ -381,7 +529,8 @@ Node *BDD::populate(call_paths_t call_paths) {
         local_leaf = node;
       } else {
         local_leaf->add_next(node);
-        node->add_prev(local_leaf);
+        assert(node->get_prev());
+        assert(node->get_prev()->get_id() == local_leaf->get_id());
         local_leaf = node;
       }
 
@@ -395,18 +544,30 @@ Node *BDD::populate(call_paths_t call_paths) {
       Branch *node = new Branch(get_and_inc_id(), discriminating_constraint,
                                 call_paths.cp);
 
+      symbol_factory.push();
       Node *on_true_root = populate(on_true);
+      symbol_factory.pop();
+
+      symbol_factory.push();
       Node *on_false_root = populate(on_false);
+      symbol_factory.pop();
 
       node->add_on_true(on_true_root);
       node->add_on_false(on_false_root);
+
+      assert(on_true_root->get_prev());
+      assert(on_true_root->get_prev()->get_id() == node->get_id());
+
+      assert(on_false_root->get_prev());
+      assert(on_false_root->get_prev()->get_id() == node->get_id());
 
       if (local_root == nullptr) {
         return node;
       }
 
       local_leaf->add_next(node);
-      node->add_prev(local_leaf);
+      assert(node->get_prev());
+      assert(node->get_prev()->get_id() == local_leaf->get_id());
 
       return local_root;
     }
@@ -416,7 +577,8 @@ Node *BDD::populate(call_paths_t call_paths) {
     local_root = return_raw;
   } else {
     local_leaf->add_next(return_raw);
-    return_raw->add_prev(local_leaf);
+    assert(return_raw->get_prev());
+    assert(return_raw->get_prev()->get_id() == local_leaf->get_id());
   }
 
   return local_root;
@@ -457,6 +619,12 @@ Node *BDD::populate_init(const Node *root) {
       branch->replace_on_true(on_true_node);
       branch->replace_on_false(on_false_node);
 
+      assert(on_true_node->get_prev());
+      assert(on_true_node->get_prev()->get_id() == branch->get_id());
+
+      assert(on_false_node->get_prev());
+      assert(on_false_node->get_prev()->get_id() == branch->get_id());
+
       new_node = branch;
       root = nullptr;
 
@@ -479,7 +647,8 @@ Node *BDD::populate_init(const Node *root) {
       local_leaf = local_root;
     } else if (new_node) {
       local_leaf->replace_next(new_node);
-      new_node->replace_prev(local_leaf);
+      assert(new_node->get_prev());
+      assert(new_node->get_prev()->get_id() == local_leaf->get_id());
       local_leaf = new_node;
     }
   }
@@ -555,6 +724,12 @@ Node *BDD::populate_process(const Node *root, bool store) {
         branch->replace_on_true(on_true_node);
         branch->replace_on_false(on_false_node);
 
+        assert(on_true_node->get_prev());
+        assert(on_true_node->get_prev()->get_id() == branch->get_id());
+
+        assert(on_false_node->get_prev());
+        assert(on_false_node->get_prev()->get_id() == branch->get_id());
+
         new_node = branch;
       }
 
@@ -605,7 +780,6 @@ Node *BDD::populate_process(const Node *root, bool store) {
       local_leaf = new_node;
     } else if (new_node) {
       local_leaf->replace_next(new_node);
-      new_node->replace_prev(local_leaf);
       local_leaf = new_node;
     }
   }

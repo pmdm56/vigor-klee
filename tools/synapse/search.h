@@ -31,10 +31,13 @@ public:
       _modules = targets::tofino::get_modules();
       break;
     case Target::Netronome:
-      // TODO:
+      _modules = targets::tofino::get_modules();
       break;
     case Target::FPGA:
-      // TODO:
+      _modules = targets::fpga::get_modules();
+      break;
+    case Target::BMv2:
+      _modules = targets::bmv2::get_modules();
       break;
     }
 
@@ -76,12 +79,18 @@ public:
 
       search_space.submit_leaves();
 
-      // FIXME: No module is capable of doing anything. What should we do?
-      assert(processed && "No module can handle the next BDD node");
+      if (!processed) {
+        Log::dbg()
+            << "No module can handle this BDD node in the current context.";
+        Log::dbg() << "\n";
+        Log::dbg() << "Deleting solution from search space.";
+        Log::dbg() << "\n";
+      }
+
       Log::dbg() << "=======================================================\n";
     }
 
-    synapse::Graphviz::visualize(h.get(), search_space);
+    // synapse::Graphviz::visualize(h.get(), search_space);
     return h.get();
   }
 };

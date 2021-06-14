@@ -7,18 +7,16 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::Positional,
                                                llvm::cl::OneOrMore);
 
-
 llvm::cl::OptionCategory BDDGeneratorCat("BDD generator specific options");
 
-llvm::cl::opt<std::string> Gv(
-    "gv",
-    llvm::cl::desc("GraphViz file for BDD visualization."),
-    llvm::cl::cat(BDDGeneratorCat));
-}
+llvm::cl::opt<std::string>
+    Gv("gv", llvm::cl::desc("GraphViz file for BDD visualization."),
+       llvm::cl::cat(BDDGeneratorCat));
+} // namespace
 
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
-  std::vector<call_path_t*> call_paths;
+  std::vector<call_path_t *> call_paths;
 
   for (auto file : InputCallPathFiles) {
     std::cerr << "Loading: " << file << std::endl;
@@ -31,7 +29,7 @@ int main(int argc, char **argv) {
   }
 
   BDD::BDD bdd(call_paths);
-  
+
   BDD::PrinterDebug printer;
   bdd.visit(printer);
 
@@ -42,7 +40,7 @@ int main(int argc, char **argv) {
   if (Gv.size()) {
     auto file = std::ofstream(Gv);
     assert(file.is_open());
-    
+
     BDD::GraphvizGenerator graphviz_generator(file);
     bdd.visit(graphviz_generator);
   }

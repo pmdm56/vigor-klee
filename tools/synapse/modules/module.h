@@ -12,7 +12,8 @@ enum Target {
   x86,
   Tofino,
   Netronome,
-  FPGA
+  FPGA,
+  BMv2,
 };
 
 class ExecutionPlan;
@@ -53,8 +54,9 @@ protected:
   const char *name;
   const BDD::Node *node;
 
-  Context *context;    // intermediary data
-  const BDD::BDD *bdd; // intermediary data
+  Context *context;                          // intermediary data
+  const BDD::BDD *bdd;                       // intermediary data
+  std::vector<const BDD::Node *> next_nodes; // intermediary data
 
 protected:
   Module(ModuleType _type, Target _target, const char *_name,
@@ -92,6 +94,8 @@ public:
       return "Netronome";
     case FPGA:
       return "FPGA";
+    case BMv2:
+      return "BMv2";
     }
 
     assert(false && "I should not be here");
@@ -103,5 +107,16 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const = 0;
 
   ~Module();
+
+protected:
+  bool map_can_reorder(const BDD::Node *before, const BDD::Node *after,
+                       klee::ref<klee::Expr> &condition) const;
+  bool are_rw_dependencies_met(const BDD::Node *current_node,
+                               const BDD::Node *next_node,
+                               klee::ref<klee::Expr> &condition) const;
+  bool is_called_in_all_future_branches(const BDD::Node *start,
+                                        const BDD::Call *target) const;
+  void fill_next_nodes(const BDD::Node *current_node);
+  void reset_next_nodes();
 };
 } // namespace synapse

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./bdd-nodes.h"
+#include "symbol-factory.h"
 
 namespace BDD {
 
@@ -10,6 +11,8 @@ public:
 
 private:
   solver_toolbox_t solver_toolbox;
+  SymbolFactory symbol_factory;
+
   uint64_t id;
 
   std::shared_ptr<Node> nf_init;
@@ -18,7 +21,6 @@ private:
   std::vector<call_path_t *> call_paths;
 
   static std::vector<std::string> skip_conditions_with_symbol;
-
   static constexpr char INIT_CONTEXT_MARKER[] = "start_time";
 
 private:

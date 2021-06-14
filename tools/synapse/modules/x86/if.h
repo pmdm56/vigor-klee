@@ -25,6 +25,8 @@ public:
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
+    fill_next_nodes(node);
+
     assert(!node->get_condition().isNull());
     auto _condition = node->get_condition();
 
@@ -32,9 +34,9 @@ private:
     auto new_then_module = std::make_shared<Then>(node);
     auto new_else_module = std::make_shared<Else>(node);
 
-    auto if_ep_node = ExecutionPlanNode::build(new_if_module, node);
-    auto then_ep_node = ExecutionPlanNode::build(new_then_module, node);
-    auto else_ep_node = ExecutionPlanNode::build(new_else_module, node);
+    auto if_ep_node = ExecutionPlanNode::build(new_if_module);
+    auto then_ep_node = ExecutionPlanNode::build(new_then_module);
+    auto else_ep_node = ExecutionPlanNode::build(new_else_module);
 
     auto if_leaf = ExecutionPlan::leaf_t(if_ep_node, nullptr);
     auto then_leaf = ExecutionPlan::leaf_t(then_ep_node, node->get_on_true());
@@ -47,7 +49,7 @@ private:
     auto ep_if = ExecutionPlan(ep, if_leaves, bdd);
     auto ep_if_then_else = ExecutionPlan(ep_if, then_else_leaves, bdd);
 
-    context->add(ep_if_then_else, if_leaf);
+    context->add(ep_if_then_else, new_if_module);
 
     return BDD::BDDVisitor::Action::STOP;
   }

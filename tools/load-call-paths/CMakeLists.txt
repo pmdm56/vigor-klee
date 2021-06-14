@@ -9,6 +9,7 @@
 add_executable(load-call-paths
   main.cpp
   load-call-paths.cpp
+  ../printer/printer.cpp
 )
 
 set(KLEE_LIBS
@@ -16,6 +17,7 @@ set(KLEE_LIBS
   kleeCore
 )
 
+target_include_directories(load-call-paths PRIVATE ../printer)
 target_link_libraries(load-call-paths ${KLEE_LIBS})
 
 install(TARGETS load-call-paths RUNTIME DESTINATION bin)

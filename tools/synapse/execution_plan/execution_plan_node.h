@@ -25,8 +25,8 @@ private:
   static int counter;
 
 private:
-  ExecutionPlanNode(Module_ptr _module, const BDD::Node *_node)
-      : module(_module), node(_node), id(counter++) {}
+  ExecutionPlanNode(Module_ptr _module)
+      : module(_module), node(_module->get_node()), id(counter++) {}
 
   ExecutionPlanNode(const ExecutionPlanNode *ep_node)
       : module(ep_node->module), node(ep_node->node), id(counter++) {}
@@ -49,9 +49,8 @@ public:
 
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(this); }
 
-  static ExecutionPlanNode_ptr build(Module_ptr _module,
-                                     const BDD::Node *_node) {
-    ExecutionPlanNode *epn = new ExecutionPlanNode(_module, _node);
+  static ExecutionPlanNode_ptr build(Module_ptr _module) {
+    ExecutionPlanNode *epn = new ExecutionPlanNode(_module);
     return std::shared_ptr<ExecutionPlanNode>(epn);
   }
 

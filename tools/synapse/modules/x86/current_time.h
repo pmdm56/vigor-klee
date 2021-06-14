@@ -30,16 +30,18 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "current_time") {
+      fill_next_nodes(node);
+
       assert(!call.ret.isNull());
       auto _time = call.ret;
 
       auto new_module = std::make_shared<CurrentTime>(node, _time);
-      auto ep_node = ExecutionPlanNode::build(new_module, node);
+      auto ep_node = ExecutionPlanNode::build(new_module);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
       auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-      context->add(new_ep, new_leaf);
+      context->add(new_ep, new_module);
     }
 
     return BDD::BDDVisitor::Action::STOP;

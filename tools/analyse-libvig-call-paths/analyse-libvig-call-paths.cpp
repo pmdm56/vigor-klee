@@ -30,6 +30,7 @@
 #include <stack>
 
 #include "../load-call-paths/load-call-paths.h"
+#include "../printer/printer.h"
 
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
@@ -60,16 +61,6 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 #define DEBUG
 
 #define UINT_16_SWAP_ENDIANNESS(p) ((((p) & 0xff) << 8) | ((p) >> 8 & 0xff))
-
-std::string expr_to_string(klee::expr::ExprHandle expr) {
-  std::string expr_str;
-  if (expr.isNull())
-    return expr_str;
-  llvm::raw_string_ostream os(expr_str);
-  expr->print(os);
-  os.str();
-  return expr_str;
-}
 
 class KleeInterface {
 private:

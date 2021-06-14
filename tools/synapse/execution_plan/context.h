@@ -10,7 +10,7 @@ private:
   const ExecutionPlan *current_ep;
   bool success;
   std::pair<bool, Target> current_platform;
-  std::unique_ptr<ExecutionPlan::leaf_t> processed_leaf;
+  Module_ptr processed_module;
 
 public:
   Context(const ExecutionPlan &ep) { reset(ep); }
@@ -22,28 +22,23 @@ public:
 
   Context(const Context &context)
       : next_eps(context.next_eps), current_ep(context.current_ep),
-        success(context.success), current_platform(context.current_platform) {
-    if (context.processed_leaf) {
-      processed_leaf = std::unique_ptr<ExecutionPlan::leaf_t>(
-          new ExecutionPlan::leaf_t(*context.processed_leaf.get()));
-    }
-  }
+        success(context.success), current_platform(context.current_platform),
+        processed_module(context.processed_module) {}
 
   bool can_process_platform(Target _target) {
     return !current_platform.first || (current_platform.second == _target);
   }
 
-  void add(const ExecutionPlan &ep,
-           const ExecutionPlan::leaf_t &_processed_leaf) {
+  void add(const ExecutionPlan &ep, Module_ptr _processed_module) {
     next_eps.push_back(ep);
     success = true;
-    processed_leaf = std::unique_ptr<ExecutionPlan::leaf_t>(
-        new ExecutionPlan::leaf_t(_processed_leaf));
+    assert(!processed_module || processed_module == _processed_module);
+    processed_module = _processed_module;
   }
 
   void reset(const ExecutionPlan &_current_ep) {
     next_eps.clear();
-    processed_leaf.reset();
+    processed_module.reset();
     current_ep = &_current_ep;
     success = false;
 
@@ -66,9 +61,9 @@ public:
   }
 
   const std::vector<ExecutionPlan> &get_next_eps() const { return next_eps; }
-  const ExecutionPlan::leaf_t *get_processed_leaf() const {
-    assert(processed_leaf);
-    return processed_leaf.get();
+  Module_ptr get_processed_module() const {
+    assert(processed_module);
+    return processed_module;
   }
 
   bool processed() const { return success; }
