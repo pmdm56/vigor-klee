@@ -441,56 +441,21 @@ Context::get_candidates(const BDD::Node *current_node) {
   return viable_candidates;
 }
 
-void delete_siblings(BDD::Node *node, std::vector<uint64_t> &siblings) {
-  while (node) {
-    auto id = node->get_id();
-    auto num_siblings = siblings.size();
+BDD::Node* reorder_bdd(BDD::Node* node, candidate_t candidate) {
+  struct aux_t {
+    BDD::Node* node;
+    std::map<uint64_t,bool> branch_decisions;
+  };
 
-    siblings.erase(std::remove(siblings.begin(), siblings.end(), id),
-                   siblings.end());
+  auto candidate_clone = candidate.node->clone(false);
+  std::vector<aux_t> leaves;
 
-    if (num_siblings == siblings.size()) {
-      if (node->get_type() == BDD::Node::NodeType::BRANCH) {
-        auto node_branch = static_cast<BDD::Branch *>(node);
-        delete_siblings(node_branch->get_on_true(), siblings);
-        delete_siblings(node_branch->get_on_false(), siblings);
-        break;
-      }
+  auto old_next = node->get_next();
+  assert(old_next);
 
-      else {
-        node = node->get_next();
-        continue;
-      }
-    }
+  node->replace_next(candidate_clone);
 
-    auto prev = node->get_prev();
-
-    if (prev->get_type() == BDD::Node::NodeType::BRANCH) {
-      auto prev_branch = static_cast<BDD::Branch *>(prev);
-
-      if (prev_branch->get_on_true()->get_id() == id) {
-        auto next = prev_branch->get_on_true()->get_next();
-        prev_branch->replace_on_true(next);
-      }
-
-      else {
-        assert(prev_branch->get_on_false()->get_id() == id);
-        auto next = prev_branch->get_on_false()->get_next();
-        prev_branch->replace_on_false(next);
-      }
-
-      nodes.push_back(node_branch->get_on_false());
-      nodes.push_back(node_branch->get_on_false());
-      continue;
-    }
-
-    else {
-      auto next = node->get_next();
-      prev->replace_next(next);
-    }
-
-    delete node;
-  }
+  return candidate_clone;
 }
 
 void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
@@ -535,20 +500,10 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
 
   for (auto candidate : candidates) {
     auto current_node_clone = current_node->clone(true);
-    auto candidate_clone = candidate.node->clone(false);
-    auto old_next = current_node_clone->get_next();
-
-    delete_siblings(current_node_clone, candidate.siblings);
+    auto candidate_clone = reorder_bdd(current_node_clone, candidate);
 
     // std::cerr << "OLD\n";
     // Graphviz::visualize(ep);
-
-    current_node_clone->replace_next(candidate_clone);
-    candidate_clone->replace_next(old_next);
-
-    std::cerr << "current   " << current_node_clone->dump(true) << "\n";
-    std::cerr << "candidate " << candidate_clone->dump(true) << "\n";
-    std::cerr << "next      " << old_next->dump(true) << "\n";
 
     ExecutionPlan::leaf_t new_leaf(active_leaf, candidate_clone);
 
