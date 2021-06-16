@@ -155,10 +155,6 @@ public:
         missing_calls(_missing_calls) {}
 
   void replace_next(Node *_next) {
-    if (next) {
-      next->replace_prev(nullptr);
-    }
-
     next = _next;
 
     if (next) {
@@ -219,6 +215,7 @@ public:
   }
 
   virtual Node *clone(bool recursive = false) const = 0;
+  virtual void recursive_update_ids(uint64_t &new_id) = 0;
 
   void process_call_paths(std::vector<call_path_t *> call_paths) {
     std::string dir_delim = "/";
@@ -296,6 +293,11 @@ public:
     return clone;
   }
 
+  virtual void recursive_update_ids(uint64_t &new_id) override {
+    id = ++new_id;
+    next->recursive_update_ids(new_id);
+  }
+
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
 
   std::string dump(bool one_liner = false) const override {
@@ -366,10 +368,6 @@ public:
   Node *get_on_true() { return next; }
 
   void replace_on_false(Node *_on_false) {
-    if (on_false) {
-      on_false->replace_prev(nullptr);
-    }
-
     on_false = _on_false;
 
     if (on_false) {
@@ -427,6 +425,12 @@ public:
     return clone;
   }
 
+  virtual void recursive_update_ids(uint64_t &new_id) override {
+    id = ++new_id;
+    next->recursive_update_ids(new_id);
+    on_false->recursive_update_ids(new_id);
+  }
+
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
 
   std::string dump(bool one_liner = false) const {
@@ -460,6 +464,10 @@ public:
     ReturnRaw *clone = new ReturnRaw(id, prev, calls_list, call_paths_filenames,
                                      constraints, missing_calls);
     return clone;
+  }
+
+  virtual void recursive_update_ids(uint64_t &new_id) override {
+    id = ++new_id;
   }
 
   std::vector<calls_t> get_calls() const { return calls_list; }
@@ -521,6 +529,10 @@ public:
   virtual Node *clone(bool recursive = false) const override {
     ReturnInit *clone = new ReturnInit(id, prev, value);
     return clone;
+  }
+
+  virtual void recursive_update_ids(uint64_t &new_id) override {
+    id = ++new_id;
   }
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
@@ -642,6 +654,10 @@ public:
   virtual Node *clone(bool recursive = false) const override {
     ReturnProcess *clone = new ReturnProcess(id, prev, value, operation);
     return clone;
+  }
+
+  virtual void recursive_update_ids(uint64_t &new_id) override {
+    id = ++new_id;
   }
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }

@@ -20,25 +20,20 @@ private:
   bool success;
   std::pair<bool, Target> current_platform;
   Module_ptr processed_module;
-  const BDD::solver_toolbox_t &solver_toolbox;
+  const BDD::BDD *bdd;
 
 public:
-  Context(const ExecutionPlan &ep)
-      : solver_toolbox(ep.get_bdd()->get_solver_toolbox()) {
-    reset(ep);
-  }
+  Context(const ExecutionPlan &ep) : bdd(ep.get_bdd()) { reset(ep); }
 
-  Context(const BDD::BDD &bdd)
-      : current_ep(nullptr), solver_toolbox(bdd.get_solver_toolbox()) {
-    next_eps.emplace_back(bdd.get_process(), &bdd);
+  Context(const BDD::BDD &_bdd) : current_ep(nullptr), bdd(&_bdd) {
+    next_eps.emplace_back(bdd->get_process(), bdd);
     current_platform.first = false;
   }
 
   Context(const Context &context)
       : next_eps(context.next_eps), current_ep(context.current_ep),
         success(context.success), current_platform(context.current_platform),
-        processed_module(context.processed_module),
-        solver_toolbox(context.solver_toolbox) {}
+        processed_module(context.processed_module), bdd(context.bdd) {}
 
   bool can_process_platform(Target _target) {
     return !current_platform.first || (current_platform.second == _target);
@@ -98,6 +93,8 @@ private:
                                         const BDD::Node *target,
                                         std::vector<uint64_t> &siblings) const;
   std::vector<candidate_t> get_candidates(const BDD::Node *current_node);
+  BDD::Node *reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
+                         candidate_t candidate);
   void add_reordered_next_eps(const ExecutionPlan &ep);
 };
 } // namespace synapse

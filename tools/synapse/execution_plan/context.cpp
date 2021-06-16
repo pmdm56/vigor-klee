@@ -205,7 +205,8 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
   assert(!before_map.isNull());
   assert(!after_map.isNull());
 
-  if (!solver_toolbox.are_exprs_always_equal(before_map, after_map)) {
+  if (!bdd->get_solver_toolbox().are_exprs_always_equal(before_map,
+                                                        after_map)) {
     return true;
   }
 
@@ -228,8 +229,8 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
   for (auto c1 : before_constraints) {
     for (auto c2 : after_constraints) {
-      auto always_eq_local =
-          solver_toolbox.are_exprs_always_equal(before_key, after_key, c1, c2);
+      auto always_eq_local = bdd->get_solver_toolbox().are_exprs_always_equal(
+          before_key, after_key, c1, c2);
 
       if (!always_eq.first) {
         always_eq.first = true;
@@ -238,8 +239,9 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
       assert(always_eq.second == always_eq_local);
 
-      auto always_diff_local = solver_toolbox.are_exprs_always_not_equal(
-          before_key, after_key, c1, c2);
+      auto always_diff_local =
+          bdd->get_solver_toolbox().are_exprs_always_not_equal(
+              before_key, after_key, c1, c2);
 
       if (!always_diff.first) {
         always_diff.first = true;
@@ -267,7 +269,7 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
     return true;
   }
 
-  condition = solver_toolbox.exprBuilder->Eq(before_key, after_key);
+  condition = bdd->get_solver_toolbox().exprBuilder->Eq(before_key, after_key);
   return true;
 };
 
@@ -303,7 +305,8 @@ bool Context::are_rw_dependencies_met(const BDD::Node *current_node,
 
   all_conditions.pop_back();
   while (all_conditions.size()) {
-    condition = solver_toolbox.exprBuilder->And(condition, all_conditions[0]);
+    condition = bdd->get_solver_toolbox().exprBuilder->And(condition,
+                                                           all_conditions[0]);
     all_conditions.pop_back();
   }
 
@@ -330,8 +333,8 @@ bool Context::is_called_in_all_future_branches(
       auto node_call = static_cast<const BDD::Call *>(node);
       auto target_call = static_cast<const BDD::Call *>(target);
 
-      auto eq = solver_toolbox.are_calls_equal(node_call->get_call(),
-                                               target_call->get_call());
+      auto eq = bdd->get_solver_toolbox().are_calls_equal(
+          node_call->get_call(), target_call->get_call());
 
       if (eq) {
         siblings.push_back(node->get_id());
@@ -345,7 +348,7 @@ bool Context::is_called_in_all_future_branches(
       auto node_branch = static_cast<const BDD::Branch *>(node);
       auto target_branch = static_cast<const BDD::Branch *>(target);
 
-      auto eq = solver_toolbox.are_exprs_always_equal(
+      auto eq = bdd->get_solver_toolbox().are_exprs_always_equal(
           node_branch->get_condition(), target_branch->get_condition());
 
       if (eq) {
@@ -408,6 +411,19 @@ Context::get_candidates(const BDD::Node *current_node) {
       candidates.emplace_back(candidate.node->get_next());
     }
 
+    auto found_it =
+        std::find_if(viable_candidates.begin(), viable_candidates.end(),
+                     [&](candidate_t c) -> bool {
+                       auto found_it =
+                           std::find(c.siblings.begin(), c.siblings.end(),
+                                     candidate.node->get_id());
+                       return found_it != c.siblings.end();
+                     });
+
+    if (found_it != viable_candidates.end()) {
+      continue;
+    }
+
     if (!are_io_dependencies_met(current_node, candidate.node)) {
       continue;
     }
@@ -441,50 +457,143 @@ Context::get_candidates(const BDD::Node *current_node) {
   return viable_candidates;
 }
 
-BDD::Node* reorder_bdd(BDD::Node* node, candidate_t candidate) {
+BDD::Node *Context::reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
+                                candidate_t candidate) {
   struct aux_t {
-    BDD::Node* node;
-    std::map<uint64_t,bool> branch_decisions;
+    BDD::Node *node;
+    bool branch_decision;
+    bool branch_decision_set;
 
-    aux_t(BDD::Node* _node) : node(_node) {}
-    aux_t(BDD::Node* _node, unint64_t id, bool direction) : node(_node) {
-      branch_decisions[id] = direction;
-    }
+    aux_t(BDD::Node *_node) : node(_node), branch_decision_set(false) {}
+    aux_t(BDD::Node *_node, bool _direction)
+        : node(_node), branch_decision(_direction), branch_decision_set(true) {}
   };
 
-  auto candidate_clone = candidate.node->clone(false);
   std::vector<aux_t> leaves;
+
+  assert(candidate.condition.isNull() && "TODO");
+  auto candidate_clone = candidate.node->clone();
+
+  // std::cerr << "pulling " << candidate_clone->dump(true) << "\n";
 
   auto old_next = node->get_next();
   assert(old_next);
+  old_next = old_next->clone(true);
 
   node->replace_next(candidate_clone);
 
   if (candidate_clone->get_type() == BDD::Node::NodeType::BRANCH) {
-    auto branch = static_cast<BDD::Branch*>(candidate_clone);
+    auto branch = static_cast<BDD::Branch *>(candidate_clone);
 
-    auto old_next_on_true = old_next->clone(true);
+    auto old_next_on_true = old_next;
     auto old_next_on_false = old_next->clone(true);
 
     branch->replace_on_true(old_next_on_true);
     branch->replace_on_false(old_next_on_false);
 
-    leaves.emplace_back(old_next_on_true, candidate_clone->get_id(), true);
-    leaves.emplace_back(old_next_on_false, candidate_clone->get_id(), false);
+    leaves.emplace_back(old_next_on_true, true);
+    leaves.emplace_back(old_next_on_false, false);
   } else {
     candidate_clone->replace_next(old_next);
     leaves.emplace_back(old_next);
   }
 
   while (leaves.size()) {
-    if (!leaves[0].node) {
+    node = leaves[0].node;
+
+    if (!node) {
       leaves.erase(leaves.begin());
-      continue:
+      continue;
     }
 
-    
+    if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto branch = static_cast<BDD::Branch *>(node);
+
+      auto on_true = branch->get_on_true();
+      auto on_false = branch->get_on_false();
+
+      auto found_on_true_it =
+          std::find(candidate.siblings.begin(), candidate.siblings.end(),
+                    on_true->get_id());
+
+      auto found_on_false_it =
+          std::find(candidate.siblings.begin(), candidate.siblings.end(),
+                    on_false->get_id());
+
+      if (found_on_true_it != candidate.siblings.end()) {
+        BDD::Node *next;
+
+        if (on_true->get_type() == BDD::Node::NodeType::BRANCH) {
+          auto on_true_branch = static_cast<BDD::Branch *>(on_true);
+          assert(leaves[0].branch_decision_set);
+          next = leaves[0].branch_decision ? on_true_branch->get_on_true()
+                                           : on_true_branch->get_on_false();
+        } else {
+          next = on_true->get_next();
+        }
+
+        branch->replace_on_true(next);
+      }
+
+      if (found_on_false_it != candidate.siblings.end()) {
+        BDD::Node *next;
+
+        if (on_false->get_type() == BDD::Node::NodeType::BRANCH) {
+          auto on_false_branch = static_cast<BDD::Branch *>(on_false);
+          assert(leaves[0].branch_decision_set);
+          next = leaves[0].branch_decision ? on_false_branch->get_on_true()
+                                           : on_false_branch->get_on_false();
+        } else {
+          next = on_false->get_next();
+        }
+
+        branch->replace_on_false(next);
+      }
+
+      auto branch_decision = leaves[0].branch_decision;
+      leaves.erase(leaves.begin());
+
+      leaves.emplace_back(branch->get_on_true(), branch_decision);
+      leaves.emplace_back(branch->get_on_false(), branch_decision);
+    }
+
+    else {
+      auto next = node->get_next();
+
+      if (!next) {
+        leaves.erase(leaves.begin());
+        continue;
+      }
+
+      auto found_it = std::find(candidate.siblings.begin(),
+                                candidate.siblings.end(), next->get_id());
+
+      if (found_it != candidate.siblings.end()) {
+        BDD::Node *next_next;
+
+        if (next->get_type() == BDD::Node::NodeType::BRANCH) {
+          auto next_branch = static_cast<BDD::Branch *>(next);
+          assert(leaves[0].branch_decision_set);
+          next_next = leaves[0].branch_decision ? next_branch->get_on_true()
+                                                : next_branch->get_on_false();
+        } else {
+          next_next = next->get_next();
+        }
+
+        node->replace_next(next_next);
+        next = next_next;
+      }
+
+      leaves[0].node = next;
+    }
   }
 
+  if (candidate_clone->get_type() == BDD::Node::NodeType::BRANCH) {
+    auto branch = static_cast<BDD::Branch *>(candidate_clone);
+
+    uint64_t id = bdd->get_id();
+    branch->get_on_false()->recursive_update_ids(id);
+  }
 
   return candidate_clone;
 }
@@ -501,10 +610,6 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
 
   auto current_node = module->get_node();
   assert(current_node);
-
-  if (current_node->get_type() == BDD::Node::NodeType::BRANCH) {
-    return;
-  }
 
   auto candidates = get_candidates(current_node);
 
@@ -531,15 +636,14 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
 
   for (auto candidate : candidates) {
     auto current_node_clone = current_node->clone(true);
-    auto candidate_clone = reorder_bdd(current_node_clone, candidate);
-
-    // std::cerr << "OLD\n";
-    // Graphviz::visualize(ep);
-
-    ExecutionPlan::leaf_t new_leaf(active_leaf, candidate_clone);
+    auto candidate_clone = reorder_bdd(ep, current_node_clone, candidate);
 
     auto new_ep = ep.clone();
+    auto new_active_leaf = new_ep.get_active_leaf();
+    ExecutionPlan::leaf_t new_leaf(new_active_leaf, candidate_clone);
+
     new_ep.replace_active_leaf(new_leaf);
+    next_eps.push_back(new_ep);
 
     std::cerr << "NEW\n";
     Graphviz::visualize(new_ep);

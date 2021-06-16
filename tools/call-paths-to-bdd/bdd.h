@@ -63,6 +63,8 @@ public:
   const solver_toolbox_t &get_solver_toolbox() const { return solver_toolbox; }
 
   void visit(BDDVisitor &visitor) const { visitor.visit(*this); }
+
+  uint64_t get_id() const { return id; }
 };
 
 } // namespace BDD

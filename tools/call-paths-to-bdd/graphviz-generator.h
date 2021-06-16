@@ -84,6 +84,10 @@ public:
 
   Action visitCall(const Call *node) override {
     if (node->get_next()) {
+      if (!node->get_next()->get_prev()) {
+        std::cerr << "ERROR IN " << node->dump(true) << "\n";
+        std::cerr << " => " << node->get_next()->dump(true) << "\n";
+      }
       assert(node->get_next()->get_prev());
       assert(node->get_next()->get_prev()->get_id() == node->get_id());
     }
