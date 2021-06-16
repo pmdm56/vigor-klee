@@ -5,6 +5,14 @@
 
 namespace synapse {
 
+struct candidate_t {
+  const BDD::Node *node;
+  std::vector<uint64_t> siblings;
+  klee::ref<klee::Expr> condition;
+
+  candidate_t(const BDD::Node *_node) : node(_node) {}
+};
+
 class Context {
 private:
   std::vector<ExecutionPlan> next_eps;
@@ -87,8 +95,9 @@ private:
                                const BDD::Node *next_node,
                                klee::ref<klee::Expr> &condition) const;
   bool is_called_in_all_future_branches(const BDD::Node *start,
-                                        const BDD::Node *target) const;
-  std::vector<const BDD::Node *> get_candidates(const BDD::Node *current_node);
+                                        const BDD::Node *target,
+                                        std::vector<uint64_t> &siblings) const;
+  std::vector<candidate_t> get_candidates(const BDD::Node *current_node);
   void add_reordered_next_eps(const ExecutionPlan &ep);
 };
 } // namespace synapse

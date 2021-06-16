@@ -10,22 +10,28 @@ file_ext="svg"
 
 generated=()
 
-function generate {
-  if=$1
-  of="${if%.*}".$file_ext
-
-  dot -T$file_ext $if -o $of
-  generated+=("$of")
-}
+#function generate {
+#  if=$1
+#  of="${if%.*}".$file_ext
+#
+#  dot -T$file_ext $if -o $of
+#  generated+=("$of")
+#}
+#
+#function open {
+#  f=$1
+#  xdg-open $f & > /dev/null
+#}
 
 function open {
   f=$1
-  xdg-open $f & > /dev/null
+  xdot $f & > /dev/null
 }
 
 for f in "${@}"
 do
-  generate "$f"
+  #generate "$f"
+  open "$f"
 done
 
 #if [ "${#generated[@]}" -eq 1 ]; then

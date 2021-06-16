@@ -1,5 +1,6 @@
 #include "context.h"
 #include "./visitors/graphviz.h"
+#include "execution_plan.h"
 
 namespace synapse {
 
@@ -309,8 +310,9 @@ bool Context::are_rw_dependencies_met(const BDD::Node *current_node,
   return true;
 }
 
-bool Context::is_called_in_all_future_branches(const BDD::Node *start,
-                                               const BDD::Node *target) const {
+bool Context::is_called_in_all_future_branches(
+    const BDD::Node *start, const BDD::Node *target,
+    std::vector<uint64_t> &siblings) const {
   assert(start);
   assert(target);
 
@@ -324,7 +326,7 @@ bool Context::is_called_in_all_future_branches(const BDD::Node *start,
     }
 
     if (node->get_type() == BDD::Node::NodeType::CALL &&
-        node->get_type() == BDD::Node::NodeType::CALL) {
+        target->get_type() == BDD::Node::NodeType::CALL) {
       auto node_call = static_cast<const BDD::Call *>(node);
       auto target_call = static_cast<const BDD::Call *>(target);
 
@@ -332,13 +334,14 @@ bool Context::is_called_in_all_future_branches(const BDD::Node *start,
                                                target_call->get_call());
 
       if (eq) {
+        siblings.push_back(node->get_id());
         nodes.erase(nodes.begin());
         continue;
       }
     }
 
     else if (node->get_type() == BDD::Node::NodeType::BRANCH &&
-             node->get_type() == BDD::Node::NodeType::BRANCH) {
+             target->get_type() == BDD::Node::NodeType::BRANCH) {
       auto node_branch = static_cast<const BDD::Branch *>(node);
       auto target_branch = static_cast<const BDD::Branch *>(target);
 
@@ -346,6 +349,7 @@ bool Context::is_called_in_all_future_branches(const BDD::Node *start,
           node_branch->get_condition(), target_branch->get_condition());
 
       if (eq) {
+        siblings.push_back(node->get_id());
         nodes.erase(nodes.begin());
         continue;
       }
@@ -366,9 +370,10 @@ bool Context::is_called_in_all_future_branches(const BDD::Node *start,
   return true;
 }
 
-std::vector<const BDD::Node *>
+std::vector<candidate_t>
 Context::get_candidates(const BDD::Node *current_node) {
-  std::vector<const BDD::Node *> candidates;
+  std::vector<candidate_t> viable_candidates;
+  std::vector<candidate_t> candidates;
 
   if (!current_node->get_next() || !current_node->get_next()->get_next()) {
     return candidates;
@@ -379,90 +384,121 @@ Context::get_candidates(const BDD::Node *current_node) {
 
   if (next->get_type() == BDD::Node::BRANCH) {
     auto branch = static_cast<const BDD::Branch *>(next);
-    candidates.push_back(branch->get_on_true());
-    candidates.push_back(branch->get_on_false());
+    candidates.emplace_back(branch->get_on_true());
+    candidates.emplace_back(branch->get_on_false());
     check_future_branches = true;
   } else {
-    candidates.push_back(next->get_next());
+    candidates.emplace_back(next->get_next());
   }
 
   while (candidates.size()) {
-    klee::ref<klee::Expr> reordering_condition;
-
-    auto candidate = candidates[0];
+    candidate_t candidate(candidates[0]);
     candidates.erase(candidates.begin());
 
     // std::cerr << "  *** current   : " << current_node->dump(true) << "\n";
     // std::cerr << "  *** candidate : " << candidate->dump(true) << "\n";
 
-    if (candidate->get_type() == BDD::Node::BRANCH) {
-      auto branch = static_cast<const BDD::Branch *>(candidate);
+    if (candidate.node->get_type() == BDD::Node::BRANCH) {
+      auto branch = static_cast<const BDD::Branch *>(candidate.node);
       check_future_branches = true;
 
-      candidates.push_back(branch->get_on_true());
-      candidates.push_back(branch->get_on_false());
-    } else if (candidate->get_next()) {
-      candidates.push_back(candidate->get_next());
+      candidates.emplace_back(branch->get_on_true());
+      candidates.emplace_back(branch->get_on_false());
+    } else if (candidate.node->get_next()) {
+      candidates.emplace_back(candidate.node->get_next());
     }
 
-    if (!are_io_dependencies_met(current_node, candidate)) {
+    if (!are_io_dependencies_met(current_node, candidate.node)) {
       continue;
     }
 
-    if (candidate->get_type() == BDD::Node::NodeType::CALL) {
-      if (!are_rw_dependencies_met(current_node, candidate,
-                                   reordering_condition)) {
+    if (candidate.node->get_type() == BDD::Node::NodeType::CALL) {
+      if (!are_rw_dependencies_met(current_node, candidate.node,
+                                   candidate.condition)) {
         continue;
       }
 
-      auto candidate_call = static_cast<const BDD::Call *>(candidate);
+      auto candidate_call = static_cast<const BDD::Call *>(candidate.node);
 
       if (!fn_can_be_reordered(candidate_call->get_call().function_name)) {
         continue;
       }
     }
 
-    auto viable = !check_future_branches || !node_has_side_effects(candidate) ||
-                  is_called_in_all_future_branches(current_node, candidate);
+    auto viable = !check_future_branches ||
+                  !node_has_side_effects(candidate.node) ||
+                  is_called_in_all_future_branches(current_node, candidate.node,
+                                                   candidate.siblings);
 
     if (!viable) {
       continue;
     }
 
-    std::cerr << "\n";
-    std::cerr << "*********************************************************"
-                 "********************\n";
-    std::cerr << "  current   : " << current_node->dump(true) << "\n";
-    std::cerr << "  candidate : " << candidate->dump(true) << "\n";
-    if (candidate->get_type() == BDD::Node::NodeType::CALL) {
-      std::cerr << "  check future branches : " << check_future_branches
-                << "\n";
-      std::cerr << "  has side effects : "
-                << (fn_has_side_effects(
-                       (static_cast<const BDD::Call *>(candidate))
-                           ->get_call()
-                           .function_name))
-                << "\n";
-      std::cerr << "  is_called_in_all_future_branches : "
-                << (is_called_in_all_future_branches(
-                       current_node, static_cast<const BDD::Call *>(candidate)))
-                << "\n";
-    }
-    if (!reordering_condition.isNull()) {
-      std::cerr << "  condition : "
-                << expr_to_string(reordering_condition, true) << "\n";
-    }
-    std::cerr << "*********************************************************"
-                 "********************\n";
-    std::cerr << "\n";
+    candidate.siblings.push_back(candidate.node->get_id());
+    viable_candidates.push_back(candidate);
   }
 
-  return candidates;
+  return viable_candidates;
+}
+
+void delete_siblings(BDD::Node *node, std::vector<uint64_t> &siblings) {
+  while (node) {
+    auto id = node->get_id();
+    auto num_siblings = siblings.size();
+
+    siblings.erase(std::remove(siblings.begin(), siblings.end(), id),
+                   siblings.end());
+
+    if (num_siblings == siblings.size()) {
+      if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+        auto node_branch = static_cast<BDD::Branch *>(node);
+        delete_siblings(node_branch->get_on_true(), siblings);
+        delete_siblings(node_branch->get_on_false(), siblings);
+        break;
+      }
+
+      else {
+        node = node->get_next();
+        continue;
+      }
+    }
+
+    auto prev = node->get_prev();
+
+    if (prev->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto prev_branch = static_cast<BDD::Branch *>(prev);
+
+      if (prev_branch->get_on_true()->get_id() == id) {
+        auto next = prev_branch->get_on_true()->get_next();
+        prev_branch->replace_on_true(next);
+      }
+
+      else {
+        assert(prev_branch->get_on_false()->get_id() == id);
+        auto next = prev_branch->get_on_false()->get_next();
+        prev_branch->replace_on_false(next);
+      }
+
+      nodes.push_back(node_branch->get_on_false());
+      nodes.push_back(node_branch->get_on_false());
+      continue;
+    }
+
+    else {
+      auto next = node->get_next();
+      prev->replace_next(next);
+    }
+
+    delete node;
+  }
 }
 
 void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
   auto active_leaf = ep.get_active_leaf();
-  assert(active_leaf);
+
+  if (!active_leaf) {
+    return;
+  }
 
   auto module = active_leaf->get_module();
   assert(module);
@@ -470,24 +506,58 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
   auto current_node = module->get_node();
   assert(current_node);
 
-  Graphviz::visualize(ep);
-
-  /*
   if (current_node->get_type() == BDD::Node::NodeType::BRANCH) {
-    auto branch = static_cast<const BDD::Branch *>(current_node);
-    next_nodes.push_back(branch->get_on_true());
-    next_nodes.push_back(branch->get_on_false());
-  }
-
-  else if (current_node->get_next()) {
-    next_nodes.push_back(current_node->get_next());
+    return;
   }
 
   auto candidates = get_candidates(current_node);
 
-  for (auto candidate : candidates) {
+  if (candidates.size()) {
+    std::cerr << "\n";
+    std::cerr << "*********************************************************"
+                 "********************\n";
+    std::cerr << "  current   : " << current_node->dump(true) << "\n";
+    for (auto candidate : candidates) {
+      std::cerr << "  candidate : " << candidate.node->dump(true) << "\n";
+      if (!candidate.condition.isNull()) {
+        std::cerr << "  condition : "
+                  << expr_to_string(candidate.condition, true) << "\n";
+      }
+      std::cerr << "  siblings :  ";
+      for (auto s : candidate.siblings) {
+        std::cerr << s << " ";
+      }
+      std::cerr << "\n";
+    }
+    std::cerr << "*********************************************************"
+                 "********************\n";
   }
-  */
+
+  for (auto candidate : candidates) {
+    auto current_node_clone = current_node->clone(true);
+    auto candidate_clone = candidate.node->clone(false);
+    auto old_next = current_node_clone->get_next();
+
+    delete_siblings(current_node_clone, candidate.siblings);
+
+    // std::cerr << "OLD\n";
+    // Graphviz::visualize(ep);
+
+    current_node_clone->replace_next(candidate_clone);
+    candidate_clone->replace_next(old_next);
+
+    std::cerr << "current   " << current_node_clone->dump(true) << "\n";
+    std::cerr << "candidate " << candidate_clone->dump(true) << "\n";
+    std::cerr << "next      " << old_next->dump(true) << "\n";
+
+    ExecutionPlan::leaf_t new_leaf(active_leaf, candidate_clone);
+
+    auto new_ep = ep.clone();
+    new_ep.replace_active_leaf(new_leaf);
+
+    std::cerr << "NEW\n";
+    Graphviz::visualize(new_ep);
+  }
 }
 
 } // namespace synapse

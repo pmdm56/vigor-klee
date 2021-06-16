@@ -163,9 +163,6 @@ public:
 
     if (next) {
       next->replace_prev(this);
-    }
-
-    if (next) {
       assert(next->get_prev());
       assert(next->get_prev()->get_id() == id);
     }
@@ -193,7 +190,11 @@ public:
   }
 
   const Node *get_next() const { return next; }
+  Node *get_next() { return next; }
+
   const Node *get_prev() const { return prev; }
+  Node *get_prev() { return prev; }
+
   NodeType get_type() const { return type; }
   uint64_t get_id() const { return id; }
 
@@ -217,7 +218,7 @@ public:
     }
   }
 
-  virtual Node *clone() const = 0;
+  virtual Node *clone(bool recursive = false) const = 0;
 
   void process_call_paths(std::vector<call_path_t *> call_paths) {
     std::string dir_delim = "/";
@@ -275,9 +276,23 @@ public:
 
   const symbols_t &get_generated_symbols() const { return generated_symbols; }
 
-  virtual Node *clone() const override {
-    Call *clone = new Call(id, call, generated_symbols, next, prev,
-                           call_paths_filenames, constraints, missing_calls);
+  virtual Node *clone(bool recursive = false) const override {
+    Call *clone;
+    Node *clone_next;
+
+    if (recursive && next) {
+      clone_next = next->clone(true);
+    } else {
+      clone_next = next;
+    }
+
+    clone = new Call(id, call, generated_symbols, clone_next, prev,
+                     call_paths_filenames, constraints, missing_calls);
+
+    if (recursive && clone_next) {
+      clone_next->prev = clone;
+    }
+
     return clone;
   }
 
@@ -348,6 +363,7 @@ public:
   void add_on_true(Node *_on_true) { add_next(_on_true); }
 
   const Node *get_on_true() const { return next; }
+  Node *get_on_true() { return next; }
 
   void replace_on_false(Node *_on_false) {
     if (on_false) {
@@ -377,6 +393,7 @@ public:
   }
 
   const Node *get_on_false() const { return on_false; }
+  Node *get_on_false() { return on_false; }
 
   ~Branch() {
     if (on_false) {
@@ -384,10 +401,29 @@ public:
     }
   }
 
-  virtual Node *clone() const override {
-    Branch *clone =
-        new Branch(id, condition, next, on_false, prev, call_paths_filenames,
-                   constraints, missing_calls);
+  virtual Node *clone(bool recursive = false) const override {
+    Branch *clone;
+    Node *clone_on_true, *clone_on_false;
+
+    assert(next);
+    assert(on_false);
+
+    if (recursive) {
+      clone_on_true = next->clone(true);
+      clone_on_false = on_false->clone(true);
+    } else {
+      clone_on_true = next;
+      clone_on_false = on_false;
+    }
+
+    clone = new Branch(id, condition, clone_on_true, clone_on_false, prev,
+                       call_paths_filenames, constraints, missing_calls);
+
+    if (recursive) {
+      clone_on_true->prev = clone;
+      clone_on_false->prev = clone;
+    }
+
     return clone;
   }
 
@@ -420,7 +456,7 @@ public:
              _call_paths_filenames, _constraints, _missing_calls),
         calls_list(_calls_list) {}
 
-  virtual Node *clone() const override {
+  virtual Node *clone(bool recursive = false) const override {
     ReturnRaw *clone = new ReturnRaw(id, prev, calls_list, call_paths_filenames,
                                      constraints, missing_calls);
     return clone;
@@ -482,7 +518,7 @@ public:
 
   ReturnType get_return_value() const { return value; }
 
-  virtual Node *clone() const override {
+  virtual Node *clone(bool recursive = false) const override {
     ReturnInit *clone = new ReturnInit(id, prev, value);
     return clone;
   }
@@ -603,7 +639,7 @@ public:
 
   Operation get_return_operation() const { return operation; }
 
-  virtual Node *clone() const override {
+  virtual Node *clone(bool recursive = false) const override {
     ReturnProcess *clone = new ReturnProcess(id, prev, value, operation);
     return clone;
   }

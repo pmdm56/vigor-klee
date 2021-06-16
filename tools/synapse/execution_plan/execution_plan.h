@@ -2,9 +2,9 @@
 
 #include "call-paths-to-bdd.h"
 
+#include "../log.h"
 #include "execution_plan_node.h"
 #include "visitors/visitor.h"
-#include "../log.h"
 
 #include <unordered_set>
 
@@ -56,8 +56,8 @@ public:
     leaves.push_back(leaf);
   }
 
-  ExecutionPlan(const ExecutionPlan &ep, const BDD::BDD *_bdd)
-      : root(ep.root), leaves(ep.leaves), bdd(_bdd),
+  ExecutionPlan(const ExecutionPlan &ep)
+      : root(ep.root), leaves(ep.leaves), bdd(ep.bdd),
         processed_bdd_nodes(ep.processed_bdd_nodes), depth(ep.depth),
         nodes(ep.nodes), id(ep.id) {}
 
@@ -201,7 +201,14 @@ public:
     return leaf;
   }
 
+  void replace_active_leaf(leaf_t new_leaf) {
+    assert(leaves.size());
+    leaves.erase(leaves.begin());
+    leaves.insert(leaves.begin(), new_leaf);
+  }
+
   const std::vector<leaf_t> &get_leaves() const { return leaves; }
+
   const BDD::BDD *get_bdd() const {
     assert(bdd);
     return bdd;
@@ -223,4 +230,4 @@ public:
     return copy;
   }
 };
-}
+} // namespace synapse
