@@ -34,8 +34,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "packet_get_unread_length") {
-      fill_next_nodes(node);
-
       assert(!call.ret.isNull());
       assert(!call.args["p"].expr.isNull());
 

@@ -37,8 +37,6 @@ private:
   BDD::BDDVisitor::Action
   visitReturnProcess(const BDD::ReturnProcess *node) override {
     if (node->get_return_operation() == BDD::ReturnProcess::Operation::FWD) {
-      fill_next_nodes(node);
-
       auto _port = node->get_return_value();
 
       auto new_module = std::make_shared<Forward>(node, _port);

@@ -9,6 +9,7 @@
 
 #include <ctime>
 #include <fstream>
+#include <limits>
 #include <math.h>
 #include <unistd.h>
 
@@ -163,11 +164,11 @@ private:
     leaf_ofs.open(leaf_fpath);
 
     leaf_ofs << "digraph bdd_next {\n";
-    leaf_ofs << "layout=\"dot\";";
+    leaf_ofs << "layout=\"dot\";\n";
     // leaf_ofs << "ratio=\"fill\";\n";
     // leaf_ofs << "size=\"12,12!\";\n";
     // leaf_ofs << "margin=0;\n";
-    leaf_ofs << "node [shape=record,style=filled];\n";
+    leaf_ofs << "node [shape=box,style=filled];\n";
 
     BDD::GraphvizGenerator bdd_graphviz(leaf_ofs);
 
@@ -308,6 +309,9 @@ public:
       Graphviz gv;
       ep.visit(gv);
       gv.open();
+
+      std::cout << "Press Enter to continue ";
+      std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     }
   }
 
@@ -319,6 +323,9 @@ public:
     Graphviz gv(&_search_space);
     ep.visit(gv);
     gv.open();
+
+    std::cout << "\nPress Enter to continue ";
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
   }
 
   ~Graphviz() { ofs.close(); }

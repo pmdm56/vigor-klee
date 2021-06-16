@@ -42,8 +42,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "expire_items_single_map") {
-      fill_next_nodes(node);
-
       assert(!call.args["chain"].expr.isNull());
       assert(!call.args["vector"].expr.isNull());
       assert(!call.args["map"].expr.isNull());

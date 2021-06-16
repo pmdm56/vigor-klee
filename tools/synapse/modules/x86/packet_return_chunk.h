@@ -34,8 +34,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "packet_return_chunk") {
-      fill_next_nodes(node);
-
       assert(!call.args["the_chunk"].expr.isNull());
       assert(!call.args["the_chunk"].in.isNull());
 

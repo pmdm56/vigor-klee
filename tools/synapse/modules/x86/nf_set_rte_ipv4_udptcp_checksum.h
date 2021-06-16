@@ -38,8 +38,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "nf_set_rte_ipv4_udptcp_checksum") {
-      fill_next_nodes(node);
-
       assert(!call.args["ip_header"].expr.isNull());
       assert(!call.args["l4_header"].expr.isNull());
       assert(!call.ret.isNull());

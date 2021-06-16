@@ -5,8 +5,8 @@
 #include "../module.h"
 #include "call-paths-to-bdd.h"
 
-#include "then.h"
 #include "else.h"
+#include "then.h"
 
 namespace synapse {
 namespace targets {
@@ -25,8 +25,6 @@ public:
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    fill_next_nodes(node);
-
     assert(!node->get_condition().isNull());
     auto _condition = node->get_condition();
 

@@ -36,8 +36,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "vector_return") {
-      fill_next_nodes(node);
-
       assert(!call.args["vector"].expr.isNull());
       assert(!call.args["index"].expr.isNull());
       assert(!call.args["value"].expr.isNull());

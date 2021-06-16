@@ -30,8 +30,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "current_time") {
-      fill_next_nodes(node);
-
       assert(!call.ret.isNull());
       auto _time = call.ret;
 

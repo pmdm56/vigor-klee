@@ -33,8 +33,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "rte_ether_addr_hash") {
-      fill_next_nodes(node);
-
       assert(!call.args["obj"].in.isNull());
       assert(!call.ret.isNull());
 

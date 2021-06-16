@@ -40,7 +40,6 @@ done
 for of in "${generated[@]}"
 do
   open $of
-  #rm $of 2> /dev/null
 done
 
 exit 0

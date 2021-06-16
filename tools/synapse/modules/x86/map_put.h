@@ -34,8 +34,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "map_put") {
-      fill_next_nodes(node);
-
       assert(!call.args["map"].expr.isNull());
       assert(!call.args["key"].expr.isNull());
       assert(!call.args["key"].in.isNull());

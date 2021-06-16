@@ -40,8 +40,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "dchain_allocate_new_index") {
-      fill_next_nodes(node);
-
       assert(!call.args["chain"].expr.isNull());
       assert(!call.args["time"].expr.isNull());
       assert(!call.args["index_out"].out.isNull());

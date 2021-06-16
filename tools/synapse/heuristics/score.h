@@ -69,7 +69,7 @@ public:
   friend std::ostream &operator<<(std::ostream &os, const Score &dt);
 };
 
-std::ostream &operator<<(std::ostream &os, const Score &score) {
+inline std::ostream &operator<<(std::ostream &os, const Score &score) {
   os << "<";
 
   for (int category_int = score.FIRST_CATEGORY;

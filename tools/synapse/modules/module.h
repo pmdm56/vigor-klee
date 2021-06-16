@@ -54,9 +54,8 @@ protected:
   const char *name;
   const BDD::Node *node;
 
-  Context *context;                          // intermediary data
-  const BDD::BDD *bdd;                       // intermediary data
-  std::vector<const BDD::Node *> next_nodes; // intermediary data
+  Context *context;    // intermediary data
+  const BDD::BDD *bdd; // intermediary data
 
 protected:
   Module(ModuleType _type, Target _target, const char *_name,
@@ -107,17 +106,6 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const = 0;
 
   ~Module();
-
-protected:
-  bool map_can_reorder(const BDD::Node *before, const BDD::Node *after,
-                       klee::ref<klee::Expr> &condition) const;
-  bool are_rw_dependencies_met(const BDD::Node *current_node,
-                               const BDD::Node *next_node,
-                               klee::ref<klee::Expr> &condition) const;
-  bool is_called_in_all_future_branches(const BDD::Node *start,
-                                        const BDD::Node *target) const;
-  std::vector<const BDD::Node *> get_candidates(const BDD::Node *current_node);
-  void fill_next_nodes(const BDD::Node *current_node);
-  void reset_next_nodes();
 };
+
 } // namespace synapse

@@ -6,14 +6,14 @@ namespace synapse {
 namespace targets {
 namespace fpga {
 
-std::vector<Module_ptr> get_modules() {
-  std::vector<Module_ptr> modules {
+inline std::vector<Module_ptr> get_modules() {
+  std::vector<Module_ptr> modules{
     // MODULE(MapGet),
   };
 
   return modules;
 }
 
-}
-}
-}
+} // namespace fpga
+} // namespace targets
+} // namespace synapse

@@ -32,8 +32,6 @@ private:
   BDD::BDDVisitor::Action
   visitReturnProcess(const BDD::ReturnProcess *node) override {
     if (node->get_return_operation() == BDD::ReturnProcess::Operation::DROP) {
-      fill_next_nodes(node);
-
       auto new_module = std::make_shared<Drop>(node);
       auto ep_node = ExecutionPlanNode::build(new_module);
       auto ep = context->get_current();

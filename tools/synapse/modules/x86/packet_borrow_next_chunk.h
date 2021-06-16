@@ -39,8 +39,6 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "packet_borrow_next_chunk") {
-      fill_next_nodes(node);
-
       assert(!call.args["p"].expr.isNull());
       assert(!call.args["chunk"].out.isNull());
       assert(!call.extra_vars["the_chunk"].second.isNull());

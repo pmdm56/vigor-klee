@@ -33,8 +33,6 @@ private:
   BDD::BDDVisitor::Action
   visitReturnProcess(const BDD::ReturnProcess *node) override {
     if (node->get_return_operation() == BDD::ReturnProcess::Operation::BCAST) {
-      fill_next_nodes(node);
-
       auto new_module = std::make_shared<Broadcast>(node);
       auto ep_node = ExecutionPlanNode::build(new_module);
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
