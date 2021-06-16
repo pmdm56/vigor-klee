@@ -65,6 +65,7 @@ public:
 
     os << "\t\t" << get_gv_name(node);
     os << " [shape=Mdiamond, label=\"";
+    os << node->get_id() << ":";
     os << pretty_print_expr(condition);
     os << "\", color=yellow];\n";
 
@@ -93,6 +94,7 @@ public:
 
     os << "\t\t" << get_gv_name(node);
     os << " [label=\"";
+    os << node->get_id() << ":";
     os << call.function_name;
     os << "(";
 
@@ -105,7 +107,29 @@ public:
 
       os << pair.first << ":";
       arg_t arg = pair.second;
-      os << arg;
+
+      if (arg.fn_ptr_name.first) {
+        os << arg.fn_ptr_name.second;
+      } else {
+        os << pretty_print_expr(arg.expr);
+
+        if (!arg.in.isNull() || !arg.out.isNull()) {
+          os << "[";
+
+          if (!arg.in.isNull()) {
+            os << pretty_print_expr(arg.in);
+          }
+
+          if (!arg.out.isNull() &&
+              (arg.in.isNull() ||
+               !toolbox.are_exprs_always_equal(arg.in, arg.out))) {
+            os << " -> ";
+            os << pretty_print_expr(arg.out);
+          }
+
+          os << "]";
+        }
+      }
 
       if (i != call.args.size() - 1) {
         os << ",";
@@ -152,6 +176,7 @@ public:
 
     os << "\t\t" << get_gv_name(node);
     os << " [label=\"";
+    os << node->get_id() << ":";
     switch (operation) {
     case ReturnProcess::Operation::FWD: {
       os << "fwd(" << value << ")\", color=chartreuse2]";

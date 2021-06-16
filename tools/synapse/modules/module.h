@@ -115,7 +115,8 @@ protected:
                                const BDD::Node *next_node,
                                klee::ref<klee::Expr> &condition) const;
   bool is_called_in_all_future_branches(const BDD::Node *start,
-                                        const BDD::Call *target) const;
+                                        const BDD::Node *target) const;
+  std::vector<const BDD::Node *> get_candidates(const BDD::Node *current_node);
   void fill_next_nodes(const BDD::Node *current_node);
   void reset_next_nodes();
 };

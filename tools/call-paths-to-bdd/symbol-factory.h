@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 namespace BDD {
 
@@ -119,7 +119,7 @@ private:
     auto chunk = call.extra_vars["the_chunk"].second;
     auto chunk_addr = call.args["chunk"].out;
 
-    symbols.emplace_back(build_label("packet_chunks"), chunk, chunk_addr);
+    symbols.emplace_back("packet_chunks", chunk, chunk_addr);
 
     return symbols;
   }
@@ -212,6 +212,7 @@ public:
       { "current_time", &SymbolFactory::curren_time },
       { "packet_return_chunk", &SymbolFactory::no_process },
       { "dchain_rejuvenate_index", &SymbolFactory::no_process },
+      { "packet_get_unread_length", &SymbolFactory::no_process },
       { "vector_return", &SymbolFactory::no_process },
       { "map_put", &SymbolFactory::no_process },
       { "start_time", &SymbolFactory::no_process },
@@ -265,4 +266,4 @@ public:
     stack.pop_back();
   }
 };
-}
+} // namespace BDD

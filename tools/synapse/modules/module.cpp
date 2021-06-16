@@ -4,20 +4,96 @@
 
 namespace synapse {
 
+std::map<std::string, bool> fn_has_side_effects_lookup{
+    {"map_get", false},
+    {"vector_borrow", false},
+    {"vector_return", false},
+    {"rte_ether_addr_hash", false},
+    {"packet_borrow_next_chunk", true},
+    {"expire_items_single_map", true},
+    {"packet_get_unread_length", true},
+    {"packet_return_chunk", true},
+    {"packet_borrow_next_chunk", true},
+    {"map_put", true},
+    {"dchain_allocate_new_index", true},
+    {"dchain_is_index_allocated", false},
+    {"dchain_rejuvenate_index", true},
+};
+
+std::vector<std::string> fn_cannot_reorder_lookup{"packet_return_chunk"};
+
+bool fn_has_side_effects(std::string fn) {
+  auto found = fn_has_side_effects_lookup.find(fn);
+  if (found == fn_has_side_effects_lookup.end()) {
+    std::cerr << "Function " << fn << "not in fn_has_side_effects_lookup\n";
+    assert(false && "TODO");
+  }
+  return found->second;
+}
+
+bool node_has_side_effects(const BDD::Node *node) {
+  if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+    return true;
+  }
+
+  if (node->get_type() == BDD::Node::NodeType::CALL) {
+    auto fn = static_cast<const BDD::Call *>(node);
+    return fn_has_side_effects(fn->get_call().function_name);
+  }
+
+  return false;
+}
+
+bool fn_can_be_reordered(std::string fn) {
+  return std::find(fn_cannot_reorder_lookup.begin(),
+                   fn_cannot_reorder_lookup.end(),
+                   fn) == fn_cannot_reorder_lookup.end();
+}
+
 Module::~Module() { delete context; }
+
+uint64_t get_readLSB_base(klee::ref<klee::Expr> chunk) {
+  std::vector<unsigned> bytes_read;
+  auto success = get_bytes_read(chunk, bytes_read);
+  assert(success);
+  assert(bytes_read.size());
+
+  unsigned min = bytes_read[0];
+  for (auto read : bytes_read) {
+    min = read < min ? read : min;
+  }
+
+  return min;
+}
+
+bool read_in_chunk(klee::ref<klee::ReadExpr> read,
+                   klee::ref<klee::Expr> chunk) {
+  auto index_expr = read->index;
+  auto base = get_readLSB_base(chunk);
+  auto size = chunk->getWidth() / 8;
+
+  assert(index_expr->getKind() == klee::Expr::Kind::Constant);
+
+  klee::ConstantExpr *index_const =
+      static_cast<klee::ConstantExpr *>(index_expr.get());
+  auto index = index_const->getZExtValue();
+
+  return index >= base && index < base + size;
+}
 
 bool are_all_symbols_known(klee::ref<klee::Expr> expr,
                            BDD::symbols_t known_symbols) {
   RetrieveSymbols symbol_retriever;
   symbol_retriever.visit(expr);
 
-  auto dependencies = symbol_retriever.get_retrieved_strings();
+  auto dependencies_str = symbol_retriever.get_retrieved_strings();
 
-  if (dependencies.size() == 0) {
+  if (dependencies_str.size() == 0) {
     return true;
   }
 
-  for (auto symbol : dependencies) {
+  bool packet_dependencies = false;
+  for (auto symbol : dependencies_str) {
     if (BDD::SymbolFactory::should_ignore(symbol)) {
       continue;
     }
@@ -27,13 +103,31 @@ bool are_all_symbols_known(klee::ref<klee::Expr> expr,
                      [&](BDD::symbol_t s) { return s.label == symbol; });
 
     if (found_it == known_symbols.end()) {
-      //   std::cerr << "expr        : " << expr_to_string(expr, true) << "\n";
-      //   std::cerr << "symbols     : ";
-      //   for (auto symbol : symbols) {
-      //     std::cerr << symbol.label << " ";
-      //   }
-      //   std::cerr << "\n";
-      //   std::cerr << "dependency  : " << symbol << " MISSING\n";
+      return false;
+    }
+
+    if (symbol == "packet_chunks") {
+      packet_dependencies = true;
+    }
+  }
+
+  if (!packet_dependencies) {
+    return true;
+  }
+
+  auto packet_deps = symbol_retriever.get_retrieved_packet_chunks();
+
+  for (auto dep : packet_deps) {
+    bool filled = false;
+
+    for (auto known : known_symbols) {
+      if (known.label == "packet_chunks" && read_in_chunk(dep, known.expr)) {
+        filled = true;
+        break;
+      }
+    }
+
+    if (!filled) {
       return false;
     }
   }
@@ -94,6 +188,11 @@ bool Module::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
   auto before_call = before_call_node->get_call();
   auto after_call = after_call_node->get_call();
 
+  if (!fn_has_side_effects(before_call.function_name) &&
+      !fn_has_side_effects(after_call.function_name)) {
+    return true;
+  }
+
   auto before_map_it = before_call.args.find("map");
   auto after_map_it = after_call.args.find("map");
 
@@ -118,7 +217,7 @@ bool Module::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
   if (before_key_it == before_call.args.end() ||
       after_key_it == after_call.args.end()) {
-    return true;
+    return false;
   }
 
   auto before_key = before_key_it->second.in;
@@ -132,11 +231,8 @@ bool Module::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
   for (auto c1 : before_constraints) {
     for (auto c2 : after_constraints) {
-      std::cerr << "always_eq(" << expr_to_string(before_key, true) << ", "
-                << expr_to_string(after_key, true) << ")\n";
       auto always_eq_local = bdd->get_solver_toolbox().are_exprs_always_equal(
           before_key, after_key, c1, c2);
-      std::cerr << "DONE1\n";
 
       if (!always_eq.first) {
         always_eq.first = true;
@@ -145,12 +241,9 @@ bool Module::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
       assert(always_eq.second == always_eq_local);
 
-      std::cerr << "always_diff(" << expr_to_string(before_key, true) << ", "
-                << expr_to_string(after_key, true) << ")\n";
       auto always_diff_local =
           bdd->get_solver_toolbox().are_exprs_always_not_equal(
               before_key, after_key, c1, c2);
-      std::cerr << "DONE2\n";
 
       if (!always_diff.first) {
         always_diff.first = true;
@@ -162,6 +255,8 @@ bool Module::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
   }
 
   std::cerr << "\n";
+  std::cerr << "before " << before->get_id() << ":" << before_call << "\n";
+  std::cerr << "after  " << after->get_id() << ":" << after_call << "\n";
   std::cerr << "before key  " << expr_to_string(before_key, true) << "\n";
   std::cerr << "after  key  " << expr_to_string(after_key, true) << "\n";
   std::cerr << "always eq   " << always_eq.second << "\n";
@@ -221,7 +316,7 @@ bool Module::are_rw_dependencies_met(const BDD::Node *current_node,
 }
 
 bool Module::is_called_in_all_future_branches(const BDD::Node *start,
-                                              const BDD::Call *target) const {
+                                              const BDD::Node *target) const {
   assert(start);
   assert(target);
 
@@ -234,10 +329,13 @@ bool Module::is_called_in_all_future_branches(const BDD::Node *start,
       return false;
     }
 
-    if (node->get_type() == BDD::Node::NodeType::CALL) {
+    if (node->get_type() == BDD::Node::NodeType::CALL &&
+        node->get_type() == BDD::Node::NodeType::CALL) {
       auto node_call = static_cast<const BDD::Call *>(node);
-      auto eq = bdd->get_solver_toolbox().are_calls_equal(node_call->get_call(),
-                                                          target->get_call());
+      auto target_call = static_cast<const BDD::Call *>(target);
+
+      auto eq = bdd->get_solver_toolbox().are_calls_equal(
+          node_call->get_call(), target_call->get_call());
 
       if (eq) {
         nodes.erase(nodes.begin());
@@ -245,7 +343,21 @@ bool Module::is_called_in_all_future_branches(const BDD::Node *start,
       }
     }
 
-    else if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+    else if (node->get_type() == BDD::Node::NodeType::BRANCH &&
+             node->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto node_branch = static_cast<const BDD::Branch *>(node);
+      auto target_branch = static_cast<const BDD::Branch *>(target);
+
+      auto eq = bdd->get_solver_toolbox().are_exprs_always_equal(
+          node_branch->get_condition(), target_branch->get_condition());
+
+      if (eq) {
+        nodes.erase(nodes.begin());
+        continue;
+      }
+    }
+
+    if (node->get_type() == BDD::Node::NodeType::BRANCH) {
       auto node_branch = static_cast<const BDD::Branch *>(node);
       nodes.push_back(node_branch->get_on_true());
       nodes.push_back(node_branch->get_on_false());
@@ -260,58 +372,104 @@ bool Module::is_called_in_all_future_branches(const BDD::Node *start,
   return true;
 }
 
-void Module::fill_next_nodes(const BDD::Node *current_node) {
-  if (!current_node->get_next()) {
-    return;
+std::vector<const BDD::Node *>
+Module::get_candidates(const BDD::Node *current_node) {
+  std::vector<const BDD::Node *> candidates;
+
+  if (!current_node->get_next() || !current_node->get_next()->get_next()) {
+    return candidates;
   }
 
-  std::vector<const BDD::Node *> candidates = {current_node->get_next()};
+  auto check_future_branches = false;
+  auto next = current_node->get_next();
 
-  bool check_future_branches = false;
+  if (next->get_type() == BDD::Node::BRANCH) {
+    auto branch = static_cast<const BDD::Branch *>(next);
+    candidates.push_back(branch->get_on_true());
+    candidates.push_back(branch->get_on_false());
+    check_future_branches = true;
+  } else {
+    candidates.push_back(next->get_next());
+  }
+
   while (candidates.size()) {
+    klee::ref<klee::Expr> reordering_condition;
+
     auto candidate = candidates[0];
     candidates.erase(candidates.begin());
 
-    if (!candidate->get_next())
+    // std::cerr << "  *** current   : " << current_node->dump(true) << "\n";
+    // std::cerr << "  *** candidate : " << candidate->dump(true) << "\n";
+
+    if (candidate->get_type() == BDD::Node::BRANCH) {
+      auto branch = static_cast<const BDD::Branch *>(candidate);
+      check_future_branches = true;
+
+      candidates.push_back(branch->get_on_true());
+      candidates.push_back(branch->get_on_false());
+    } else if (candidate->get_next()) {
+      candidates.push_back(candidate->get_next());
+    }
+
+    if (!are_io_dependencies_met(current_node, candidate)) {
       continue;
+    }
 
     if (candidate->get_type() == BDD::Node::NodeType::CALL) {
-      if (!are_io_dependencies_met(current_node, candidate)) {
-        continue;
-      }
-
-      klee::ref<klee::Expr> reordering_condition;
       if (!are_rw_dependencies_met(current_node, candidate,
                                    reordering_condition)) {
         continue;
       }
 
-      /*
       auto candidate_call = static_cast<const BDD::Call *>(candidate);
-      auto viable = !check_future_branches || is_called_in_all_future_branches(
-                                                  current_node, candidate_call);
-      */
 
-      std::cerr << "\n";
-      std::cerr << "*********************************************************"
-                   "********************\n";
-      std::cerr << "  current   : " << current_node->dump(true) << "\n";
-      std::cerr << "  candidate : " << candidate->dump(true) << "\n";
-      // std::cerr << "  viable    : " << (viable ? "YES" : "no") << "\n";
-      if (!reordering_condition.isNull()) {
-        std::cerr << "  condition : "
-                  << expr_to_string(reordering_condition, true) << "\n";
+      if (!fn_can_be_reordered(candidate_call->get_call().function_name)) {
+        continue;
       }
-      std::cerr << "*********************************************************"
-                   "********************\n";
     }
 
-    if (!check_future_branches) {
-      check_future_branches =
-          (candidate->get_type() == BDD::Node::NodeType::BRANCH);
+    auto viable = !check_future_branches || !node_has_side_effects(candidate) ||
+                  is_called_in_all_future_branches(current_node, candidate);
+
+    if (!viable) {
+      continue;
     }
 
-    candidates.push_back(candidate->get_next());
+    std::cerr << "\n";
+    std::cerr << "*********************************************************"
+                 "********************\n";
+    std::cerr << "  current   : " << current_node->dump(true) << "\n";
+    std::cerr << "  candidate : " << candidate->dump(true) << "\n";
+    if (candidate->get_type() == BDD::Node::NodeType::CALL) {
+      std::cerr << "  check future branches : " << check_future_branches
+                << "\n";
+      std::cerr << "  has side effects : "
+                << (fn_has_side_effects(
+                       (static_cast<const BDD::Call *>(candidate))
+                           ->get_call()
+                           .function_name))
+                << "\n";
+      std::cerr << "  is_called_in_all_future_branches : "
+                << (is_called_in_all_future_branches(
+                       current_node, static_cast<const BDD::Call *>(candidate)))
+                << "\n";
+    }
+    if (!reordering_condition.isNull()) {
+      std::cerr << "  condition : "
+                << expr_to_string(reordering_condition, true) << "\n";
+    }
+    std::cerr << "*********************************************************"
+                 "********************\n";
+    std::cerr << "\n";
+  }
+
+  return candidates;
+}
+
+void Module::fill_next_nodes(const BDD::Node *current_node) {
+  auto candidates = get_candidates(current_node);
+
+  for (auto candidate : candidates) {
   }
 }
 

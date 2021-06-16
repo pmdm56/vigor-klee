@@ -16,7 +16,8 @@ std::vector<std::string> call_paths_t::skip_functions{
     "packet_receive",
     "packet_state_total_length",
     "packet_free",
-    "packet_send"};
+    "packet_send",
+    "packet_get_unread_length"};
 
 bool call_paths_t::is_skip_function(const std::string &fname) {
   auto found_it = std::find(call_paths_t::skip_functions.begin(),
@@ -179,10 +180,6 @@ uint64_t solver_toolbox_t::value_from_expr(klee::ref<klee::Expr> expr) const {
 }
 
 bool solver_toolbox_t::are_calls_equal(call_t c1, call_t c2) const {
-  std::cerr << "\n";
-  std::cerr << "c1:           " << c1 << "\n";
-  std::cerr << "c2:           " << c2 << "\n";
-
   if (c1.function_name != c2.function_name) {
     return false;
   }
@@ -219,14 +216,10 @@ bool solver_toolbox_t::are_calls_equal(call_t c1, call_t c2) const {
 
     if (in1.isNull() && out1.isNull() &&
         !are_exprs_always_equal(expr1, expr2)) {
-      std::cerr << "expr diff c1: " << expr_to_string(expr1, true) << "\n";
-      std::cerr << "expr diff c2: " << expr_to_string(expr2, true) << "\n";
       return false;
     }
 
     if (!in1.isNull() && !are_exprs_always_equal(in1, in2)) {
-      std::cerr << "in diff c1:   " << expr_to_string(in1, true) << "\n";
-      std::cerr << "in diff c2:   " << expr_to_string(in2, true) << "\n";
       return false;
     }
   }
