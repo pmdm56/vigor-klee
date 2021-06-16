@@ -445,6 +445,11 @@ BDD::Node* reorder_bdd(BDD::Node* node, candidate_t candidate) {
   struct aux_t {
     BDD::Node* node;
     std::map<uint64_t,bool> branch_decisions;
+
+    aux_t(BDD::Node* _node) : node(_node) {}
+    aux_t(BDD::Node* _node, unint64_t id, bool direction) : node(_node) {
+      branch_decisions[id] = direction;
+    }
   };
 
   auto candidate_clone = candidate.node->clone(false);
@@ -454,6 +459,32 @@ BDD::Node* reorder_bdd(BDD::Node* node, candidate_t candidate) {
   assert(old_next);
 
   node->replace_next(candidate_clone);
+
+  if (candidate_clone->get_type() == BDD::Node::NodeType::BRANCH) {
+    auto branch = static_cast<BDD::Branch*>(candidate_clone);
+
+    auto old_next_on_true = old_next->clone(true);
+    auto old_next_on_false = old_next->clone(true);
+
+    branch->replace_on_true(old_next_on_true);
+    branch->replace_on_false(old_next_on_false);
+
+    leaves.emplace_back(old_next_on_true, candidate_clone->get_id(), true);
+    leaves.emplace_back(old_next_on_false, candidate_clone->get_id(), false);
+  } else {
+    candidate_clone->replace_next(old_next);
+    leaves.emplace_back(old_next);
+  }
+
+  while (leaves.size()) {
+    if (!leaves[0].node) {
+      leaves.erase(leaves.begin());
+      continue:
+    }
+
+    
+  }
+
 
   return candidate_clone;
 }
