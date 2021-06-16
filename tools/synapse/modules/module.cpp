@@ -467,6 +467,16 @@ Module::get_candidates(const BDD::Node *current_node) {
 }
 
 void Module::fill_next_nodes(const BDD::Node *current_node) {
+  if (current_node->get_type() == BDD::Node::NodeType::BRANCH) {
+    auto branch = static_cast<const BDD::Branch *>(current_node);
+    next_nodes.push_back(branch->get_on_true());
+    next_nodes.push_back(branch->get_on_false());
+  }
+
+  else if (current_node->get_next()) {
+    next_nodes.push_back(current_node->get_next());
+  }
+
   auto candidates = get_candidates(current_node);
 
   for (auto candidate : candidates) {
