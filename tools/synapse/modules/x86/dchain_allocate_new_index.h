@@ -78,6 +78,12 @@ public:
     visitor.visit(this);
   }
 
+  virtual Module_ptr clone() const override {
+    auto cloned =
+        new DchainAllocateNewIndex(node, dchain_addr, time, index_out, success);
+    return std::shared_ptr<Module>(cloned);
+  }
+
   const klee::ref<klee::Expr> &get_dchain_addr() const { return dchain_addr; }
 
   const klee::ref<klee::Expr> &get_time() const { return time; }

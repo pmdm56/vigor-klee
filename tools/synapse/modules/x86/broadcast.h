@@ -49,6 +49,11 @@ public:
   virtual void visit(ExecutionPlanVisitor &visitor) const override {
     visitor.visit(this);
   }
+
+  virtual Module_ptr clone() const override {
+    auto cloned = new Broadcast(node);
+    return std::shared_ptr<Module>(cloned);
+  }
 };
 } // namespace x86
 } // namespace targets

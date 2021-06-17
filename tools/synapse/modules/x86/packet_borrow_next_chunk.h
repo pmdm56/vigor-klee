@@ -77,6 +77,12 @@ public:
     visitor.visit(this);
   }
 
+  virtual Module_ptr clone() const override {
+    auto cloned =
+        new PacketBorrowNextChunk(node, p_addr, chunk_addr, chunk, length);
+    return std::shared_ptr<Module>(cloned);
+  }
+
   const klee::ref<klee::Expr> &get_p_addr() const { return p_addr; }
 
   const klee::ref<klee::Expr> &get_chunk_addr() const { return chunk_addr; }

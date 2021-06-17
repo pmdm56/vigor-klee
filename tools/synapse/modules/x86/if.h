@@ -71,6 +71,11 @@ public:
     visitor.visit(this);
   }
 
+  virtual Module_ptr clone() const override {
+    auto cloned = new If(node, condition);
+    return std::shared_ptr<Module>(cloned);
+  }
+
   const klee::ref<klee::Expr> &get_condition() const { return condition; }
 };
 } // namespace x86

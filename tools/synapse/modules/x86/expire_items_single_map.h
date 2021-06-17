@@ -83,6 +83,12 @@ public:
     visitor.visit(this);
   }
 
+  virtual Module_ptr clone() const override {
+    auto cloned = new ExpireItemsSingleMap(
+        node, dchain_addr, map_addr, vector_addr, time, number_of_freed_flows);
+    return std::shared_ptr<Module>(cloned);
+  }
+
   const klee::ref<klee::Expr> &get_dchain_addr() const { return dchain_addr; }
 
   const klee::ref<klee::Expr> &get_vector_addr() const { return vector_addr; }

@@ -66,6 +66,11 @@ public:
     visitor.visit(this);
   }
 
+  virtual Module_ptr clone() const override {
+    auto cloned = new RteEtherAddrHash(node, obj, hash);
+    return std::shared_ptr<Module>(cloned);
+  }
+
   const klee::ref<klee::Expr> &get_obj() const { return obj; }
   const klee::ref<klee::Expr> &get_hash() const { return hash; }
 };

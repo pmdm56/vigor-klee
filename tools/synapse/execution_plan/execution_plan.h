@@ -201,10 +201,18 @@ public:
     return leaf;
   }
 
-  void replace_active_leaf(leaf_t new_leaf) {
+  void replace_active_leaf_node(const BDD::Node *node) {
     assert(leaves.size());
-    leaves.erase(leaves.begin());
-    leaves.insert(leaves.begin(), new_leaf);
+    assert(node);
+    assert(node->get_type() != BDD::Node::NodeType::BRANCH);
+
+    auto module = leaves[0].leaf->get_module();
+    auto cloned = module->clone();
+
+    cloned->replace_node(node);
+
+    leaves[0].leaf->replace_module(cloned);
+    leaves[0].next = node->get_next();
   }
 
   const std::vector<leaf_t> &get_leaves() const { return leaves; }

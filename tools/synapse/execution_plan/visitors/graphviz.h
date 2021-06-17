@@ -304,18 +304,21 @@ private:
   }
 
 public:
-  static void visualize(const ExecutionPlan &ep) {
+  static void visualize(const ExecutionPlan &ep, bool interrupt = true) {
     if (ep.get_root()) {
       Graphviz gv;
       ep.visit(gv);
       gv.open();
 
-      std::cout << "Press Enter to continue ";
-      std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+      if (interrupt) {
+        std::cout << "Press Enter to continue ";
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+      }
     }
   }
 
-  static void visualize(const ExecutionPlan &ep, SearchSpace &_search_space) {
+  static void visualize(const ExecutionPlan &ep, SearchSpace &_search_space,
+                        bool interrupt = true) {
     if (!ep.get_root()) {
       return;
     }
@@ -324,8 +327,10 @@ public:
     ep.visit(gv);
     gv.open();
 
-    std::cout << "\nPress Enter to continue ";
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    if (interrupt) {
+      std::cout << "\nPress Enter to continue ";
+      std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
   }
 
   ~Graphviz() { ofs.close(); }
@@ -343,9 +348,18 @@ public:
     ofs << "}\n";
     ofs.flush();
 
+    /*
     for (auto leaf : ep.get_leaves()) {
       bdd_fpaths.clear();
       dump_bdd(leaf.next);
+    }
+    */
+
+    auto next_node = ep.get_next_node();
+
+    if (next_node) {
+      bdd_fpaths.clear();
+      dump_bdd(ep.get_next_node());
     }
 
     if (search_space) {

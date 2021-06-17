@@ -56,6 +56,11 @@ public:
     visitor.visit(this);
   }
 
+  virtual Module_ptr clone() const override {
+    auto cloned = new Forward(node, port);
+    return std::shared_ptr<Module>(cloned);
+  }
+
   int get_port() const { return port; }
 };
 } // namespace x86

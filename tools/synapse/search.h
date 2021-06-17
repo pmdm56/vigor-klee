@@ -90,7 +90,7 @@ public:
       Log::dbg() << "=======================================================\n";
     }
 
-    // synapse::Graphviz::visualize(h.get(), search_space);
+    synapse::Graphviz::visualize(h.get(), search_space);
     return h.get();
   }
 };

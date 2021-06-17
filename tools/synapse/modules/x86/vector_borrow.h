@@ -74,6 +74,12 @@ public:
     visitor.visit(this);
   }
 
+  virtual Module_ptr clone() const override {
+    auto cloned =
+        new VectorBorrow(node, vector_addr, index, value_out, borrowed_cell);
+    return std::shared_ptr<Module>(cloned);
+  }
+
   const klee::ref<klee::Expr> &get_vector_addr() const { return vector_addr; }
   const klee::ref<klee::Expr> &get_index() const { return index; }
   const klee::ref<klee::Expr> &get_value_out() const { return value_out; }

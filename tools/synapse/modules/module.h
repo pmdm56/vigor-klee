@@ -83,6 +83,11 @@ public:
     return node;
   }
 
+  void replace_node(const BDD::Node *_node) {
+    node = _node;
+    assert(node);
+  }
+
   std::string get_target_name() const {
     switch (target) {
     case x86:
@@ -104,6 +109,7 @@ public:
                        const BDD::BDD &bdd);
 
   virtual void visit(ExecutionPlanVisitor &visitor) const = 0;
+  virtual Module_ptr clone() const = 0;
 
   ~Module();
 };

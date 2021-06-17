@@ -93,8 +93,8 @@ private:
                                         const BDD::Node *target,
                                         std::vector<uint64_t> &siblings) const;
   std::vector<candidate_t> get_candidates(const BDD::Node *current_node);
-  BDD::Node *reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
-                         candidate_t candidate);
+  void reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
+                   candidate_t candidate);
   void add_reordered_next_eps(const ExecutionPlan &ep);
 };
 } // namespace synapse

@@ -68,6 +68,11 @@ public:
     visitor.visit(this);
   }
 
+  virtual Module_ptr clone() const override {
+    auto cloned = new PacketGetUnreadLength(node, p_addr, unread_length);
+    return std::shared_ptr<Module>(cloned);
+  }
+
   const klee::ref<klee::Expr> &get_p_addr() const { return p_addr; }
   const klee::ref<klee::Expr> &get_unread_length() const {
     return unread_length;

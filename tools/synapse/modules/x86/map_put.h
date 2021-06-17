@@ -72,6 +72,11 @@ public:
     visitor.visit(this);
   }
 
+  virtual Module_ptr clone() const override {
+    auto cloned = new MapPut(node, map_addr, key_addr, key, value);
+    return std::shared_ptr<Module>(cloned);
+  }
+
   const klee::ref<klee::Expr> &get_map_addr() const { return map_addr; }
   const klee::ref<klee::Expr> &get_key_addr() const { return key_addr; }
   const klee::ref<klee::Expr> &get_key() const { return key; }

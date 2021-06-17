@@ -378,7 +378,8 @@ Context::get_candidates(const BDD::Node *current_node) {
   std::vector<candidate_t> viable_candidates;
   std::vector<candidate_t> candidates;
 
-  if (!current_node->get_next() || !current_node->get_next()->get_next()) {
+  if (!current_node->get_next() || !current_node->get_next()->get_next() ||
+      current_node->get_type() == BDD::Node::BRANCH) {
     return candidates;
   }
 
@@ -457,8 +458,10 @@ Context::get_candidates(const BDD::Node *current_node) {
   return viable_candidates;
 }
 
-BDD::Node *Context::reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
-                                candidate_t candidate) {
+void Context::reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
+                          candidate_t candidate) {
+  static uint64_t id = bdd->get_id();
+
   struct aux_t {
     BDD::Node *node;
     bool branch_decision;
@@ -470,8 +473,6 @@ BDD::Node *Context::reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
   };
 
   std::vector<aux_t> leaves;
-
-  assert(candidate.condition.isNull() && "TODO");
   auto candidate_clone = candidate.node->clone();
 
   // std::cerr << "pulling " << candidate_clone->dump(true) << "\n";
@@ -480,7 +481,34 @@ BDD::Node *Context::reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
   assert(old_next);
   old_next = old_next->clone(true);
 
-  node->replace_next(candidate_clone);
+  if (!candidate.condition.isNull()) {
+    std::vector<call_path_t *> no_call_paths;
+
+    auto old_next_cloned = old_next->clone(true);
+    old_next_cloned->recursive_update_ids(id);
+
+    auto branch = new BDD::Branch(++id, candidate.condition, no_call_paths);
+
+    branch->replace_on_true(candidate_clone);
+    branch->replace_on_false(old_next_cloned);
+
+    node->replace_next(branch);
+
+    std::cerr << "node  " << node->dump(true) << "\n";
+    std::cerr << "next  " << node->get_next()->dump(true) << "\n";
+    std::cerr << "true  "
+              << static_cast<BDD::Branch *>(node->get_next())
+                     ->get_on_true()
+                     ->dump(true)
+              << "\n";
+    std::cerr << "false "
+              << static_cast<BDD::Branch *>(node->get_next())
+                     ->get_on_false()
+                     ->dump(true)
+              << "\n";
+  } else {
+    node->replace_next(candidate_clone);
+  }
 
   if (candidate_clone->get_type() == BDD::Node::NodeType::BRANCH) {
     auto branch = static_cast<BDD::Branch *>(candidate_clone);
@@ -590,12 +618,10 @@ BDD::Node *Context::reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
 
   if (candidate_clone->get_type() == BDD::Node::NodeType::BRANCH) {
     auto branch = static_cast<BDD::Branch *>(candidate_clone);
-
-    uint64_t id = bdd->get_id();
     branch->get_on_false()->recursive_update_ids(id);
   }
 
-  return candidate_clone;
+  return;
 }
 
 void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
@@ -611,6 +637,10 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
   auto current_node = module->get_node();
   assert(current_node);
 
+  if (current_node->get_type() == BDD::Node::BRANCH) {
+    return;
+  }
+
   auto candidates = get_candidates(current_node);
 
   if (candidates.size()) {
@@ -619,6 +649,7 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
                  "********************\n";
     std::cerr << "  current   : " << current_node->dump(true) << "\n";
     for (auto candidate : candidates) {
+      std::cerr << "\n";
       std::cerr << "  candidate : " << candidate.node->dump(true) << "\n";
       if (!candidate.condition.isNull()) {
         std::cerr << "  condition : "
@@ -636,17 +667,17 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
 
   for (auto candidate : candidates) {
     auto current_node_clone = current_node->clone(true);
-    auto candidate_clone = reorder_bdd(ep, current_node_clone, candidate);
+    reorder_bdd(ep, current_node_clone, candidate);
 
     auto new_ep = ep.clone();
-    auto new_active_leaf = new_ep.get_active_leaf();
-    ExecutionPlan::leaf_t new_leaf(new_active_leaf, candidate_clone);
-
-    new_ep.replace_active_leaf(new_leaf);
+    new_ep.replace_active_leaf_node(current_node_clone);
     next_eps.push_back(new_ep);
 
-    std::cerr << "NEW\n";
-    Graphviz::visualize(new_ep);
+    // std::cerr << "OLD\n";
+    // Graphviz::visualize(ep);
+
+    // std::cerr << "NEW\n";
+    // Graphviz::visualize(new_ep);
   }
 }
 

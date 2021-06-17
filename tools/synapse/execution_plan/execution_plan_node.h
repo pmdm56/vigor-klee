@@ -2,9 +2,9 @@
 
 #include "call-paths-to-bdd.h"
 
+#include "../log.h"
 #include "../modules/module.h"
 #include "visitors/visitor.h"
-#include "../log.h"
 
 namespace synapse {
 
@@ -43,6 +43,8 @@ public:
   }
 
   const Module_ptr &get_module() const { return module; }
+  void replace_module(Module_ptr _module) { module = _module; }
+
   const Branches &get_next() const { return next; }
   ExecutionPlanNode_ptr get_prev() const { return prev; }
   int get_id() const { return id; }
@@ -59,4 +61,4 @@ public:
     return std::shared_ptr<ExecutionPlanNode>(epn);
   }
 };
-}
+} // namespace synapse
