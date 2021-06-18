@@ -20,12 +20,13 @@ std::map<std::string, bool> fn_has_side_effects_lookup{
     {"dchain_rejuvenate_index", true},
 };
 
-std::vector<std::string> fn_cannot_reorder_lookup{"packet_return_chunk"};
+std::vector<std::string> fn_cannot_reorder_lookup{
+    "packet_return_chunk", "nf_set_rte_ipv4_udptcp_checksum"};
 
 bool fn_has_side_effects(std::string fn) {
   auto found = fn_has_side_effects_lookup.find(fn);
   if (found == fn_has_side_effects_lookup.end()) {
-    std::cerr << "Function " << fn << "not in fn_has_side_effects_lookup\n";
+    std::cerr << "Function " << fn << " not in fn_has_side_effects_lookup\n";
     assert(false && "TODO");
   }
   return found->second;
@@ -205,8 +206,7 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
   assert(!before_map.isNull());
   assert(!after_map.isNull());
 
-  if (!bdd->get_solver_toolbox().are_exprs_always_equal(before_map,
-                                                        after_map)) {
+  if (!BDD::BDD::solver_toolbox.are_exprs_always_equal(before_map, after_map)) {
     return true;
   }
 
@@ -229,7 +229,7 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
   for (auto c1 : before_constraints) {
     for (auto c2 : after_constraints) {
-      auto always_eq_local = bdd->get_solver_toolbox().are_exprs_always_equal(
+      auto always_eq_local = BDD::BDD::solver_toolbox.are_exprs_always_equal(
           before_key, after_key, c1, c2);
 
       if (!always_eq.first) {
@@ -240,7 +240,7 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
       assert(always_eq.second == always_eq_local);
 
       auto always_diff_local =
-          bdd->get_solver_toolbox().are_exprs_always_not_equal(
+          BDD::BDD::solver_toolbox.are_exprs_always_not_equal(
               before_key, after_key, c1, c2);
 
       if (!always_diff.first) {
@@ -269,8 +269,52 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
     return true;
   }
 
-  condition = bdd->get_solver_toolbox().exprBuilder->Eq(before_key, after_key);
+  condition = BDD::BDD::solver_toolbox.exprBuilder->Eq(before_key, after_key);
   return true;
+};
+
+bool Context::dchain_can_reorder(const BDD::Node *before,
+                                 const BDD::Node *after,
+                                 klee::ref<klee::Expr> &condition) const {
+  if (before->get_type() != after->get_type() ||
+      before->get_type() != BDD::Node::NodeType::CALL) {
+    return true;
+  }
+
+  auto before_constraints = before->get_constraints();
+  auto after_constraints = after->get_constraints();
+
+  auto before_call_node = static_cast<const BDD::Call *>(before);
+  auto after_call_node = static_cast<const BDD::Call *>(after);
+
+  auto before_call = before_call_node->get_call();
+  auto after_call = after_call_node->get_call();
+
+  if (!fn_has_side_effects(before_call.function_name) &&
+      !fn_has_side_effects(after_call.function_name)) {
+    return true;
+  }
+
+  auto before_dchain_it = before_call.args.find("dchain");
+  auto after_dchain_it = after_call.args.find("dchain");
+
+  if (before_dchain_it == before_call.args.end() ||
+      after_dchain_it == after_call.args.end()) {
+    return true;
+  }
+
+  auto before_dchain = before_dchain_it->second.expr;
+  auto after_dchain = after_dchain_it->second.expr;
+
+  assert(!before_dchain.isNull());
+  assert(!after_dchain.isNull());
+
+  if (!BDD::BDD::solver_toolbox.are_exprs_always_equal(before_dchain,
+                                                       after_dchain)) {
+    return true;
+  }
+
+  return false;
 };
 
 bool Context::are_rw_dependencies_met(const BDD::Node *current_node,
@@ -286,6 +330,10 @@ bool Context::are_rw_dependencies_met(const BDD::Node *current_node,
     klee::ref<klee::Expr> local_condition;
 
     if (!map_can_reorder(node, next_node, local_condition)) {
+      return false;
+    }
+
+    if (!dchain_can_reorder(node, next_node, local_condition)) {
       return false;
     }
 
@@ -305,8 +353,8 @@ bool Context::are_rw_dependencies_met(const BDD::Node *current_node,
 
   all_conditions.pop_back();
   while (all_conditions.size()) {
-    condition = bdd->get_solver_toolbox().exprBuilder->And(condition,
-                                                           all_conditions[0]);
+    condition =
+        BDD::BDD::solver_toolbox.exprBuilder->And(condition, all_conditions[0]);
     all_conditions.pop_back();
   }
 
@@ -333,7 +381,7 @@ bool Context::is_called_in_all_future_branches(
       auto node_call = static_cast<const BDD::Call *>(node);
       auto target_call = static_cast<const BDD::Call *>(target);
 
-      auto eq = bdd->get_solver_toolbox().are_calls_equal(
+      auto eq = BDD::BDD::solver_toolbox.are_calls_equal(
           node_call->get_call(), target_call->get_call());
 
       if (eq) {
@@ -348,7 +396,7 @@ bool Context::is_called_in_all_future_branches(
       auto node_branch = static_cast<const BDD::Branch *>(node);
       auto target_branch = static_cast<const BDD::Branch *>(target);
 
-      auto eq = bdd->get_solver_toolbox().are_exprs_always_equal(
+      auto eq = BDD::BDD::solver_toolbox.are_exprs_always_equal(
           node_branch->get_condition(), target_branch->get_condition());
 
       if (eq) {
@@ -430,14 +478,14 @@ Context::get_candidates(const BDD::Node *current_node) {
     }
 
     if (candidate.node->get_type() == BDD::Node::NodeType::CALL) {
-      if (!are_rw_dependencies_met(current_node, candidate.node,
-                                   candidate.condition)) {
-        continue;
-      }
-
       auto candidate_call = static_cast<const BDD::Call *>(candidate.node);
 
       if (!fn_can_be_reordered(candidate_call->get_call().function_name)) {
+        continue;
+      }
+
+      if (!are_rw_dependencies_met(current_node, candidate.node,
+                                   candidate.condition)) {
         continue;
       }
     }
@@ -669,15 +717,13 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
     auto current_node_clone = current_node->clone(true);
     reorder_bdd(ep, current_node_clone, candidate);
 
-    auto new_ep = ep.clone();
-    new_ep.replace_active_leaf_node(current_node_clone);
+    auto new_ep = ep.clone_and_replace_active_leaf_node(current_node_clone);
     next_eps.push_back(new_ep);
 
     // std::cerr << "OLD\n";
-    // Graphviz::visualize(ep);
-
+    // Graphviz::visualize(ep, false);
     // std::cerr << "NEW\n";
-    // Graphviz::visualize(new_ep);
+    // Graphviz::visualize(new_ep, false);
   }
 }
 

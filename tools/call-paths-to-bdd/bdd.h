@@ -9,8 +9,9 @@ class BDD {
 public:
   friend class CallPathsGroup;
 
+  static solver_toolbox_t solver_toolbox;
+
 private:
-  solver_toolbox_t solver_toolbox;
   SymbolFactory symbol_factory;
 
   uint64_t id;
@@ -45,6 +46,8 @@ private:
 
 public:
   BDD(std::vector<call_path_t *> _call_paths) : id(0), call_paths(_call_paths) {
+    solver_toolbox.build();
+
     call_paths_t cp(call_paths);
     Node *root = populate(cp);
 
@@ -54,17 +57,45 @@ public:
     delete root;
   }
 
+  BDD(const BDD &bdd)
+      : symbol_factory(bdd.symbol_factory), id(bdd.id), nf_init(bdd.nf_init),
+        nf_process(bdd.nf_process), call_paths(bdd.call_paths) {}
+
   const Node *get_init() const { return nf_init.get(); }
+  Node *get_init() { return nf_init.get(); }
+
   const Node *get_process() const { return nf_process.get(); }
+  Node *get_process() { return nf_process.get(); }
+
+  void replace_process(Node *_process) {
+    nf_process = std::shared_ptr<Node>(_process);
+  }
+
   const std::vector<call_path_t *> &get_call_paths() const {
     return call_paths;
   }
 
-  const solver_toolbox_t &get_solver_toolbox() const { return solver_toolbox; }
-
   void visit(BDDVisitor &visitor) const { visitor.visit(*this); }
 
   uint64_t get_id() const { return id; }
+
+  std::shared_ptr<BDD> clone() const {
+    BDD *bdd = new BDD(*this);
+
+    auto init = bdd->nf_init.get();
+    auto process = bdd->nf_process.get();
+
+    auto init_clone = init->clone(true);
+    auto process_clone = process->clone(true);
+
+    assert(init_clone);
+    assert(process_clone);
+
+    bdd->nf_init = std::shared_ptr<Node>(init_clone);
+    bdd->nf_process = std::shared_ptr<Node>(process_clone);
+
+    return std::shared_ptr<BDD>(bdd);
+  }
 };
 
 } // namespace BDD

@@ -28,7 +28,7 @@ private:
   ExecutionPlanNode_ptr root;
   std::vector<leaf_t> leaves;
 
-  const BDD::BDD *bdd;
+  std::shared_ptr<BDD::BDD> bdd;
 
   // Implementation details
 private:
@@ -50,9 +50,11 @@ private:
   static int counter;
 
 public:
-  ExecutionPlan(const BDD::Node *_next, const BDD::BDD *_bdd)
-      : bdd(_bdd), depth(0), nodes(0), id(counter++), reordered_nodes(0) {
-    leaf_t leaf(_next);
+  ExecutionPlan(const BDD::BDD *_bdd)
+      : bdd(_bdd->clone()), depth(0), nodes(0), id(counter++),
+        reordered_nodes(0) {
+    assert(bdd->get_process());
+    leaf_t leaf(bdd->get_process());
     leaves.push_back(leaf);
   }
 
@@ -174,10 +176,13 @@ private:
     update_leaves(_leaves);
   }
 
+  void replace_node_in_bdd(BDD::Node *target);
+
 public:
-  int get_depth() const { return depth; }
-  int get_nodes() const { return nodes; }
-  int get_id() const { return id; }
+  unsigned get_depth() const { return depth; }
+  unsigned get_nodes() const { return nodes; }
+  unsigned get_id() const { return id; }
+  unsigned get_reordered_nodes() const { return reordered_nodes; }
 
   const ExecutionPlanNode_ptr &get_root() const { return root; }
 
@@ -201,31 +206,45 @@ public:
     return leaf;
   }
 
-  void replace_active_leaf_node(const BDD::Node *node) {
+  ExecutionPlan clone_and_replace_active_leaf_node(BDD::Node *node) const {
+    auto new_ep = clone(true);
+
     assert(leaves.size());
     assert(node);
     assert(node->get_type() != BDD::Node::NodeType::BRANCH);
 
-    auto module = leaves[0].leaf->get_module();
+    auto old_active_leaf = leaves[0].leaf;
+    auto module = old_active_leaf->get_module();
     auto cloned = module->clone();
-
     cloned->replace_node(node);
 
-    leaves[0].leaf->replace_module(cloned);
-    leaves[0].next = node->get_next();
+    new_ep.leaves[0].leaf->replace_module(cloned);
+    new_ep.leaves[0].next = node->get_next();
+
+    new_ep.replace_node_in_bdd(node);
+
+    return new_ep;
   }
 
   const std::vector<leaf_t> &get_leaves() const { return leaves; }
 
   const BDD::BDD *get_bdd() const {
     assert(bdd);
-    return bdd;
+    return bdd.get();
+  }
+
+  const std::unordered_set<uint64_t> &get_processed_bdd_nodes() const {
+    return processed_bdd_nodes;
   }
 
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(*this); }
 
-  ExecutionPlan clone() const {
+  ExecutionPlan clone(bool deep = false) const {
     ExecutionPlan copy = *this;
+
+    if (deep) {
+      copy.bdd = copy.bdd->clone();
+    }
 
     if (root) {
       copy.root = clone_nodes(copy, root.get());

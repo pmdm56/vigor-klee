@@ -62,8 +62,17 @@ private:
     std::string script = "open_graph.sh";
     std::string cmd = dir_path + "/" + script + " " + fpath;
 
+    static int counter = 0;
+
     for (auto bdd_fpath : bdd_fpaths) {
       cmd += " " + bdd_fpath;
+
+      // std::stringstream cp;
+      // cp << "cp " << bdd_fpath << " ~/MEGA/SyNAPSE/node\\ reordering/fw/";
+      // cp << counter / 2 << "_" << counter % 2 << ".gv";
+      // system(cp.str().c_str());
+
+      counter++;
     }
 
     if (search_space) {
@@ -156,7 +165,9 @@ private:
     return rgb;
   }
 
-  void dump_bdd(const BDD::Node *node) {
+  void dump_bdd(const BDD::BDD *bdd,
+                const std::unordered_set<uint64_t> &processed,
+                const BDD::Node *next) {
     std::string leaf_fpath = get_rand_fname();
     bdd_fpaths.push_back(leaf_fpath);
     std::ofstream leaf_ofs;
@@ -170,9 +181,10 @@ private:
     // leaf_ofs << "margin=0;\n";
     leaf_ofs << "node [shape=box,style=filled];\n";
 
-    BDD::GraphvizGenerator bdd_graphviz(leaf_ofs);
+    BDD::GraphvizGenerator bdd_graphviz(leaf_ofs, processed, next);
 
-    node->visit(bdd_graphviz);
+    assert(bdd->get_process());
+    bdd->get_process()->visit(bdd_graphviz);
     leaf_ofs << "}\n";
 
     leaf_ofs.flush();
@@ -348,18 +360,13 @@ public:
     ofs << "}\n";
     ofs.flush();
 
-    /*
-    for (auto leaf : ep.get_leaves()) {
-      bdd_fpaths.clear();
-      dump_bdd(leaf.next);
-    }
-    */
-
+    auto bdd = ep.get_bdd();
+    auto processed = ep.get_processed_bdd_nodes();
     auto next_node = ep.get_next_node();
 
     if (next_node) {
       bdd_fpaths.clear();
-      dump_bdd(ep.get_next_node());
+      dump_bdd(bdd, processed, next_node);
     }
 
     if (search_space) {

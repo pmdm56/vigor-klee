@@ -433,6 +433,7 @@ bool CallPathsGroup::check_discriminating_constraint(
 }
 
 constexpr char BDD::INIT_CONTEXT_MARKER[];
+solver_toolbox_t BDD::solver_toolbox;
 
 std::vector<std::string> BDD::skip_conditions_with_symbol{"received_a_packet",
                                                           "loop_termination"};

@@ -54,6 +54,12 @@ public:
 
   ExecutionPlan get() { return *get_best_it(); }
 
+  std::vector<ExecutionPlan> get_all() const {
+    std::vector<ExecutionPlan> eps;
+    eps.assign(execution_plans.begin(), execution_plans.end());
+    return eps;
+  }
+
   ExecutionPlan pop() {
     auto it = get_next_it();
     auto copy = *it;

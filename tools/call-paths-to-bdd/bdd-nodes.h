@@ -20,10 +20,9 @@ struct call_paths_t {
   static std::vector<std::string> skip_functions;
 
   call_paths_t() {}
-  call_paths_t(const call_paths_t &other)
-      : cp(other.cp), backup(other.backup) {}
 
-  call_paths_t(std::vector<call_path_t *> _call_paths) : cp(_call_paths) {
+  call_paths_t(const std::vector<call_path_t *> &_call_paths)
+      : cp(_call_paths) {
     for (const auto &_cp : cp) {
       backup.emplace_back(_cp->calls);
     }

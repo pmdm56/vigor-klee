@@ -26,7 +26,7 @@ public:
   Context(const ExecutionPlan &ep) : bdd(ep.get_bdd()) { reset(ep); }
 
   Context(const BDD::BDD &_bdd) : current_ep(nullptr), bdd(&_bdd) {
-    next_eps.emplace_back(bdd->get_process(), bdd);
+    next_eps.emplace_back(bdd);
     current_platform.first = false;
   }
 
@@ -86,6 +86,8 @@ public:
 private:
   bool map_can_reorder(const BDD::Node *before, const BDD::Node *after,
                        klee::ref<klee::Expr> &condition) const;
+  bool dchain_can_reorder(const BDD::Node *before, const BDD::Node *after,
+                          klee::ref<klee::Expr> &condition) const;
   bool are_rw_dependencies_met(const BDD::Node *current_node,
                                const BDD::Node *next_node,
                                klee::ref<klee::Expr> &condition) const;

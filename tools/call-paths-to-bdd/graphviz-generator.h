@@ -12,9 +12,18 @@ namespace BDD {
 class GraphvizGenerator : public BDDVisitor {
 private:
   std::ostream &os;
+  std::unordered_set<uint64_t> processed;
+  const Node *next;
+
+  const char *COLOR_PROCESSED = "gray";
+  const char *COLOR_NEXT = "cyan";
 
 public:
   GraphvizGenerator(std::ostream &_os) : os(_os) {}
+  GraphvizGenerator(std::ostream &_os,
+                    const std::unordered_set<uint64_t> &_processed,
+                    const Node *_next)
+      : os(_os), processed(_processed), next(_next) {}
 
 private:
   std::string get_gv_name(const Node *node) const {
@@ -67,7 +76,17 @@ public:
     os << " [shape=Mdiamond, label=\"";
     os << node->get_id() << ":";
     os << pretty_print_expr(condition);
-    os << "\", color=yellow];\n";
+    os << "\"";
+
+    if (processed.find(node->get_id()) != processed.end()) {
+      os << ", color=" << COLOR_PROCESSED;
+    } else if (next && node->get_id() == next->get_id()) {
+      os << ", color=" << COLOR_NEXT;
+    } else {
+      os << ", color=yellow";
+    }
+
+    os << "];\n";
 
     os << "\t\t" << get_gv_name(node);
     os << " -> ";
@@ -144,7 +163,17 @@ public:
       i++;
     }
 
-    os << ")\\l\", color=cornflowerblue];\n";
+    os << ")\\l\", ";
+
+    if (processed.find(node->get_id()) != processed.end()) {
+      os << "color=" << COLOR_PROCESSED;
+    } else if (next && node->get_id() == next->get_id()) {
+      os << "color=" << COLOR_NEXT;
+    } else {
+      os << "color=cornflowerblue";
+    }
+
+    os << "];\n";
 
     os << "\t\t" << get_gv_name(node);
     os << " -> ";
@@ -160,11 +189,29 @@ public:
     os << "\t\t\"return ";
     switch (value) {
     case ReturnInit::ReturnType::SUCCESS: {
-      os << "1\" [color=chartreuse2]";
+      os << "1\"";
+
+      if (processed.find(node->get_id()) != processed.end()) {
+        os << " [color=" << COLOR_PROCESSED << "]";
+      } else if (next && node->get_id() == next->get_id()) {
+        os << " [color=" << COLOR_NEXT << "]";
+      } else {
+        os << " [color=chartreuse2]";
+      }
+
       break;
     }
     case ReturnInit::ReturnType::FAILURE: {
-      os << "0\" [color=brown1]";
+      os << "0\"";
+
+      if (processed.find(node->get_id()) != processed.end()) {
+        os << " [color=" << COLOR_PROCESSED << "]";
+      } else if (next && node->get_id() == next->get_id()) {
+        os << " [color=" << COLOR_NEXT << "]";
+      } else {
+        os << " [color=brown1]";
+      }
+
       break;
     }
     default: { assert(false); }
@@ -183,15 +230,42 @@ public:
     os << node->get_id() << ":";
     switch (operation) {
     case ReturnProcess::Operation::FWD: {
-      os << "fwd(" << value << ")\", color=chartreuse2]";
+      os << "fwd(" << value << ")\", ";
+
+      if (processed.find(node->get_id()) != processed.end()) {
+        os << " color=" << COLOR_PROCESSED << "]";
+      } else if (next && node->get_id() == next->get_id()) {
+        os << " color=" << COLOR_NEXT << "]";
+      } else {
+        os << "color=chartreuse2]";
+      }
+
       break;
     }
     case ReturnProcess::Operation::DROP: {
-      os << "drop()\", color=brown1]";
+      os << "drop()\",";
+
+      if (processed.find(node->get_id()) != processed.end()) {
+        os << " color=" << COLOR_PROCESSED << "]";
+      } else if (next && node->get_id() == next->get_id()) {
+        os << " color=" << COLOR_NEXT << "]";
+      } else {
+        os << "color=brown1]";
+      }
+
       break;
     }
     case ReturnProcess::Operation::BCAST: {
-      os << "bcast()\", color=cyan]";
+      os << "bcast()\", ";
+
+      if (processed.find(node->get_id()) != processed.end()) {
+        os << " color=" << COLOR_PROCESSED << "]";
+      } else if (next && node->get_id() == next->get_id()) {
+        os << " color=" << COLOR_NEXT << "]";
+      } else {
+        os << "color=purple]";
+      }
+
       break;
     }
     default: { assert(false); }

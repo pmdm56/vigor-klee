@@ -75,7 +75,13 @@ struct solver_toolbox_t {
   klee::Solver *solver;
   klee::ExprBuilder *exprBuilder;
 
-  solver_toolbox_t() {
+  solver_toolbox_t() : solver(nullptr) {}
+
+  void build() {
+    if (solver) {
+      return;
+    }
+
     solver = klee::createCoreSolver(klee::Z3_SOLVER);
     assert(solver);
 
@@ -85,9 +91,6 @@ struct solver_toolbox_t {
 
     exprBuilder = klee::createDefaultExprBuilder();
   }
-
-  solver_toolbox_t(const solver_toolbox_t &_other)
-      : solver(_other.solver), exprBuilder(_other.exprBuilder) {}
 
   bool is_expr_always_true(klee::ref<klee::Expr> expr) const;
   bool is_expr_always_true(klee::ConstraintManager constraints,

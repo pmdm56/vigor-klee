@@ -90,6 +90,18 @@ private:
     return symbols;
   }
 
+  symbols_t dchain_is_index_allocated(call_t call) {
+    symbols_t symbols;
+
+    assert(!call.ret.isNull());
+    auto is_index_allocated = call.ret;
+
+    symbols.emplace_back(build_label("dchain_is_index_allocated"),
+                         is_index_allocated);
+
+    return symbols;
+  }
+
   symbols_t dchain_allocate_new_index(call_t call) {
     symbols_t symbols;
 
@@ -185,12 +197,21 @@ private:
     return symbols;
   }
 
-  symbols_t curren_time(call_t call) {
+  symbols_t current_time(call_t call) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
     auto next_time = call.ret;
     symbols.emplace_back(build_label("next_time"), next_time);
+
+    return symbols;
+  }
+
+  symbols_t nf_set_rte_ipv4_udptcp_checksum(call_t call) {
+    symbols_t symbols;
+
+    klee::ref<klee::Expr> none;
+    symbols.emplace_back(build_label("checksum"), none);
 
     return symbols;
   }
@@ -209,7 +230,7 @@ private:
 public:
   SymbolFactory() {
     call_processor_lookup_table = {
-      { "current_time", &SymbolFactory::curren_time },
+      { "current_time", &SymbolFactory::current_time },
       { "packet_return_chunk", &SymbolFactory::no_process },
       { "dchain_rejuvenate_index", &SymbolFactory::no_process },
       { "packet_get_unread_length", &SymbolFactory::no_process },
@@ -231,7 +252,11 @@ public:
       { "map_get", &SymbolFactory::map_get },
       { "dchain_allocate_new_index",
         &SymbolFactory::dchain_allocate_new_index },
-      { "vector_borrow", &SymbolFactory::vector_borrow }
+      { "dchain_is_index_allocated",
+        &SymbolFactory::dchain_is_index_allocated },
+      { "vector_borrow", &SymbolFactory::vector_borrow },
+      { "nf_set_rte_ipv4_udptcp_checksum",
+        &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum }
     };
 
     stack.emplace_back();
