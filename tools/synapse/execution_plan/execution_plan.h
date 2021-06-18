@@ -44,15 +44,16 @@ private:
 private:
   unsigned depth;
   unsigned nodes;
-  unsigned id;
   unsigned reordered_nodes;
+
+  unsigned id;
 
   static int counter;
 
 public:
   ExecutionPlan(const BDD::BDD *_bdd)
-      : bdd(_bdd->clone()), depth(0), nodes(0), id(counter++),
-        reordered_nodes(0) {
+      : bdd(_bdd->clone()), depth(0), nodes(0), reordered_nodes(0),
+        id(counter++) {
     assert(bdd->get_process());
     leaf_t leaf(bdd->get_process());
     leaves.push_back(leaf);
@@ -61,7 +62,7 @@ public:
   ExecutionPlan(const ExecutionPlan &ep)
       : root(ep.root), leaves(ep.leaves), bdd(ep.bdd),
         processed_bdd_nodes(ep.processed_bdd_nodes), depth(ep.depth),
-        nodes(ep.nodes), id(ep.id) {}
+        nodes(ep.nodes), reordered_nodes(ep.reordered_nodes), id(ep.id) {}
 
   ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
                 const BDD::BDD *_bdd)
@@ -220,6 +221,7 @@ public:
 
     new_ep.leaves[0].leaf->replace_module(cloned);
     new_ep.leaves[0].next = node->get_next();
+    new_ep.reordered_nodes++;
 
     new_ep.replace_node_in_bdd(node);
 

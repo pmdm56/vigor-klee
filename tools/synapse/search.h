@@ -57,20 +57,23 @@ public:
       auto next_node = next_ep.get_next_node();
       assert(next_node);
 
-      Log::dbg() << "\n";
-      Log::dbg() << "=======================================================\n";
-      Log::dbg() << "Available " << available << "\n";
-      Log::dbg() << "Node      " << next_node->dump(true) << "\n";
       // Graphviz::visualize(next_ep, search_space);
 
       for (auto module : modules) {
         auto next_context = module->process_node(next_ep, next_node, bdd);
 
         if (next_context.processed()) {
+          Log::dbg() << "\n";
+          Log::dbg()
+              << "=======================================================\n";
+          Log::dbg() << "Available " << available << "\n";
+          Log::dbg() << "Node      " << next_node->dump(true) << "\n";
           Log::dbg() << "MATCH     " << module->get_target_name()
                      << "::" << module->get_name() << " -> "
                      << next_context.size() << " exec plans"
                      << "\n";
+          Log::dbg()
+              << "=======================================================\n";
           h.add(next_context);
           search_space.add_leaves(next_context);
           processed = true;
@@ -80,15 +83,23 @@ public:
       search_space.submit_leaves();
 
       if (!processed) {
+        Log::dbg() << "\n";
+        Log::dbg()
+            << "=======================================================\n";
+        Log::dbg() << "Available " << available << "\n";
+        Log::dbg() << "Node      " << next_node->dump(true) << "\n";
         Log::dbg()
             << "No module can handle this BDD node in the current context.";
         Log::dbg() << "\n";
         Log::dbg() << "Deleting solution from search space.";
         Log::dbg() << "\n";
+        Log::dbg()
+            << "=======================================================\n";
       }
-
-      Log::dbg() << "=======================================================\n";
     }
+
+    // for (auto &ep : h.get_all())
+    //   synapse::Graphviz::visualize(ep);
 
     // synapse::Graphviz::visualize(h.get(), search_space);
     return h.get();

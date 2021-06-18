@@ -9,7 +9,6 @@ int ExecutionPlan::counter = 0;
 
 void ExecutionPlan::replace_node_in_bdd(BDD::Node *target) {
   assert(target);
-  reordered_nodes++;
 
   std::vector<BDD::Node *> nodes{bdd->get_process()};
   auto target_id = target->get_id();

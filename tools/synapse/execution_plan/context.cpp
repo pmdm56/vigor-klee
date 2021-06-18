@@ -251,14 +251,14 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
     }
   }
 
-  std::cerr << "\n";
-  std::cerr << "before " << before->get_id() << ":" << before_call << "\n";
-  std::cerr << "after  " << after->get_id() << ":" << after_call << "\n";
-  std::cerr << "before key  " << expr_to_string(before_key, true) << "\n";
-  std::cerr << "after  key  " << expr_to_string(after_key, true) << "\n";
-  std::cerr << "always eq   " << always_eq.second << "\n";
-  std::cerr << "always diff " << always_diff.second << "\n";
-  std::cerr << "\n";
+  // std::cerr << "\n";
+  // std::cerr << "before " << before->get_id() << ":" << before_call << "\n";
+  // std::cerr << "after  " << after->get_id() << ":" << after_call << "\n";
+  // std::cerr << "before key  " << expr_to_string(before_key, true) << "\n";
+  // std::cerr << "after  key  " << expr_to_string(after_key, true) << "\n";
+  // std::cerr << "always eq   " << always_eq.second << "\n";
+  // std::cerr << "always diff " << always_diff.second << "\n";
+  // std::cerr << "\n";
 
   if (always_eq.second) {
     return false;
@@ -672,6 +672,10 @@ void Context::reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
 }
 
 void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
+  if (ep.get_reordered_nodes() >= 1) {
+    return;
+  }
+
   auto active_leaf = ep.get_active_leaf();
 
   if (!active_leaf) {
@@ -691,25 +695,28 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
   auto candidates = get_candidates(current_node);
 
   if (candidates.size()) {
-    std::cerr << "\n";
-    std::cerr << "*********************************************************"
-                 "********************\n";
-    std::cerr << "  current   : " << current_node->dump(true) << "\n";
+
+    Log::dbg() << "\n";
+    Log::dbg() << "*********************************************************"
+                  "********************\n";
+    Log::dbg() << "  current   : " << current_node->dump(true) << "\n";
     for (auto candidate : candidates) {
-      std::cerr << "\n";
-      std::cerr << "  candidate : " << candidate.node->dump(true) << "\n";
+      Log::dbg() << "\n";
+      Log::dbg() << "  candidate : " << candidate.node->dump(true) << "\n";
       if (!candidate.condition.isNull()) {
-        std::cerr << "  condition : "
-                  << expr_to_string(candidate.condition, true) << "\n";
+        Log::dbg() << "  condition : "
+                   << expr_to_string(candidate.condition, true) << "\n";
       }
-      std::cerr << "  siblings :  ";
+      std::stringstream buffer;
+      buffer << "  siblings :  ";
       for (auto s : candidate.siblings) {
-        std::cerr << s << " ";
+        buffer << s << " ";
       }
-      std::cerr << "\n";
+      buffer << "\n";
+      Log::dbg() << buffer.str();
     }
-    std::cerr << "*********************************************************"
-                 "********************\n";
+    Log::dbg() << "*********************************************************"
+                  "********************\n";
   }
 
   for (auto candidate : candidates) {
@@ -720,9 +727,9 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
     next_eps.push_back(new_ep);
 
     // std::cerr << "OLD\n";
-    // Graphviz::visualize(ep);
+    // Graphviz::visualize(ep, false);
     // std::cerr << "NEW\n";
-    // Graphviz::visualize(new_ep);
+    // Graphviz::visualize(new_ep, false);
   }
 }
 

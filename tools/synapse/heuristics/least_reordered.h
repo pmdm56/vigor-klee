@@ -13,7 +13,7 @@ struct LeastReorderedComparator : public HeuristicConfiguration {
     return s;
   }
 
-  bool terminate_on_first_solution() const override { return true; }
+  bool terminate_on_first_solution() const override { return false; }
 };
 
 using LeastReordered = Heuristic<LeastReorderedComparator>;

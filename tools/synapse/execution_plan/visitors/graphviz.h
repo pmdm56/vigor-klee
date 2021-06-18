@@ -71,7 +71,8 @@ private:
       // cp << "cp " << bdd_fpath << " ~/MEGA/SyNAPSE/node\\ reordering/fw/";
       // cp << counter / 2 << "_" << counter % 2 << ".gv";
       // system(cp.str().c_str());
-      // counter++;
+
+      counter++;
     }
 
     if (search_space) {
@@ -361,12 +362,14 @@ public:
 
     auto bdd = ep.get_bdd();
     auto processed = ep.get_processed_bdd_nodes();
-    auto next_node = ep.get_next_node();
+    const BDD::Node *next_node = nullptr;
 
-    if (next_node) {
-      bdd_fpaths.clear();
-      dump_bdd(bdd, processed, next_node);
+    if (ep.get_next_node()) {
+      next_node = ep.get_next_node();
     }
+
+    bdd_fpaths.clear();
+    dump_bdd(bdd, processed, next_node);
 
     if (search_space) {
       dump_search_space();
