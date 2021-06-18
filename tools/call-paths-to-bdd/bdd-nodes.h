@@ -59,7 +59,6 @@ private:
   call_paths_t on_false;
 
   call_paths_t call_paths;
-  solver_toolbox_t &solver_toolbox;
 
 private:
   void group_call_paths();
@@ -79,9 +78,7 @@ private:
   call_t pop_call();
 
 public:
-  CallPathsGroup(const call_paths_t &_call_paths,
-                 solver_toolbox_t &_solver_toolbox)
-      : call_paths(_call_paths), solver_toolbox(_solver_toolbox) {
+  CallPathsGroup(const call_paths_t &_call_paths) : call_paths(_call_paths) {
     group_call_paths();
   }
 

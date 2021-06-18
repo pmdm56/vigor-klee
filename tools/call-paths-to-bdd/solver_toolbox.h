@@ -7,8 +7,6 @@ namespace BDD {
 class ReplaceSymbols : public klee::ExprVisitor::ExprVisitor {
 private:
   std::vector<klee::ref<klee::ReadExpr>> reads;
-
-  klee::ExprBuilder *builder = klee::createDefaultExprBuilder();
   std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
 
 public:
@@ -78,7 +76,7 @@ struct solver_toolbox_t {
   solver_toolbox_t() : solver(nullptr) {}
 
   void build() {
-    if (solver) {
+    if (solver != nullptr) {
       return;
     }
 
@@ -122,5 +120,7 @@ struct solver_toolbox_t {
 
   bool are_calls_equal(call_t c1, call_t c2) const;
 };
+
+extern solver_toolbox_t solver_toolbox;
 
 } // namespace BDD

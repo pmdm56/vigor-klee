@@ -164,6 +164,8 @@ bool solver_toolbox_t::are_exprs_always_equal(
   ReplaceSymbols symbol_replacer(symbols);
   klee::ref<klee::Expr> replaced = symbol_replacer.visit(expr2);
 
+  assert(exprBuilder);
+  assert(!replaced.isNull());
   auto eq = exprBuilder->Eq(expr1, replaced);
   return is_expr_always_true(eq);
 }
@@ -433,7 +435,8 @@ bool CallPathsGroup::check_discriminating_constraint(
 }
 
 constexpr char BDD::INIT_CONTEXT_MARKER[];
-solver_toolbox_t BDD::solver_toolbox;
+
+solver_toolbox_t solver_toolbox;
 
 std::vector<std::string> BDD::skip_conditions_with_symbol{"received_a_packet",
                                                           "loop_termination"};
@@ -500,7 +503,7 @@ Node *BDD::populate(call_paths_t call_paths) {
   ReturnRaw *return_raw = new ReturnRaw(get_and_inc_id(), call_paths);
 
   while (call_paths.cp.size()) {
-    CallPathsGroup group(call_paths, solver_toolbox);
+    CallPathsGroup group(call_paths);
 
     auto on_true = group.get_on_true();
     auto on_false = group.get_on_false();

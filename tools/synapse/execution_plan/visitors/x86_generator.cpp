@@ -1,38 +1,40 @@
 #include "x86_generator.h"
-#include "../../modules/x86/x86.h"
 #include "../../log.h"
+#include "../../modules/x86/x86.h"
 
 namespace synapse {
 
-std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver, bool is_signed);
-std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver);
+std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack,
+                      bool is_signed);
+std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack);
 
 bool is_read_lsb(klee::ref<klee::Expr> e);
 
 class KleeExprToC : public klee::ExprVisitor::ExprVisitor {
 private:
   std::stringstream code;
-  stack_t& stack;
-  BDD::solver_toolbox_t& solver;
+  stack_t &stack;
 
 public:
-  KleeExprToC(stack_t& _stack, BDD::solver_toolbox_t& _solver) : ExprVisitor(false), stack(_stack), solver(_solver) {}
+  KleeExprToC(stack_t &_stack) : ExprVisitor(false), stack(_stack) {}
 
   std::string get_code() { return code.str(); }
 
   klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
-    e.dump(); std::cerr << "\n";
+    e.dump();
+    std::cerr << "\n";
     assert(false && "TODO");
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitSelect(const klee::SelectExpr& e) {
-    e.dump(); std::cerr << "\n";
+  klee::ExprVisitor::Action visitSelect(const klee::SelectExpr &e) {
+    e.dump();
+    std::cerr << "\n";
     assert(false && "TODO");
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitConcat(const klee::ConcatExpr& e) {
+  klee::ExprVisitor::Action visitConcat(const klee::ConcatExpr &e) {
     klee::ref<klee::Expr> eref = const_cast<klee::ConcatExpr *>(&e);
 
     if (is_read_lsb(eref)) {
@@ -40,7 +42,7 @@ public:
       retriever.visit(eref);
       assert(retriever.get_retrieved_strings().size() == 1);
       auto symbol = retriever.get_retrieved_strings()[0];
-      
+
       if (stack.has_label(symbol)) {
         code << symbol;
         return klee::ExprVisitor::Action::skipChildren();
@@ -55,18 +57,19 @@ public:
       assert(false && "Not in stack");
     }
 
-    e.dump(); std::cerr << "\n";
+    e.dump();
+    std::cerr << "\n";
     assert(false && "TODO");
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitExtract(const klee::ExtractExpr& e) {
+  klee::ExprVisitor::Action visitExtract(const klee::ExtractExpr &e) {
     auto expr = e.expr;
     auto offset = e.offset;
     auto sz = e.width;
 
     while (expr->getKind() == klee::Expr::Kind::Concat) {
-      auto msb = expr->getKid(0) ;
+      auto msb = expr->getKid(0);
       auto lsb = expr->getKid(1);
 
       auto msb_sz = msb->getWidth();
@@ -93,7 +96,7 @@ public:
     }
 
     if (offset == 0 && expr->getWidth() == sz) {
-      code << transpile(expr, stack, solver);
+      code << transpile(expr, stack);
       return klee::ExprVisitor::Action::skipChildren();
     }
 
@@ -108,7 +111,7 @@ public:
       if (offset > 0) {
         code << "(";
       }
-      code << transpile(expr, stack, solver);
+      code << transpile(expr, stack);
       if (offset > 0) {
         code << " >> " << offset << ")";
       }
@@ -118,17 +121,18 @@ public:
     }
 
     if (expr->getKind() == klee::Expr::Kind::Constant) {
-      auto extract = solver.exprBuilder->Extract(expr, offset, sz);
-      auto value = solver.value_from_expr(extract);
+      auto extract = BDD::solver_toolbox.exprBuilder->Extract(expr, offset, sz);
+      auto value = BDD::solver_toolbox.value_from_expr(extract);
 
       // checking if this is really the ONLY answer
-      assert(solver.are_exprs_always_equal(extract, solver.exprBuilder->Constant(value, sz)));
+      assert(BDD::solver_toolbox.are_exprs_always_equal(
+          extract, BDD::solver_toolbox.exprBuilder->Constant(value, sz)));
 
       code << value;
       return klee::ExprVisitor::Action::skipChildren();
     }
 
-    std::cerr << "expr   " << expr_to_string(expr, true) << "\n" ;
+    std::cerr << "expr   " << expr_to_string(expr, true) << "\n";
     std::cerr << "offset " << offset << "\n";
     std::cerr << "sz     " << sz << "\n";
     assert(false && "expr size > 64 but not constant");
@@ -136,7 +140,7 @@ public:
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitZExt(const klee::ZExtExpr& e) {
+  klee::ExprVisitor::Action visitZExt(const klee::ZExtExpr &e) {
     auto sz = e.getWidth();
     auto expr = e.getKid(0);
     assert(sz % 8 == 0);
@@ -144,22 +148,31 @@ public:
     code << "(";
 
     switch (sz) {
-      case klee::Expr::Int8: code << "uint8_t"; break;
-      case klee::Expr::Int16: code << "uint16_t"; break;
-      case klee::Expr::Int32: code << "uint32_t"; break;
-      case klee::Expr::Int64: code << "uint64_t"; break;
-      default: assert(false);
+    case klee::Expr::Int8:
+      code << "uint8_t";
+      break;
+    case klee::Expr::Int16:
+      code << "uint16_t";
+      break;
+    case klee::Expr::Int32:
+      code << "uint32_t";
+      break;
+    case klee::Expr::Int64:
+      code << "uint64_t";
+      break;
+    default:
+      assert(false);
     }
 
     code << ")";
     code << "(";
-    code << transpile(expr, stack, solver);
+    code << transpile(expr, stack);
     code << ")";
 
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitSExt(const klee::SExtExpr& e) {
+  klee::ExprVisitor::Action visitSExt(const klee::SExtExpr &e) {
     auto sz = e.getWidth();
     auto expr = e.getKid(0);
     assert(sz % 8 == 0);
@@ -167,224 +180,233 @@ public:
     code << "(";
 
     switch (sz) {
-      case klee::Expr::Int8: code << "int8_t"; break;
-      case klee::Expr::Int16: code << "int16_t"; break;
-      case klee::Expr::Int32: code << "int32_t"; break;
-      case klee::Expr::Int64: code << "int64_t"; break;
-      default: assert(false);
+    case klee::Expr::Int8:
+      code << "int8_t";
+      break;
+    case klee::Expr::Int16:
+      code << "int16_t";
+      break;
+    case klee::Expr::Int32:
+      code << "int32_t";
+      break;
+    case klee::Expr::Int64:
+      code << "int64_t";
+      break;
+    default:
+      assert(false);
     }
 
     code << ")";
     code << "(";
-    code << transpile(expr, stack, solver);
+    code << transpile(expr, stack);
     code << ")";
 
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitAdd(const klee::AddExpr& e) {
+  klee::ExprVisitor::Action visitAdd(const klee::AddExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " + ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitSub(const klee::SubExpr& e) {
+  klee::ExprVisitor::Action visitSub(const klee::SubExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " - ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitMul(const klee::MulExpr& e) {
+  klee::ExprVisitor::Action visitMul(const klee::MulExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " * ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitUDiv(const klee::UDivExpr& e) {
+  klee::ExprVisitor::Action visitUDiv(const klee::UDivExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " / ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitSDiv(const klee::SDivExpr& e) {
+  klee::ExprVisitor::Action visitSDiv(const klee::SDivExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver, true);
-    auto rhs_parsed = transpile(rhs, stack, solver, true);
+    auto lhs_parsed = transpile(lhs, stack, true);
+    auto rhs_parsed = transpile(rhs, stack, true);
 
     code << "(" << lhs_parsed << ")";
     code << " / ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitURem(const klee::URemExpr& e) {
+  klee::ExprVisitor::Action visitURem(const klee::URemExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " % ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitSRem(const klee::SRemExpr& e) {
+  klee::ExprVisitor::Action visitSRem(const klee::SRemExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver, true);
-    auto rhs_parsed = transpile(rhs, stack, solver, true);
+    auto lhs_parsed = transpile(lhs, stack, true);
+    auto rhs_parsed = transpile(rhs, stack, true);
 
     code << "(" << lhs_parsed << ")";
     code << " % ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitNot(const klee::NotExpr& e) {
+  klee::ExprVisitor::Action visitNot(const klee::NotExpr &e) {
     assert(e.getNumKids() == 1);
-    
+
     auto arg = e.getKid(0);
-    auto arg_parsed = transpile(arg, stack, solver);
+    auto arg_parsed = transpile(arg, stack);
     code << "!" << arg_parsed;
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitAnd(const klee::AndExpr& e) {
+  klee::ExprVisitor::Action visitAnd(const klee::AndExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " & ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitOr(const klee::OrExpr& e) {
+  klee::ExprVisitor::Action visitOr(const klee::OrExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " | ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitXor(const klee::XorExpr& e) {
+  klee::ExprVisitor::Action visitXor(const klee::XorExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " ^ ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitShl(const klee::ShlExpr& e) {
+  klee::ExprVisitor::Action visitShl(const klee::ShlExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " << ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitLShr(const klee::LShrExpr& e) {
+  klee::ExprVisitor::Action visitLShr(const klee::LShrExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " >> ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitAShr(const klee::AShrExpr& e) {
+  klee::ExprVisitor::Action visitAShr(const klee::AShrExpr &e) {
     assert(e.getNumKids() == 2);
 
     auto lhs = e.getKid(0);
@@ -393,8 +415,8 @@ public:
     auto sz = e.getWidth();
     assert(sz % 8 == 0);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     std::stringstream sign_bit_stream;
     sign_bit_stream << "(" << lhs_parsed << ")";
@@ -411,10 +433,14 @@ public:
     mask_stream << "(" << rhs_parsed << ")";
     mask_stream << ")";
     mask_stream << " - ";
-    mask_stream << "(1 & " << "(" << sign_bit << ")" << ")";
+    mask_stream << "(1 & "
+                << "(" << sign_bit << ")"
+                << ")";
     mask_stream << ")";
     mask_stream << " << ";
-    mask_stream << "(" << sz - 1 << " - " << "(" << rhs_parsed << ")" << ")";
+    mask_stream << "(" << sz - 1 << " - "
+                << "(" << rhs_parsed << ")"
+                << ")";
 
     code << "(";
     code << "(" << lhs_parsed << ")";
@@ -427,163 +453,163 @@ public:
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitEq(const klee::EqExpr& e) {
+  klee::ExprVisitor::Action visitEq(const klee::EqExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " == ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitNe(const klee::NeExpr& e) {
+  klee::ExprVisitor::Action visitNe(const klee::NeExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " != ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitUlt(const klee::UltExpr& e) {
+  klee::ExprVisitor::Action visitUlt(const klee::UltExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " < ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitUle(const klee::UleExpr& e) {
+  klee::ExprVisitor::Action visitUle(const klee::UleExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " <= ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitUgt(const klee::UgtExpr& e) {
+  klee::ExprVisitor::Action visitUgt(const klee::UgtExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " > ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitUge(const klee::UgeExpr& e) {
+  klee::ExprVisitor::Action visitUge(const klee::UgeExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver);
-    auto rhs_parsed = transpile(rhs, stack, solver);
+    auto lhs_parsed = transpile(lhs, stack);
+    auto rhs_parsed = transpile(rhs, stack);
 
     code << "(" << lhs_parsed << ")";
     code << " >= ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitSlt(const klee::SltExpr& e) {
+  klee::ExprVisitor::Action visitSlt(const klee::SltExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver, true);
-    auto rhs_parsed = transpile(rhs, stack, solver, true);
+    auto lhs_parsed = transpile(lhs, stack, true);
+    auto rhs_parsed = transpile(rhs, stack, true);
 
     code << "(" << lhs_parsed << ")";
     code << " < ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitSle(const klee::SleExpr& e) {
+  klee::ExprVisitor::Action visitSle(const klee::SleExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver, true);
-    auto rhs_parsed = transpile(rhs, stack, solver, true);
+    auto lhs_parsed = transpile(lhs, stack, true);
+    auto rhs_parsed = transpile(rhs, stack, true);
 
     code << "(" << lhs_parsed << ")";
     code << " <= ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitSgt(const klee::SgtExpr& e) {
+  klee::ExprVisitor::Action visitSgt(const klee::SgtExpr &e) {
     assert(e.getNumKids() == 2);
-    
+
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver, true);
-    auto rhs_parsed = transpile(rhs, stack, solver, true);
+    auto lhs_parsed = transpile(lhs, stack, true);
+    auto rhs_parsed = transpile(rhs, stack, true);
 
     code << "(" << lhs_parsed << ")";
     code << " > ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 
-  klee::ExprVisitor::Action visitSge(const klee::SgeExpr& e) {
+  klee::ExprVisitor::Action visitSge(const klee::SgeExpr &e) {
     assert(e.getNumKids() == 2);
 
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack, solver, true);
-    auto rhs_parsed = transpile(rhs, stack, solver, true);
+    auto lhs_parsed = transpile(lhs, stack, true);
+    auto rhs_parsed = transpile(rhs, stack, true);
 
     code << "(" << lhs_parsed << ")";
     code << " >= ";
     code << "(" << rhs_parsed << ")";
-    
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 };
@@ -618,7 +644,7 @@ bool is_read_lsb(klee::ref<klee::Expr> e) {
       return false;
     }
 
-    auto const_msb_index = static_cast<klee::ConstantExpr*>(msb_index.get());
+    auto const_msb_index = static_cast<klee::ConstantExpr *>(msb_index.get());
 
     if (const_msb_index->getZExtValue() != index) {
       return false;
@@ -635,7 +661,7 @@ bool is_read_lsb(klee::ref<klee::Expr> e) {
       return false;
     }
 
-    auto const_last_index = static_cast<klee::ConstantExpr*>(last_index.get());
+    auto const_last_index = static_cast<klee::ConstantExpr *>(last_index.get());
 
     if (const_last_index->getZExtValue() != index) {
       return false;
@@ -645,23 +671,26 @@ bool is_read_lsb(klee::ref<klee::Expr> e) {
   return index == 0;
 }
 
-void apply_changes(const klee::ref<klee::Expr> &before, const klee::ref<klee::Expr> &after,
-                   stack_t& stack, BDD::solver_toolbox_t& solver, std::vector<std::string>& assignments) {
+void apply_changes(const klee::ref<klee::Expr> &before,
+                   const klee::ref<klee::Expr> &after, stack_t &stack,
+                   std::vector<std::string> &assignments) {
   assert(before->getWidth() == after->getWidth());
 
   std::stringstream assignment_stream;
   auto size = before->getWidth();
 
   for (unsigned int b = 0; b < size; b += 8) {
-    auto before_byte = solver.exprBuilder->Extract(before, b, klee::Expr::Int8);
-    auto after_byte = solver.exprBuilder->Extract(after, b, klee::Expr::Int8);
+    auto before_byte =
+        BDD::solver_toolbox.exprBuilder->Extract(before, b, klee::Expr::Int8);
+    auto after_byte =
+        BDD::solver_toolbox.exprBuilder->Extract(after, b, klee::Expr::Int8);
 
-    if (solver.are_exprs_always_equal(before_byte, after_byte)) {
+    if (BDD::solver_toolbox.are_exprs_always_equal(before_byte, after_byte)) {
       continue;
     }
 
-    auto before_parsed = transpile(before_byte, stack, solver);
-    auto after_parsed = transpile(after_byte, stack, solver);
+    auto before_parsed = transpile(before_byte, stack);
+    auto after_parsed = transpile(after_byte, stack);
 
     assignment_stream << before_parsed << " = " << after_parsed;
     assignments.push_back(assignment_stream.str());
@@ -669,7 +698,8 @@ void apply_changes(const klee::ref<klee::Expr> &before, const klee::ref<klee::Ex
   }
 }
 
-std::string build(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver, std::vector<std::string>& assignments) {
+std::string build(const klee::ref<klee::Expr> &e, stack_t &stack,
+                  std::vector<std::string> &assignments) {
   std::stringstream assignment_stream;
   std::stringstream var_label;
   static int var_counter = 0;
@@ -685,8 +715,10 @@ std::string build(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_to
   assignment_stream.str(std::string());
 
   for (unsigned int b = 0; b < size; b += 8) {
-    auto extract = solver.exprBuilder->Extract(e, b, klee::Expr::Int8);
-    assignment_stream << var_label.str() << "[" << b / 8 << "] = (uint8_t) (" << transpile(extract, stack, solver) << ");";
+    auto extract =
+        BDD::solver_toolbox.exprBuilder->Extract(e, b, klee::Expr::Int8);
+    assignment_stream << var_label.str() << "[" << b / 8 << "] = (uint8_t) ("
+                      << transpile(extract, stack) << ");";
     assignments.push_back(assignment_stream.str());
     assignment_stream.str(std::string());
   }
@@ -695,7 +727,8 @@ std::string build(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_to
   return var_label.str();
 }
 
-std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver, bool is_signed) {
+std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack,
+                      bool is_signed) {
   if (e->getKind() == klee::Expr::Kind::Constant) {
     std::stringstream ss;
     auto constant = static_cast<klee::ConstantExpr *>(e.get());
@@ -709,7 +742,7 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solve
     return stack_label;
   }
 
-  KleeExprToC kleeExprToC(stack, solver);
+  KleeExprToC kleeExprToC(stack);
   kleeExprToC.visit(e);
 
   auto code = kleeExprToC.get_code();
@@ -724,8 +757,8 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solve
   return code;
 }
 
-std::string transpile(const klee::ref<klee::Expr> &e, stack_t& stack, BDD::solver_toolbox_t& solver) {
-  return transpile(e, stack, solver, false);
+std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack) {
+  return transpile(e, stack, false);
 }
 
 void x86_Generator::close_if_clauses() {
@@ -746,7 +779,8 @@ void x86_Generator::close_if_clauses() {
   pending_ifs.push(false);
 }
 
-void x86_Generator::allocate_map(call_t call, std::ostream& global_state, std::ostream& buffer) {
+void x86_Generator::allocate_map(call_t call, std::ostream &global_state,
+                                 std::ostream &buffer) {
   assert(call.args["keq"].fn_ptr_name.first);
   assert(call.args["khash"].fn_ptr_name.first);
   assert(!call.args["capacity"].expr.isNull());
@@ -758,7 +792,7 @@ void x86_Generator::allocate_map(call_t call, std::ostream& global_state, std::o
   auto map_out = call.args["map_out"].out;
 
   static int map_counter = 0;
-  
+
   std::stringstream map_stream;
   map_stream << "map_" << map_counter++;
 
@@ -771,12 +805,13 @@ void x86_Generator::allocate_map(call_t call, std::ostream& global_state, std::o
   buffer << "map_allocate(";
   buffer << keq;
   buffer << ", " << khash;
-  buffer << ", " << transpile(capacity, stack, solver);
+  buffer << ", " << transpile(capacity, stack);
   buffer << ", &" << map_label;
   buffer << ")";
 }
 
-void x86_Generator::allocate_vector(call_t call, std::ostream& global_state, std::ostream& buffer) {
+void x86_Generator::allocate_vector(call_t call, std::ostream &global_state,
+                                    std::ostream &buffer) {
   assert(!call.args["elem_size"].expr.isNull());
   assert(!call.args["capacity"].expr.isNull());
   assert(call.args["init_elem"].fn_ptr_name.first);
@@ -799,15 +834,16 @@ void x86_Generator::allocate_vector(call_t call, std::ostream& global_state, std
   global_state << "struct Vector* " << vector_label << ";\n";
 
   buffer << "vector_allocate(";
-  buffer << transpile(elem_size, stack, solver);
-  buffer << ", " << transpile(capacity, stack, solver);
-  buffer << ", " << transpile(capacity, stack, solver);
+  buffer << transpile(elem_size, stack);
+  buffer << ", " << transpile(capacity, stack);
+  buffer << ", " << transpile(capacity, stack);
   buffer << ", " << init_elem;
   buffer << ", &" << vector_label;
   buffer << ")";
 }
 
-void x86_Generator::allocate_dchain(call_t call, std::ostream& global_state, std::ostream& buffer) {
+void x86_Generator::allocate_dchain(call_t call, std::ostream &global_state,
+                                    std::ostream &buffer) {
   assert(!call.args["index_range"].expr.isNull());
   assert(!call.args["chain_out"].out.isNull());
 
@@ -826,12 +862,13 @@ void x86_Generator::allocate_dchain(call_t call, std::ostream& global_state, std
   global_state << "struct DoubleChain* " << dchain_label << ";\n";
 
   buffer << "dchain_allocate(";
-  buffer << transpile(index_range, stack, solver);
+  buffer << transpile(index_range, stack);
   buffer << ", &" << dchain_label;
   buffer << ")";
 }
 
-void x86_Generator::allocate_cht(call_t call, std::ostream& global_state, std::ostream& buffer) {
+void x86_Generator::allocate_cht(call_t call, std::ostream &global_state,
+                                 std::ostream &buffer) {
   assert(!call.args["cht"].expr.isNull());
   assert(!call.args["cht_height"].expr.isNull());
   assert(!call.args["backend_capacity"].expr.isNull());
@@ -841,13 +878,13 @@ void x86_Generator::allocate_cht(call_t call, std::ostream& global_state, std::o
   auto backend_capacity = call.args["backend_capacity"].expr;
 
   buffer << "cht_fill_cht(";
-  buffer << ", " << transpile(vector_addr, stack, solver);
-  buffer << ", " << transpile(chr_height, stack, solver);
-  buffer << ", " << transpile(backend_capacity, stack, solver);
+  buffer << ", " << transpile(vector_addr, stack);
+  buffer << ", " << transpile(chr_height, stack);
+  buffer << ", " << transpile(backend_capacity, stack);
   buffer << ")";
 }
 
-void x86_Generator::allocate(const ExecutionPlan& ep) {
+void x86_Generator::allocate(const ExecutionPlan &ep) {
   std::stringstream buffer;
   std::stringstream global_state;
 
@@ -857,58 +894,62 @@ void x86_Generator::allocate(const ExecutionPlan& ep) {
   auto node = ep.get_bdd()->get_init();
   while (node) {
     switch (node->get_type()) {
-      case BDD::Node::NodeType::CALL: {
-        auto call_node = static_cast<const BDD::Call*>(node);
-        auto call = call_node->get_call();
+    case BDD::Node::NodeType::CALL: {
+      auto call_node = static_cast<const BDD::Call *>(node);
+      auto call = call_node->get_call();
 
-        pad(buffer);
-        buffer << "if (";
-        if (call.function_name == "map_allocate") {
-          allocate_map(call, global_state, buffer);
-        }
-
-        else if (call.function_name == "vector_allocate") {
-          allocate_vector(call, global_state, buffer);
-        }
-
-        else if (call.function_name == "dchain_allocate") {
-          allocate_dchain(call, global_state, buffer);
-        }
-
-        else if (call.function_name == "cht_fill_cht") {
-          allocate_cht(call, global_state, buffer);
-        }
-
-        else {
-          assert(false);
-        }
-
-        buffer << ") {\n";
-        lvl++;
-
-        break;
+      pad(buffer);
+      buffer << "if (";
+      if (call.function_name == "map_allocate") {
+        allocate_map(call, global_state, buffer);
       }
 
-      case BDD::Node::NodeType::BRANCH: {
-
-        break;  
+      else if (call.function_name == "vector_allocate") {
+        allocate_vector(call, global_state, buffer);
       }
 
-      case BDD::Node::NodeType::RETURN_INIT: {
-        pad(buffer);
-        buffer << "return true;\n";
-        while (lvl > 1) { lvl--; pad(buffer); buffer << "}\n"; }
-        pad(buffer);
-        buffer << "return false;\n";
-        break;
+      else if (call.function_name == "dchain_allocate") {
+        allocate_dchain(call, global_state, buffer);
       }
 
-      default: assert(false);
+      else if (call.function_name == "cht_fill_cht") {
+        allocate_cht(call, global_state, buffer);
+      }
+
+      else {
+        assert(false);
+      }
+
+      buffer << ") {\n";
+      lvl++;
+
+      break;
     }
-    
+
+    case BDD::Node::NodeType::BRANCH: {
+
+      break;
+    }
+
+    case BDD::Node::NodeType::RETURN_INIT: {
+      pad(buffer);
+      buffer << "return true;\n";
+      while (lvl > 1) {
+        lvl--;
+        pad(buffer);
+        buffer << "}\n";
+      }
+      pad(buffer);
+      buffer << "return false;\n";
+      break;
+    }
+
+    default:
+      assert(false);
+    }
+
     node = node->get_next();
   }
-
 
   buffer << "}\n\n";
 
@@ -966,7 +1007,7 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   assert(!key.isNull());
   assert(!map_has_this_key.isNull());
   assert(!value_out.isNull());
-  
+
   auto map = stack.get_label(map_addr);
   if (!map.size()) {
     stack.err_dump();
@@ -975,13 +1016,13 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
 
   static int map_has_this_key_counter = 0;
   static int allocated_index_counter = 0;
-  
+
   std::stringstream map_has_this_key_label_stream;
   map_has_this_key_label_stream << "map_has_this_key";
 
   std::stringstream allocated_index_stream;
   allocated_index_stream << "allocated_index";
-  
+
   if (map_has_this_key_counter > 0) {
     map_has_this_key_label_stream << "_" << map_has_this_key_counter;
   }
@@ -997,7 +1038,7 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   stack.add(allocated_index_label, value_out);
 
   std::vector<std::string> key_assignments;
-  auto key_label = build(key, stack, solver, key_assignments);
+  auto key_label = build(key, stack, key_assignments);
 
   for (auto key_assignment : key_assignments) {
     pad();
@@ -1006,7 +1047,7 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
 
   pad();
   os << "int " << allocated_index_label << ";\n";
-  
+
   pad();
   os << "int " << map_has_this_key_label;
   os << " = ";
@@ -1034,7 +1075,7 @@ void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
   assert(!chunk.isNull());
   assert(!chunk_addr.isNull());
   assert(!length.isNull());
-  
+
   auto p_label = "p";
   stack.set_addr(p_label, p_addr);
 
@@ -1051,7 +1092,7 @@ void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
   os << "uint8_t* " << chunk_label << " = (uint8_t*)";
   os << "nf_borrow_next_chunk(";
   os << p_label;
-  os << ", " << transpile(length, stack, solver);
+  os << ", " << transpile(length, stack);
   os << ");\n";
 
   chunk_counter++;
@@ -1072,14 +1113,17 @@ void x86_Generator::visit(const targets::x86::PacketReturnChunk *node) {
 
   auto size = chunk->getWidth();
   for (unsigned b = 0; b < size; b += 8) {
-    auto chunk_byte = solver.exprBuilder->Extract(chunk, b, klee::Expr::Int8);
-    auto before_chunk_byte = solver.exprBuilder->Extract(before_chunk, b, klee::Expr::Int8);
+    auto chunk_byte =
+        BDD::solver_toolbox.exprBuilder->Extract(chunk, b, klee::Expr::Int8);
+    auto before_chunk_byte = BDD::solver_toolbox.exprBuilder->Extract(
+        before_chunk, b, klee::Expr::Int8);
 
-    if (!solver.are_exprs_always_equal(chunk_byte, before_chunk_byte)) {
+    if (!BDD::solver_toolbox.are_exprs_always_equal(chunk_byte,
+                                                    before_chunk_byte)) {
       pad();
       os << label << "[" << b / 8 << "]";
       os << " = ";
-      os << transpile(chunk_byte, stack, solver);
+      os << transpile(chunk_byte, stack);
       os << ";\n";
     }
   }
@@ -1090,7 +1134,7 @@ void x86_Generator::visit(const targets::x86::If *node) {
 
   pad();
   os << "if (";
-  os << transpile(condition, stack, solver);
+  os << transpile(condition, stack);
   os << ") {\n";
   lvl++;
 
@@ -1150,7 +1194,7 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   assert(!map_addr.isNull());
   assert(!time.isNull());
   assert(!number_of_freed_flows.isNull());
-  
+
   auto dchain = stack.get_label(dchain_addr);
   if (!dchain.size()) {
     stack.err_dump();
@@ -1170,7 +1214,7 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   }
 
   static int number_of_freed_flows_counter = 0;
-  
+
   std::stringstream number_of_freed_flows_stream;
   number_of_freed_flows_stream << "number_of_freed_flows";
 
@@ -1188,7 +1232,7 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   os << dchain;
   os << ", " << vector;
   os << ", " << map;
-  os << ", " << transpile(time, stack, solver);
+  os << ", " << transpile(time, stack);
   os << ");\n";
 
   number_of_freed_flows_counter++;
@@ -1202,7 +1246,7 @@ void x86_Generator::visit(const targets::x86::RteEtherAddrHash *node) {
   assert(!hash.isNull());
 
   static int hash_counter = 0;
-  
+
   std::stringstream hash_stream;
   hash_stream << "hash";
 
@@ -1214,7 +1258,7 @@ void x86_Generator::visit(const targets::x86::RteEtherAddrHash *node) {
   stack.add(hash_label, hash);
 
   std::vector<std::string> obj_assignments;
-  auto obj_label = build(obj, stack, solver, obj_assignments);
+  auto obj_label = build(obj, stack, obj_assignments);
 
   for (auto obj_assignment : obj_assignments) {
     pad();
@@ -1237,7 +1281,7 @@ void x86_Generator::visit(const targets::x86::DchainRejuvenateIndex *node) {
   assert(!dchain_addr.isNull());
   assert(!time.isNull());
   assert(!index.isNull());
-  
+
   auto dchain = stack.get_label(dchain_addr);
   if (!dchain.size()) {
     stack.err_dump();
@@ -1247,8 +1291,8 @@ void x86_Generator::visit(const targets::x86::DchainRejuvenateIndex *node) {
   pad();
   os << "dchain_rejuvenate_index(";
   os << dchain;
-  os << ", " << transpile(index, stack, solver);
-  os << ", " << transpile(time, stack, solver);
+  os << ", " << transpile(index, stack);
+  os << ", " << transpile(time, stack);
   os << ");\n";
 }
 
@@ -1285,12 +1329,13 @@ void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
   stack.add(value_out_label, borrowed_cell, value_out);
 
   pad();
-  os << "uint8_t " << value_out_stream.str() << "[" << borrowed_cell_sz / 8 << "];\n";
+  os << "uint8_t " << value_out_stream.str() << "[" << borrowed_cell_sz / 8
+     << "];\n";
 
   pad();
   os << "vector_borrow(";
   os << vector;
-  os << ", " << transpile(index, stack, solver);
+  os << ", " << transpile(index, stack);
   os << ", (void **)&" << value_out_label;
   os << ");\n";
 
@@ -1323,7 +1368,7 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
   assert(!value.isNull());
 
   std::vector<std::string> assignments;
-  apply_changes(old_value, value, stack, solver, assignments);
+  apply_changes(old_value, value, stack, assignments);
 
   for (auto assignment : assignments) {
     pad();
@@ -1333,7 +1378,7 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
   pad();
   os << "vector_return(";
   os << vector;
-  os << ", " << transpile(index, stack, solver);
+  os << ", " << transpile(index, stack);
   os << ", (void *)" << value_label;
   os << ");\n";
 }
@@ -1348,22 +1393,23 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
   assert(!time.isNull());
   assert(!index_out.isNull());
   assert(!success.isNull());
-  
+
   auto dchain = stack.get_label(dchain_addr);
   if (!dchain.size()) {
     stack.err_dump();
     assert(false && "Not found in stack");
   }
 
-  static int out_of_space_counter = 1; // I don't know why, but vigor start this at 1
+  static int out_of_space_counter =
+      1; // I don't know why, but vigor start this at 1
   static int new_index_counter = 0;
-  
+
   std::stringstream out_of_space_stream;
   out_of_space_stream << "out_of_space";
 
   std::stringstream new_index_stream;
   new_index_stream << "new_index";
-  
+
   if (out_of_space_counter > 0) {
     out_of_space_stream << "_" << out_of_space_counter;
   }
@@ -1380,14 +1426,14 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
 
   pad();
   os << "int " << new_index_label << ";\n";
-  
+
   pad();
   os << "int " << out_of_space_label;
   os << " = ";
   os << "dchain_allocate_new_index(";
   os << dchain;
   os << ", &" << new_index_label;
-  os << ", " << transpile(time, stack, solver);
+  os << ", " << transpile(time, stack);
   os << ");\n";
 
   out_of_space_counter++;
@@ -1404,7 +1450,7 @@ void x86_Generator::visit(const targets::x86::MapPut *node) {
   assert(!key_addr.isNull());
   assert(!key.isNull());
   assert(!value.isNull());
-  
+
   auto map = stack.get_label(map_addr);
   if (!map.size()) {
     stack.err_dump();
@@ -1412,7 +1458,7 @@ void x86_Generator::visit(const targets::x86::MapPut *node) {
   }
 
   std::vector<std::string> key_assignments;
-  auto key_label = build(key, stack, solver, key_assignments);
+  auto key_label = build(key, stack, key_assignments);
 
   for (auto key_assignment : key_assignments) {
     pad();
@@ -1423,7 +1469,7 @@ void x86_Generator::visit(const targets::x86::MapPut *node) {
   os << "map_put(";
   os << map;
   os << ", (void*)" << key_label;
-  os << ", " << transpile(value, stack, solver);
+  os << ", " << transpile(value, stack);
   os << ");\n";
 }
 
@@ -1436,12 +1482,11 @@ void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {
 
   auto p_label = stack.get_label(p_addr);
 
-  
   std::stringstream unread_len_stream;
   unread_len_stream << "unread_len";
 
   static int unread_len_stream_counter = 0;
-  
+
   if (unread_len_stream_counter > 0) {
     unread_len_stream << "_" << unread_len_stream_counter;
   }
@@ -1452,7 +1497,7 @@ void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {
   os << "packet_get_unread_length(";
   os << p_label;
   os << ");\n";
-  
+
   unread_len_stream_counter++;
 }
 

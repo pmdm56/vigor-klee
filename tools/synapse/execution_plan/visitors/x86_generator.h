@@ -7,8 +7,8 @@
 #include <ctime>
 #include <fstream>
 #include <math.h>
-#include <unistd.h>
 #include <regex>
+#include <unistd.h>
 
 #define VISIT_IGNORE_MODULE(M)                                                 \
   void visit(const M *node) override {}
@@ -34,13 +34,11 @@ typedef std::vector<variable_t> frame_t;
 
 struct stack_t {
   std::vector<frame_t> frames;
-  BDD::solver_toolbox_t &solver;
   std::regex pattern;
 
   std::map<std::string, std::string> cp_var_to_code_translation;
 
-  stack_t(BDD::solver_toolbox_t &_solver)
-      : solver(_solver), pattern("^(.*)(_\\d+?)$") {
+  stack_t() : pattern("^(.*)(_\\d+?)$") {
     push();
 
     cp_var_to_code_translation = { { "rte_ether_addr_hash", "hash" },
@@ -163,8 +161,9 @@ struct stack_t {
           continue;
         }
 
-        auto extracted = solver.exprBuilder->Extract(target, 0, size);
-        if (solver.are_exprs_always_equal(extracted, addr)) {
+        auto extracted =
+            BDD::solver_toolbox.exprBuilder->Extract(target, 0, size);
+        if (BDD::solver_toolbox.are_exprs_always_equal(extracted, addr)) {
           return var.value;
         }
       }
@@ -185,8 +184,9 @@ struct stack_t {
           continue;
         }
 
-        auto extracted = solver.exprBuilder->Extract(target, 0, size);
-        if (solver.are_exprs_always_equal(extracted, addr)) {
+        auto extracted =
+            BDD::solver_toolbox.exprBuilder->Extract(target, 0, size);
+        if (BDD::solver_toolbox.are_exprs_always_equal(extracted, addr)) {
           return var.label;
         }
       }
@@ -221,15 +221,15 @@ struct stack_t {
         }
 
         if (var_size == value_size &&
-            solver.are_exprs_always_equal(var.value, value)) {
+            BDD::solver_toolbox.are_exprs_always_equal(var.value, value)) {
           return var.label;
         }
 
         for (unsigned b = 0; b + value_size <= var_size; b += 8) {
-          auto var_extract =
-              solver.exprBuilder->Extract(var.value, b, value_size);
+          auto var_extract = BDD::solver_toolbox.exprBuilder->Extract(
+              var.value, b, value_size);
 
-          if (solver.are_exprs_always_equal(var_extract, value)) {
+          if (BDD::solver_toolbox.are_exprs_always_equal(var_extract, value)) {
             if (!var.addr.isNull()) {
               label_stream << var.label << "[" << b / 8 << "]";
             } else {
@@ -291,7 +291,6 @@ private:
   int lvl;
   std::stack<bool> pending_ifs;
   stack_t stack;
-  BDD::solver_toolbox_t solver;
   BDD::SymbolFactory symbol_factory;
 
 private:
@@ -310,7 +309,7 @@ private:
                     std::ostream &buffer);
 
 public:
-  x86_Generator(std::ostream &_os) : os(_os), lvl(0), stack(solver) {}
+  x86_Generator(std::ostream &_os) : os(_os), lvl(0), stack() {}
 
   void visit(ExecutionPlan ep) override;
   void visit(const ExecutionPlanNode *ep_node) override;

@@ -9,8 +9,6 @@ class BDD {
 public:
   friend class CallPathsGroup;
 
-  static solver_toolbox_t solver_toolbox;
-
 private:
   SymbolFactory symbol_factory;
 

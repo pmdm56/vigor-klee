@@ -15,9 +15,6 @@ class ReturnRaw;
 class Node;
 
 class BDDVisitor {
-protected:
-  solver_toolbox_t toolbox;
-
 public:
   enum Action {
     VISIT_CHILDREN,

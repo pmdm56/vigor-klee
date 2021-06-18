@@ -12,6 +12,7 @@ public:
   // It defines a lexicographic order.
   enum Category {
     SentToController,
+    NumberOfReorderedNodes,
     NumberOfNodes,
     Depth,
   };

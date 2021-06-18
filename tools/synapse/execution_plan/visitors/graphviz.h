@@ -71,8 +71,7 @@ private:
       // cp << "cp " << bdd_fpath << " ~/MEGA/SyNAPSE/node\\ reordering/fw/";
       // cp << counter / 2 << "_" << counter % 2 << ".gv";
       // system(cp.str().c_str());
-
-      counter++;
+      // counter++;
     }
 
     if (search_space) {

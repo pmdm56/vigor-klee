@@ -178,8 +178,8 @@ AST::chunk_t AST::get_chunk_from_local(unsigned int idx) {
       return false;
     }
 
-    auto start_idx = get_first_concat_idx(solver, expr);
-    auto end_idx = get_last_concat_idx(solver, expr);
+    auto start_idx = get_first_concat_idx(expr);
+    auto end_idx = get_last_concat_idx(expr);
 
     return start_idx <= idx && idx <= end_idx;
   };
@@ -189,7 +189,7 @@ AST::chunk_t AST::get_chunk_from_local(unsigned int idx) {
     auto it = std::find_if(stack.begin(), stack.end(), finder);
     if (it != stack.end()) {
       result.var = it->first;
-      result.start_index = get_first_concat_idx(solver, it->second);
+      result.start_index = get_first_concat_idx(it->second);
       break;
     }
   }
@@ -310,8 +310,7 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
   assert(!expr.isNull());
 
   auto find_matching_offset = [](klee::ref<klee::Expr> saved,
-                                 klee::ref<klee::Expr> wanted,
-                                 const BDD::solver_toolbox_t &solver) -> int {
+                                 klee::ref<klee::Expr> wanted) -> int {
     auto saved_sz = saved->getWidth();
     auto wanted_sz = wanted->getWidth();
 
@@ -326,9 +325,10 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
     }
 
     for (unsigned int offset = 0; offset <= saved_sz - wanted_sz; offset += 8) {
-      auto saved_chunk = solver.exprBuilder->Extract(saved, offset, wanted_sz);
+      auto saved_chunk =
+          BDD::solver_toolbox.exprBuilder->Extract(saved, offset, wanted_sz);
 
-      if (solver.are_exprs_always_equal(saved_chunk, wanted)) {
+      if (BDD::solver_toolbox.are_exprs_always_equal(saved_chunk, wanted)) {
         return offset;
       }
     }
@@ -341,7 +341,7 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
       return false;
     }
 
-    return find_matching_offset(v.second, expr, solver) >= 0;
+    return find_matching_offset(v.second, expr) >= 0;
   };
 
   for (auto i = local_variables.rbegin(); i != local_variables.rend(); i++) {
@@ -349,7 +349,7 @@ Expr_ptr AST::get_from_local(klee::ref<klee::Expr> expr) {
 
     auto it = std::find_if(stack.begin(), stack.end(), finder);
     if (it != stack.end()) {
-      auto offset = find_matching_offset(it->second, expr, solver);
+      auto offset = find_matching_offset(it->second, expr);
       assert(offset % 8 == 0 &&
              "Found the local variable, but offset is not multiple of byte");
 
@@ -974,8 +974,8 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     klee::ref<klee::Expr> prev_chunk = get_expr_from_local_by_addr(chunk_addr);
     assert(!prev_chunk.isNull());
 
-    auto eq =
-        solver.are_exprs_always_equal(prev_chunk, call.args["the_chunk"].in);
+    auto eq = BDD::solver_toolbox.are_exprs_always_equal(
+        prev_chunk, call.args["the_chunk"].in);
 
     // changes to the chunk
     if (!eq) {
@@ -986,8 +986,8 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
   }
 
   else if (fname == "rte_ether_addr_hash") {
-    assert(solver.are_exprs_always_equal(call.args["obj"].in,
-                                         call.args["obj"].out));
+    assert(BDD::solver_toolbox.are_exprs_always_equal(call.args["obj"].in,
+                                                      call.args["obj"].out));
     Expr_ptr obj = transpile(this, call.args["obj"].in);
     assert(obj);
 

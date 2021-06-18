@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
   synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::DEBUG;
 
   llvm::cl::ParseCommandLineOptions(argc, argv);
+
   std::vector<call_path_t *> call_paths;
 
   for (auto file : InputCallPathFiles) {
@@ -58,12 +59,14 @@ int main(int argc, char **argv) {
 
   synapse::DFS dfs;
   synapse::MostCompact most_compact;
+  synapse::LeastReordered least_reordered;
 
   se.add_target(synapse::Target::x86);
   // se.add_target(synapse::Target::Tofino);
   se.add_target(synapse::Target::BMv2);
 
-  auto winner = se.search(dfs);
+  auto winner = se.search(least_reordered);
+  // auto winner = se.search(dfs);
   // auto winner = se.search(most_compact);
 
   // synapse::x86_Generator x86_generator(std::cerr);

@@ -206,7 +206,7 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
   assert(!before_map.isNull());
   assert(!after_map.isNull());
 
-  if (!BDD::BDD::solver_toolbox.are_exprs_always_equal(before_map, after_map)) {
+  if (!BDD::solver_toolbox.are_exprs_always_equal(before_map, after_map)) {
     return true;
   }
 
@@ -229,7 +229,7 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
   for (auto c1 : before_constraints) {
     for (auto c2 : after_constraints) {
-      auto always_eq_local = BDD::BDD::solver_toolbox.are_exprs_always_equal(
+      auto always_eq_local = BDD::solver_toolbox.are_exprs_always_equal(
           before_key, after_key, c1, c2);
 
       if (!always_eq.first) {
@@ -239,9 +239,8 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
       assert(always_eq.second == always_eq_local);
 
-      auto always_diff_local =
-          BDD::BDD::solver_toolbox.are_exprs_always_not_equal(
-              before_key, after_key, c1, c2);
+      auto always_diff_local = BDD::solver_toolbox.are_exprs_always_not_equal(
+          before_key, after_key, c1, c2);
 
       if (!always_diff.first) {
         always_diff.first = true;
@@ -269,7 +268,7 @@ bool Context::map_can_reorder(const BDD::Node *before, const BDD::Node *after,
     return true;
   }
 
-  condition = BDD::BDD::solver_toolbox.exprBuilder->Eq(before_key, after_key);
+  condition = BDD::solver_toolbox.exprBuilder->Eq(before_key, after_key);
   return true;
 };
 
@@ -309,8 +308,8 @@ bool Context::dchain_can_reorder(const BDD::Node *before,
   assert(!before_dchain.isNull());
   assert(!after_dchain.isNull());
 
-  if (!BDD::BDD::solver_toolbox.are_exprs_always_equal(before_dchain,
-                                                       after_dchain)) {
+  if (!BDD::solver_toolbox.are_exprs_always_equal(before_dchain,
+                                                  after_dchain)) {
     return true;
   }
 
@@ -354,7 +353,7 @@ bool Context::are_rw_dependencies_met(const BDD::Node *current_node,
   all_conditions.pop_back();
   while (all_conditions.size()) {
     condition =
-        BDD::BDD::solver_toolbox.exprBuilder->And(condition, all_conditions[0]);
+        BDD::solver_toolbox.exprBuilder->And(condition, all_conditions[0]);
     all_conditions.pop_back();
   }
 
@@ -381,8 +380,8 @@ bool Context::is_called_in_all_future_branches(
       auto node_call = static_cast<const BDD::Call *>(node);
       auto target_call = static_cast<const BDD::Call *>(target);
 
-      auto eq = BDD::BDD::solver_toolbox.are_calls_equal(
-          node_call->get_call(), target_call->get_call());
+      auto eq = BDD::solver_toolbox.are_calls_equal(node_call->get_call(),
+                                                    target_call->get_call());
 
       if (eq) {
         siblings.push_back(node->get_id());
@@ -396,7 +395,7 @@ bool Context::is_called_in_all_future_branches(
       auto node_branch = static_cast<const BDD::Branch *>(node);
       auto target_branch = static_cast<const BDD::Branch *>(target);
 
-      auto eq = BDD::BDD::solver_toolbox.are_exprs_always_equal(
+      auto eq = BDD::solver_toolbox.are_exprs_always_equal(
           node_branch->get_condition(), target_branch->get_condition());
 
       if (eq) {
@@ -721,9 +720,9 @@ void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
     next_eps.push_back(new_ep);
 
     // std::cerr << "OLD\n";
-    // Graphviz::visualize(ep, false);
+    // Graphviz::visualize(ep);
     // std::cerr << "NEW\n";
-    // Graphviz::visualize(new_ep, false);
+    // Graphviz::visualize(new_ep);
   }
 }
 

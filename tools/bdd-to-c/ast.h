@@ -48,8 +48,6 @@ private:
   Node_ptr nf_process;
 
 public:
-  BDD::solver_toolbox_t solver;
-
   static constexpr char CHUNK_LAYER_2[] = "ether_header";
   static constexpr char CHUNK_LAYER_3[] = "ipv4_header";
   static constexpr char CHUNK_LAYER_4[] = "tcpudp_header";

@@ -145,7 +145,7 @@ public:
 
           if (!arg.out.isNull() &&
               (arg.in.isNull() ||
-               !toolbox.are_exprs_always_equal(arg.in, arg.out))) {
+               !solver_toolbox.are_exprs_always_equal(arg.in, arg.out))) {
             os << " -> ";
             os << pretty_print_expr(arg.out);
           }
