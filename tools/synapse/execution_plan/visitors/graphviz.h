@@ -89,12 +89,12 @@ public:
         std::map<Target, std::string>{ { Target::x86, "cornflowerblue" },
                                        { Target::Tofino, "darkolivegreen2" },
                                        { Target::Netronome, "gold" },
-                                       { Target::FPGA, "coral1" } };
+                                       { Target::FPGA, "coral1" },
+                                       { Target::BMv2, "firebrick2" }, };
 
     ofs.open(fpath);
     assert(ofs);
   }
-
   Graphviz(const std::string &path) : Graphviz(path, nullptr) {}
 
 private:
@@ -106,6 +106,7 @@ private:
 
   void function_call(Target target, std::string target_name,
                      std::string label) {
+    assert(node_colors.find(target) != node_colors.end());
     ofs << "[label=\"" << target_name << "::" << label << "\", ";
     ofs << "color=" << node_colors[target] << "];";
     ofs << "\n";
@@ -423,5 +424,12 @@ public:
    ********************************************/
   VISIT_PRINT_MODULE_NAME(targets::tofino::A)
   VISIT_PRINT_MODULE_NAME(targets::tofino::B)
+
+  /********************************************
+   *
+   *                  BMv2
+   *
+   ********************************************/
+  VISIT_PRINT_MODULE_NAME(targets::bmv2::SendToController)
 };
 } // namespace synapse

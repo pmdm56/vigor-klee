@@ -65,9 +65,9 @@ int main(int argc, char **argv) {
   // se.add_target(synapse::Target::Tofino);
   se.add_target(synapse::Target::BMv2);
 
-  auto winner = se.search(least_reordered);
+  // auto winner = se.search(least_reordered);
   // auto winner = se.search(dfs);
-  // auto winner = se.search(most_compact);
+  auto winner = se.search(most_compact);
 
   // synapse::x86_Generator x86_generator(std::cerr);
   // winner.visit(x86_generator);

@@ -672,7 +672,7 @@ void Context::reorder_bdd(const ExecutionPlan &ep, BDD::Node *node,
 }
 
 void Context::add_reordered_next_eps(const ExecutionPlan &ep) {
-  if (ep.get_reordered_nodes() >= 1) {
+  if (ep.get_reordered_nodes() >= 0) {
     return;
   }
 

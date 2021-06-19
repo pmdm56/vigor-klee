@@ -46,6 +46,8 @@ public:
     success = true;
     assert(!processed_module || processed_module == _processed_module);
     processed_module = _processed_module;
+    current_platform =
+        std::make_pair(true, _processed_module->get_next_target());
   }
 
   void reset(const ExecutionPlan &_current_ep) {
@@ -59,7 +61,7 @@ public:
     if (leaf) {
       auto module = leaf->get_module();
       assert(module);
-      current_platform = std::make_pair(true, module->get_target());
+      current_platform = std::make_pair(true, module->get_next_target());
     } else {
       current_platform.first = false;
     }

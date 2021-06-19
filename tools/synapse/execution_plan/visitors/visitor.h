@@ -35,6 +35,10 @@ namespace tofino {
 class A;
 class B;
 }
+
+namespace bmv2 {
+class SendToController;
+}
 }
 
 class ExecutionPlanVisitor {
@@ -65,5 +69,7 @@ public:
 
   virtual void visit(const targets::tofino::A *node) {}
   virtual void visit(const targets::tofino::B *node) {}
+
+  virtual void visit(const targets::bmv2::SendToController *node) {}
 };
 }

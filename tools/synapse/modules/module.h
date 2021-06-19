@@ -46,11 +46,13 @@ public:
     x86_PacketGetUnreadLength,
     x86_SetIpv4UdpTcpChecksum,
     x86_DchainIsIndexAllocated,
+    bmv2_SendToController,
   };
 
 protected:
   ModuleType type;
   Target target;
+  Target next_target;
   const char *name;
   const BDD::Node *node;
 
@@ -60,20 +62,24 @@ protected:
 protected:
   Module(ModuleType _type, Target _target, const char *_name,
          const BDD::Node *_node)
-      : type(_type), target(_target), name(_name), node(_node),
-        context(nullptr), bdd(nullptr) {}
+      : type(_type), target(_target), next_target(_target), name(_name),
+        node(_node), context(nullptr), bdd(nullptr) {}
 
   Module(ModuleType _type, Target _target, const char *_name)
-      : type(_type), target(_target), name(_name), node(nullptr),
-        context(nullptr), bdd(nullptr) {}
+      : type(_type), target(_target), next_target(_target), name(_name),
+        node(nullptr), context(nullptr), bdd(nullptr) {}
 
 public:
   Module() {}
   Module(const Module &m) : Module(m.type, m.target, m.name, m.node) {}
 
   ModuleType get_type() const { return type; }
+
   const char *get_name() const { return name; }
+
   Target get_target() const { return target; }
+  Target get_next_target() const { return next_target; }
+
   const BDD::Node *get_node() const {
     if (!node) {
       std::cerr << "\n";

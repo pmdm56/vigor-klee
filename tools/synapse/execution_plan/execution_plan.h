@@ -65,19 +65,27 @@ public:
         nodes(ep.nodes), reordered_nodes(ep.reordered_nodes), id(ep.id) {}
 
   ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
-                const BDD::BDD *_bdd)
+                const BDD::BDD *_bdd, bool bdd_node_processed)
       : ExecutionPlan(ep.clone()) {
     id = counter++;
-    add(leaf);
+    add(leaf, bdd_node_processed);
+  }
+
+  ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
+                const BDD::BDD *_bdd)
+      : ExecutionPlan(ep, leaf, _bdd, true) {}
+
+  ExecutionPlan(const ExecutionPlan &ep, const std::vector<leaf_t> &_leaves,
+                const BDD::BDD *_bdd, bool bdd_node_processed)
+      : ExecutionPlan(ep.clone()) {
+    assert(root);
+    id = counter++;
+    add(_leaves, bdd_node_processed);
   }
 
   ExecutionPlan(const ExecutionPlan &ep, const std::vector<leaf_t> &_leaves,
                 const BDD::BDD *_bdd)
-      : ExecutionPlan(ep.clone()) {
-    assert(root);
-    id = counter++;
-    add(_leaves);
-  }
+      : ExecutionPlan(ep, _leaves, _bdd, true) {}
 
 private:
   void update_leaves(leaf_t leaf) {
@@ -134,8 +142,10 @@ private:
     processed_bdd_nodes.insert(processed_node_id);
   }
 
-  void add(const leaf_t &leaf) {
-    update_processed_nodes();
+  void add(const leaf_t &leaf, bool bdd_node_processed) {
+    if (bdd_node_processed) {
+      update_processed_nodes();
+    }
 
     if (!root) {
       assert(leaves.size() == 1);
@@ -157,11 +167,13 @@ private:
 
   // Order matters!
   // The active leaf will correspond to the first branch in the branches
-  void add(const std::vector<leaf_t> &_leaves) {
+  void add(const std::vector<leaf_t> &_leaves, bool bdd_node_processed) {
     assert(root);
     assert(leaves.size());
 
-    update_processed_nodes();
+    if (bdd_node_processed) {
+      update_processed_nodes();
+    }
 
     Branches branches;
     for (auto &leaf : _leaves) {
