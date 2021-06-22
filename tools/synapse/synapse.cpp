@@ -61,6 +61,7 @@ int main(int argc, char **argv) {
   synapse::DFS dfs;
   synapse::MostCompact most_compact;
   synapse::LeastReordered least_reordered;
+  synapse::MaximizeSwitchNodes maximize_switch_nodes;
 
   se.add_target(synapse::Target::x86);
   se.add_target(synapse::Target::p4BMv2SimpleSwitchgRPC);
@@ -68,7 +69,8 @@ int main(int argc, char **argv) {
 
   // auto winner = se.search(least_reordered);
   // auto winner = se.search(dfs);
-  auto winner = se.search(most_compact);
+  // auto winner = se.search(most_compact);
+  auto winner = se.search(maximize_switch_nodes);
 
   // synapse::x86_Generator x86_generator(std::cerr);
   // winner.visit(x86_generator);

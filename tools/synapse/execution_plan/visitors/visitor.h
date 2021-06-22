@@ -39,6 +39,8 @@ class B;
 namespace p4BMv2SimpleSwitchgRPC {
 class SendToController;
 class ParserConsume;
+class CurrentTime;
+class SetupExpirationNotifications;
 } // namespace p4BMv2SimpleSwitchgRPC
 } // namespace targets
 
@@ -75,5 +77,11 @@ public:
   visit(const targets::p4BMv2SimpleSwitchgRPC::SendToController *node) {}
   virtual void
   visit(const targets::p4BMv2SimpleSwitchgRPC::ParserConsume *node) {}
+  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::CurrentTime *node) {
+  }
+  virtual void
+  visit(const targets::p4BMv2SimpleSwitchgRPC::SetupExpirationNotifications *
+            node) {}
 };
+
 } // namespace synapse

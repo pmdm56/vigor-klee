@@ -44,6 +44,7 @@ private:
 private:
   unsigned depth;
   unsigned nodes;
+  std::map<Target, unsigned> nodes_per_target;
   unsigned reordered_nodes;
 
   unsigned id;
@@ -62,7 +63,8 @@ public:
   ExecutionPlan(const ExecutionPlan &ep)
       : root(ep.root), leaves(ep.leaves), bdd(ep.bdd),
         processed_bdd_nodes(ep.processed_bdd_nodes), depth(ep.depth),
-        nodes(ep.nodes), reordered_nodes(ep.reordered_nodes), id(ep.id) {}
+        nodes(ep.nodes), nodes_per_target(ep.nodes_per_target),
+        reordered_nodes(ep.reordered_nodes), id(ep.id) {}
 
   ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
                 const BDD::BDD *_bdd, bool bdd_node_processed)
@@ -70,6 +72,17 @@ public:
     id = counter++;
     add(leaf, bdd_node_processed);
   }
+
+  ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next,
+                const BDD::BDD *_bdd, bool bdd_node_processed)
+      : ExecutionPlan(ep.clone()) {
+    id = counter++;
+    leaf_replace_next(_next, bdd_node_processed);
+  }
+
+  ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next,
+                const BDD::BDD *_bdd)
+      : ExecutionPlan(ep, _next, _bdd, true) {}
 
   ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
                 const BDD::BDD *_bdd)
@@ -142,6 +155,15 @@ private:
     processed_bdd_nodes.insert(processed_node_id);
   }
 
+  void leaf_replace_next(const BDD::Node *next, bool bdd_node_processed) {
+    if (bdd_node_processed) {
+      update_processed_nodes();
+    }
+
+    assert(leaves.size());
+    leaves[0].next = next;
+  }
+
   void add(const leaf_t &leaf, bool bdd_node_processed) {
     if (bdd_node_processed) {
       update_processed_nodes();
@@ -160,6 +182,9 @@ private:
 
     depth++;
     nodes++;
+
+    auto module = leaf.leaf->get_module();
+    nodes_per_target[module->get_target()]++;
 
     assert(leaves.size());
     update_leaves(leaf);
@@ -181,6 +206,9 @@ private:
       assert(!leaf.leaf->get_prev());
       leaf.leaf->set_prev(leaves[0].leaf);
       nodes++;
+
+      auto module = leaf.leaf->get_module();
+      nodes_per_target[module->get_target()]++;
     }
 
     leaves[0].leaf->set_next(branches);
@@ -194,6 +222,11 @@ private:
 public:
   unsigned get_depth() const { return depth; }
   unsigned get_nodes() const { return nodes; }
+
+  const std::map<Target, unsigned> &get_nodes_per_target() const {
+    return nodes_per_target;
+  }
+
   unsigned get_id() const { return id; }
   unsigned get_reordered_nodes() const { return reordered_nodes; }
 

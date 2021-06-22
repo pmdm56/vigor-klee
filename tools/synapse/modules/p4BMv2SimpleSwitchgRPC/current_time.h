@@ -32,10 +32,9 @@ private:
       auto _time = call.ret;
 
       auto ep = context->get_current();
-      auto active_leaf = ep.get_active_leaf();
-      active_leaf->set_next() auto new_leaf =
-          ExecutionPlan::leaf_t(ep_node, node->get_next());
-      auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
+      auto new_ep = ExecutionPlan(ep, node->get_next(), bdd);
+
+      auto new_module = std::make_shared<CurrentTime>(node);
 
       context->add(new_ep, new_module);
     }

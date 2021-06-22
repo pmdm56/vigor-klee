@@ -14,12 +14,13 @@ public:
     SentToController,
     NumberOfReorderedNodes,
     NumberOfNodes,
+    NumberOfSwitchNodes,
     Depth,
   };
 
 private:
   const Category FIRST_CATEGORY = SentToController;
-  const Category LAST_CATEGORY = NumberOfNodes;
+  const Category LAST_CATEGORY = Depth;
 
 private:
   std::map<Category, int> values;
@@ -42,12 +43,16 @@ public:
     for (int category_int = FIRST_CATEGORY; category_int <= LAST_CATEGORY;
          category_int++) {
       auto category = static_cast<Category>(category_int);
-      if (get(category) >= other.get(category)) {
+      if (get(category) > other.get(category)) {
         return false;
+      }
+
+      if (get(category) < other.get(category)) {
+        return true;
       }
     }
 
-    return true;
+    return false;
   }
 
   inline bool operator>(const Score &other) { return (*this) < other; }

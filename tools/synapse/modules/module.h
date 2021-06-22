@@ -49,6 +49,7 @@ public:
     p4BMv2SimpleSwitchgRPC_SendToController,
     p4BMv2SimpleSwitchgRPC_ParserConsume,
     p4BMv2SimpleSwitchgRPC_CurrentTime,
+    p4BMv2SimpleSwitchgRPC_SetupExpirationNotifications,
   };
 
 protected:

@@ -51,7 +51,6 @@ public:
     h.add(context);
 
     while (!h.finished()) {
-      bool processed = false;
       auto available = h.size();
       auto next_ep = h.pop();
       auto next_node = next_ep.get_next_node();
@@ -59,30 +58,46 @@ public:
 
       // Graphviz::visualize(next_ep, search_space);
 
+      struct report_t {
+        std::vector<std::string> target_name;
+        std::vector<std::string> name;
+        std::vector<unsigned> generated_contexts;
+      };
+
+      report_t report;
+
       for (auto module : modules) {
         auto next_context = module->process_node(next_ep, next_node, bdd);
 
         if (next_context.processed()) {
-          Log::dbg() << "\n";
-          Log::dbg()
-              << "=======================================================\n";
-          Log::dbg() << "Available " << available << "\n";
-          Log::dbg() << "Node      " << next_node->dump(true) << "\n";
-          Log::dbg() << "MATCH     " << module->get_target_name()
-                     << "::" << module->get_name() << " -> "
-                     << next_context.size() << " exec plans"
-                     << "\n";
-          Log::dbg()
-              << "=======================================================\n";
+          report.target_name.push_back(module->get_target_name());
+          report.name.push_back(module->get_name());
+          report.generated_contexts.push_back(next_context.size());
+
           h.add(next_context);
           search_space.add_leaves(next_context);
-          processed = true;
         }
       }
 
       search_space.submit_leaves();
 
-      if (!processed) {
+      if (report.target_name.size()) {
+        Log::dbg() << "\n";
+        Log::dbg()
+            << "=======================================================\n";
+        Log::dbg() << "Available " << available << "\n";
+        Log::dbg() << "Node      " << next_node->dump(true) << "\n";
+
+        for (unsigned i = 0; i < report.target_name.size(); i++) {
+          Log::dbg() << "MATCH     " << report.target_name[i]
+                     << "::" << report.name[i] << " -> "
+                     << report.generated_contexts[i] << " exec plans"
+                     << "\n";
+        }
+
+        Log::dbg()
+            << "=======================================================\n";
+      } else {
         Log::dbg() << "\n";
         Log::dbg()
             << "=======================================================\n";
@@ -98,12 +113,13 @@ public:
       }
     }
 
-    for (auto &ep : h.get_all()) {
-      synapse::Graphviz::visualize(ep);
-    }
+    // for (auto &ep : h.get_all()) {
+    //   synapse::Graphviz::visualize(ep);
+    // }
 
     // synapse::Graphviz::visualize(h.get(), search_space);
-    // synapse::Graphviz::visualize(h.get());
+    synapse::Graphviz::visualize(h.get());
+
     return h.get();
   }
 };
