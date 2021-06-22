@@ -11,6 +11,8 @@ namespace p4BMv2SimpleSwitchgRPC {
 
 class ParserConsume : public Module {
 private:
+  klee::ref<klee::Expr> chunk_addr;
+  klee::ref<klee::Expr> chunk;
   klee::ref<klee::Expr> length;
 
 public:
@@ -18,10 +20,11 @@ public:
       : Module(ModuleType::p4BMv2SimpleSwitchgRPC_ParserConsume,
                Target::p4BMv2SimpleSwitchgRPC, "ParserConsume") {}
 
-  ParserConsume(const BDD::Node *node, klee::ref<klee::Expr> _length)
+  ParserConsume(const BDD::Node *node, klee::ref<klee::Expr> _chunk_addr,
+                klee::ref<klee::Expr> _chunk, klee::ref<klee::Expr> _length)
       : Module(ModuleType::p4BMv2SimpleSwitchgRPC_ParserConsume,
                Target::p4BMv2SimpleSwitchgRPC, "ParserConsume", node),
-        length(_length) {}
+        chunk_addr(_chunk_addr), chunk(_chunk), length(_length) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -32,10 +35,16 @@ private:
     auto call = node->get_call();
 
     if (call.function_name == "packet_borrow_next_chunk") {
+      assert(!call.args["chunk"].out.isNull());
+      assert(!call.extra_vars["the_chunk"].second.isNull());
       assert(!call.args["length"].expr.isNull());
+
+      auto _chunk_addr = call.args["chunk"].out;
+      auto _chunk = call.extra_vars["the_chunk"].second;
       auto _length = call.args["length"].expr;
 
-      auto new_module = std::make_shared<ParserConsume>(node, _length);
+      auto new_module =
+          std::make_shared<ParserConsume>(node, _chunk_addr, _chunk, _length);
       auto ep_node = ExecutionPlanNode::build(new_module);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
@@ -63,7 +72,7 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new ParserConsume(node, length);
+    auto cloned = new ParserConsume(node, chunk_addr, chunk, length);
     return std::shared_ptr<Module>(cloned);
   }
 };

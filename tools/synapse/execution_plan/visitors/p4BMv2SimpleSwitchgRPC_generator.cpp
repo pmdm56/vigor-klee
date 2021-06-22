@@ -144,7 +144,7 @@ void p4BMv2SimpleSwitchgRPC_Generator::visit(ExecutionPlan ep) {
   dump();
 }
 
-void p4BMv2SimpleSwitchgRPC_Generator::visit(const ExecutionPlanNode *ep_node) {
-}
+void p4BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::p4BMv2SimpleSwitchgRPC::ParserConsume *node) {}
 
 }; // namespace synapse

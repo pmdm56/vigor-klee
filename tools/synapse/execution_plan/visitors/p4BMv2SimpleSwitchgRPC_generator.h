@@ -79,6 +79,8 @@ public:
   p4BMv2SimpleSwitchgRPC_Generator(std::ostream &_os) : os(_os), lvl(0) {}
 
   void visit(ExecutionPlan ep) override;
-  void visit(const ExecutionPlanNode *ep_node) override;
+
+  void
+  visit(const targets::p4BMv2SimpleSwitchgRPC::ParserConsume *node) override;
 };
 } // namespace synapse
