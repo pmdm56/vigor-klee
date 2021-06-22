@@ -10,9 +10,6 @@
 #include <regex>
 #include <unistd.h>
 
-#define VISIT_IGNORE_MODULE(M)                                                 \
-  void visit(const M *node) override {}
-
 namespace synapse {
 
 struct variable_t {

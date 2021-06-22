@@ -29,17 +29,18 @@ class MapPut;
 class PacketGetUnreadLength;
 class SetIpv4UdpTcpChecksum;
 class DchainIsIndexAllocated;
-}
+} // namespace x86
 
 namespace tofino {
 class A;
 class B;
-}
+} // namespace tofino
 
-namespace bmv2 {
+namespace p4BMv2SimpleSwitchgRPC {
 class SendToController;
-}
-}
+class ParserConsume;
+} // namespace p4BMv2SimpleSwitchgRPC
+} // namespace targets
 
 class ExecutionPlanVisitor {
 public:
@@ -70,6 +71,9 @@ public:
   virtual void visit(const targets::tofino::A *node) {}
   virtual void visit(const targets::tofino::B *node) {}
 
-  virtual void visit(const targets::bmv2::SendToController *node) {}
+  virtual void
+  visit(const targets::p4BMv2SimpleSwitchgRPC::SendToController *node) {}
+  virtual void
+  visit(const targets::p4BMv2SimpleSwitchgRPC::ParserConsume *node) {}
 };
-}
+} // namespace synapse

@@ -90,7 +90,8 @@ public:
                                        { Target::Tofino, "darkolivegreen2" },
                                        { Target::Netronome, "gold" },
                                        { Target::FPGA, "coral1" },
-                                       { Target::BMv2, "firebrick2" }, };
+                                       { Target::p4BMv2SimpleSwitchgRPC,
+                                         "firebrick2" }, };
 
     ofs.open(fpath);
     assert(ofs);
@@ -427,9 +428,10 @@ public:
 
   /********************************************
    *
-   *                  BMv2
+   *              p4BMv2SimpleSwitchgRPC
    *
    ********************************************/
-  VISIT_PRINT_MODULE_NAME(targets::bmv2::SendToController)
+  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::SendToController)
+  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::ParserConsume)
 };
 } // namespace synapse

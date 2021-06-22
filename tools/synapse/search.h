@@ -36,8 +36,8 @@ public:
     case Target::FPGA:
       _modules = targets::fpga::get_modules();
       break;
-    case Target::BMv2:
-      _modules = targets::bmv2::get_modules();
+    case Target::p4BMv2SimpleSwitchgRPC:
+      _modules = targets::p4BMv2SimpleSwitchgRPC::get_modules();
       break;
     }
 
@@ -98,10 +98,12 @@ public:
       }
     }
 
-    for (auto &ep : h.get_all())
+    for (auto &ep : h.get_all()) {
       synapse::Graphviz::visualize(ep);
+    }
 
     // synapse::Graphviz::visualize(h.get(), search_space);
+    // synapse::Graphviz::visualize(h.get());
     return h.get();
   }
 };

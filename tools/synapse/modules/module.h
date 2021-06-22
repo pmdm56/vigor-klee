@@ -13,7 +13,7 @@ enum Target {
   Tofino,
   Netronome,
   FPGA,
-  BMv2,
+  p4BMv2SimpleSwitchgRPC,
 };
 
 class ExecutionPlan;
@@ -46,7 +46,9 @@ public:
     x86_PacketGetUnreadLength,
     x86_SetIpv4UdpTcpChecksum,
     x86_DchainIsIndexAllocated,
-    bmv2_SendToController,
+    p4BMv2SimpleSwitchgRPC_SendToController,
+    p4BMv2SimpleSwitchgRPC_ParserConsume,
+    p4BMv2SimpleSwitchgRPC_CurrentTime,
   };
 
 protected:
@@ -104,8 +106,8 @@ public:
       return "Netronome";
     case FPGA:
       return "FPGA";
-    case BMv2:
-      return "BMv2";
+    case p4BMv2SimpleSwitchgRPC:
+      return "p4BMv2SimpleSwitchgRPC";
     }
 
     assert(false && "I should not be here");

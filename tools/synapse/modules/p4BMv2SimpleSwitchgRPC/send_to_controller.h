@@ -7,19 +7,19 @@
 
 namespace synapse {
 namespace targets {
-namespace bmv2 {
+namespace p4BMv2SimpleSwitchgRPC {
 
 class SendToController : public Module {
 public:
   SendToController()
-      : Module(ModuleType::bmv2_SendToController, Target::BMv2,
-               "SendToController") {
+      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_SendToController,
+               Target::p4BMv2SimpleSwitchgRPC, "SendToController") {
     next_target = Target::x86;
   }
 
   SendToController(const BDD::Node *node)
-      : Module(ModuleType::bmv2_SendToController, Target::BMv2,
-               "SendToController", node) {
+      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_SendToController,
+               Target::p4BMv2SimpleSwitchgRPC, "SendToController", node) {
     next_target = Target::x86;
   }
 
@@ -66,6 +66,6 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 };
-} // namespace x86
+} // namespace p4BMv2SimpleSwitchgRPC
 } // namespace targets
 } // namespace synapse

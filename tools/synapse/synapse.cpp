@@ -25,6 +25,7 @@
 #include "execution_plan/context.h"
 #include "execution_plan/execution_plan.h"
 #include "execution_plan/visitors/graphviz.h"
+#include "execution_plan/visitors/p4BMv2SimpleSwitchgRPC_generator.h"
 #include "execution_plan/visitors/x86_generator.h"
 #include "heuristics/heuristics.h"
 #include "log.h"
@@ -62,8 +63,8 @@ int main(int argc, char **argv) {
   synapse::LeastReordered least_reordered;
 
   se.add_target(synapse::Target::x86);
+  se.add_target(synapse::Target::p4BMv2SimpleSwitchgRPC);
   // se.add_target(synapse::Target::Tofino);
-  se.add_target(synapse::Target::BMv2);
 
   // auto winner = se.search(least_reordered);
   // auto winner = se.search(dfs);
@@ -71,6 +72,10 @@ int main(int argc, char **argv) {
 
   // synapse::x86_Generator x86_generator(std::cerr);
   // winner.visit(x86_generator);
+
+  synapse::p4BMv2SimpleSwitchgRPC_Generator p4BMv2SimpleSwitchgRPC_generator(
+      std::cerr);
+  winner.visit(p4BMv2SimpleSwitchgRPC_generator);
 
   for (auto call_path : call_paths) {
     delete call_path;
