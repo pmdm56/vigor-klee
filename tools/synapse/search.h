@@ -113,12 +113,12 @@ public:
       }
     }
 
-    // for (auto &ep : h.get_all()) {
-    //   synapse::Graphviz::visualize(ep);
-    // }
+    for (auto &ep : h.get_all()) {
+      synapse::Graphviz::visualize(ep);
+    }
 
     // synapse::Graphviz::visualize(h.get(), search_space);
-    synapse::Graphviz::visualize(h.get());
+    // synapse::Graphviz::visualize(h.get());
 
     return h.get();
   }
