@@ -31,7 +31,7 @@ public:
       _modules = targets::tofino::get_modules();
       break;
     case Target::Netronome:
-      _modules = targets::tofino::get_modules();
+      _modules = targets::netronome::get_modules();
       break;
     case Target::FPGA:
       _modules = targets::fpga::get_modules();
