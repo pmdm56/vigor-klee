@@ -82,5 +82,8 @@ public:
 
   void
   visit(const targets::p4BMv2SimpleSwitchgRPC::ParserConsume *node) override;
+  void visit(const targets::p4BMv2SimpleSwitchgRPC::If *node) override;
+  void visit(const targets::p4BMv2SimpleSwitchgRPC::Then *node) override;
+  void visit(const targets::p4BMv2SimpleSwitchgRPC::Else *node) override;
 };
 } // namespace synapse

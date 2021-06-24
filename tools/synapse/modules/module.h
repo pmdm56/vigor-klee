@@ -50,6 +50,9 @@ public:
     p4BMv2SimpleSwitchgRPC_ParserConsume,
     p4BMv2SimpleSwitchgRPC_CurrentTime,
     p4BMv2SimpleSwitchgRPC_SetupExpirationNotifications,
+    p4BMv2SimpleSwitchgRPC_If,
+    p4BMv2SimpleSwitchgRPC_Then,
+    p4BMv2SimpleSwitchgRPC_Else,
   };
 
 protected:

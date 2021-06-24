@@ -140,11 +140,19 @@ void p4BMv2SimpleSwitchgRPC_Generator::dump() const {
 
 void p4BMv2SimpleSwitchgRPC_Generator::visit(ExecutionPlan ep) {
   ExecutionPlanVisitor::visit(ep);
-
   dump();
 }
 
 void p4BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::p4BMv2SimpleSwitchgRPC::ParserConsume *node) {}
+
+void p4BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::p4BMv2SimpleSwitchgRPC::If *node) {}
+
+void p4BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::p4BMv2SimpleSwitchgRPC::Then *node) {}
+
+void p4BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::p4BMv2SimpleSwitchgRPC::Else *node) {}
 
 }; // namespace synapse
