@@ -1,7 +1,7 @@
 #pragma once
 
-#include <sstream>
 #include <iostream>
+#include <sstream>
 
 namespace synapse {
 
@@ -19,7 +19,7 @@ const Color MAGENTA = "\033[35m";
 const Color CYAN = "\033[36m";
 const Color WHITE = "\033[37m";
 const Color BOLD = "\033[1m";
-}
+} // namespace Colors
 
 class Log {
 
@@ -57,7 +57,7 @@ private:
       break;
     case WARNING:
       stream.rdbuf(std::cerr.rdbuf());
-      color = Colors::YELLOW;
+      color = Colors::CYAN;
       break;
     case ERROR:
       stream.rdbuf(std::cerr.rdbuf());
@@ -90,4 +90,4 @@ template <typename T> Log &operator<<(Log &log, T &&t) {
 template <typename T> Log &operator<<(Log &&log, T &&t) {
   return log << std::forward<T>(t);
 }
-}
+} // namespace synapse

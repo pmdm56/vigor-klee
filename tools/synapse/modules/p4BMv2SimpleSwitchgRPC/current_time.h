@@ -32,7 +32,8 @@ private:
       auto _time = call.ret;
 
       auto ep = context->get_current();
-      auto new_ep = ExecutionPlan(ep, node->get_next(), bdd);
+      auto new_ep = ExecutionPlan(ep, node->get_next(),
+                                  Target::p4BMv2SimpleSwitchgRPC, bdd);
 
       auto new_module = std::make_shared<CurrentTime>(node);
 

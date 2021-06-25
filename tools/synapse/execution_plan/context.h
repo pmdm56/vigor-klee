@@ -18,7 +18,6 @@ private:
   std::vector<ExecutionPlan> next_eps;
   const ExecutionPlan *current_ep;
   bool success;
-  std::pair<bool, Target> current_platform;
   Module_ptr processed_module;
   const BDD::BDD *bdd;
 
@@ -27,15 +26,16 @@ public:
 
   Context(const BDD::BDD &_bdd) : current_ep(nullptr), bdd(&_bdd) {
     next_eps.emplace_back(bdd);
-    current_platform.first = false;
   }
 
   Context(const Context &context)
       : next_eps(context.next_eps), current_ep(context.current_ep),
-        success(context.success), current_platform(context.current_platform),
-        processed_module(context.processed_module), bdd(context.bdd) {}
+        success(context.success), processed_module(context.processed_module),
+        bdd(context.bdd) {}
 
   bool can_process_platform(Target _target) {
+    assert(current_ep);
+    auto current_platform = current_ep->get_current_platform();
     return !current_platform.first || (current_platform.second == _target);
   }
 
@@ -46,8 +46,6 @@ public:
     success = true;
     assert(!processed_module || processed_module == _processed_module);
     processed_module = _processed_module;
-    current_platform =
-        std::make_pair(true, _processed_module->get_next_target());
   }
 
   void reset(const ExecutionPlan &_current_ep) {
@@ -55,16 +53,6 @@ public:
     processed_module.reset();
     current_ep = &_current_ep;
     success = false;
-
-    auto leaf = _current_ep.get_active_leaf();
-
-    if (leaf) {
-      auto module = leaf->get_module();
-      assert(module);
-      current_platform = std::make_pair(true, module->get_next_target());
-    } else {
-      current_platform.first = false;
-    }
   }
 
   bool has_current() const { return current_ep != nullptr; }

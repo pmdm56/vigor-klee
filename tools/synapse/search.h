@@ -70,6 +70,8 @@ public:
         auto next_context = module->process_node(next_ep, next_node, bdd);
 
         if (next_context.processed()) {
+          auto next_eps = next_context.get_next_eps();
+
           report.target_name.push_back(module->get_target_name());
           report.name.push_back(module->get_name());
           report.generated_contexts.push_back(next_context.size());
@@ -79,9 +81,9 @@ public:
         }
       }
 
-      search_space.submit_leaves();
-
       if (report.target_name.size()) {
+        search_space.submit_leaves();
+
         Log::dbg() << "\n";
         Log::dbg()
             << "=======================================================\n";
@@ -103,11 +105,11 @@ public:
             << "=======================================================\n";
         Log::dbg() << "Available " << available << "\n";
         Log::dbg() << "Node      " << next_node->dump(true) << "\n";
-        Log::dbg()
-            << "No module can handle this BDD node in the current context.";
-        Log::dbg() << "\n";
-        Log::dbg() << "Deleting solution from search space.";
-        Log::dbg() << "\n";
+
+        Log::wrn() << "No module can handle this BDD node"
+                      "in the current context.\n";
+        Log::wrn() << "Deleting solution from search space.\n";
+
         Log::dbg()
             << "=======================================================\n";
       }
@@ -118,7 +120,7 @@ public:
     // }
 
     // synapse::Graphviz::visualize(h.get(), search_space);
-    synapse::Graphviz::visualize(h.get());
+    // synapse::Graphviz::visualize(h.get());
 
     return h.get();
   }

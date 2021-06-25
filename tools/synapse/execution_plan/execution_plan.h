@@ -15,13 +15,24 @@ public:
   struct leaf_t {
     ExecutionPlanNode_ptr leaf;
     const BDD::Node *next;
+    std::pair<bool, Target> current_platform;
 
-    leaf_t(const BDD::Node *_next) : next(_next) {}
+    leaf_t(const BDD::Node *_next) : next(_next) {
+      current_platform.first = false;
+    }
 
     leaf_t(ExecutionPlanNode_ptr _leaf, const BDD::Node *_next)
-        : leaf(_leaf), next(_next) {}
+        : leaf(_leaf), next(_next) {
+      auto module = _leaf->get_module();
+      assert(module);
 
-    leaf_t(const leaf_t &_leaf) : leaf(_leaf.leaf), next(_leaf.next) {}
+      current_platform.first = true;
+      current_platform.second = module->get_next_target();
+    }
+
+    leaf_t(const leaf_t &_leaf)
+        : leaf(_leaf.leaf), next(_leaf.next),
+          current_platform(_leaf.current_platform) {}
   };
 
 private:
@@ -46,7 +57,6 @@ private:
   unsigned nodes;
   std::map<Target, unsigned> nodes_per_target;
   unsigned reordered_nodes;
-
   unsigned id;
 
   static int counter;
@@ -73,16 +83,17 @@ public:
     add(leaf, bdd_node_processed);
   }
 
-  ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next,
+  ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next, Target _target,
                 const BDD::BDD *_bdd, bool bdd_node_processed)
       : ExecutionPlan(ep.clone()) {
     id = counter++;
     leaf_replace_next(_next, bdd_node_processed);
+    leaf_replace_current_platform(_target);
   }
 
-  ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next,
+  ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next, Target _target,
                 const BDD::BDD *_bdd)
-      : ExecutionPlan(ep, _next, _bdd, true) {}
+      : ExecutionPlan(ep, _next, _target, _bdd, true) {}
 
   ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
                 const BDD::BDD *_bdd)
@@ -162,6 +173,12 @@ private:
 
     assert(leaves.size());
     leaves[0].next = next;
+  }
+
+  void leaf_replace_current_platform(Target target) {
+    assert(leaves.size());
+    leaves[0].current_platform.first = true;
+    leaves[0].current_platform.second = target;
   }
 
   void add(const leaf_t &leaf, bool bdd_node_processed) {
@@ -252,6 +269,17 @@ public:
     return leaf;
   }
 
+  std::pair<bool, Target> get_current_platform() const {
+    std::pair<bool, Target> current_platform;
+    current_platform.first = false;
+
+    if (leaves.size()) {
+      current_platform = leaves[0].current_platform;
+    }
+
+    return current_platform;
+  }
+
   ExecutionPlan clone_and_replace_active_leaf_node(BDD::Node *node) const {
     auto new_ep = clone(true);
 
@@ -266,6 +294,8 @@ public:
 
     new_ep.leaves[0].leaf->replace_module(cloned);
     new_ep.leaves[0].next = node->get_next();
+    new_ep.leaves[0].current_platform.first = true;
+    new_ep.leaves[0].current_platform.second = cloned->get_next_target();
     new_ep.reordered_nodes++;
 
     new_ep.replace_node_in_bdd(node);
