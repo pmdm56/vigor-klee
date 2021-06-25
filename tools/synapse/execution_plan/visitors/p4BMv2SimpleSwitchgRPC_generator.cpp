@@ -144,9 +144,6 @@ void p4BMv2SimpleSwitchgRPC_Generator::visit(ExecutionPlan ep) {
 }
 
 void p4BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::p4BMv2SimpleSwitchgRPC::ParserConsume *node) {}
-
-void p4BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::p4BMv2SimpleSwitchgRPC::If *node) {}
 
 void p4BMv2SimpleSwitchgRPC_Generator::visit(
@@ -154,5 +151,8 @@ void p4BMv2SimpleSwitchgRPC_Generator::visit(
 
 void p4BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::p4BMv2SimpleSwitchgRPC::Else *node) {}
+
+void p4BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::p4BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
 
 }; // namespace synapse
