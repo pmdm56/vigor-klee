@@ -9,6 +9,7 @@
 #include "send_to_controller.h"
 #include "setup_expiration_notifications.h"
 #include "then.h"
+#include "ipv4_consume.h"
 
 namespace synapse {
 namespace targets {
@@ -19,7 +20,8 @@ inline std::vector<Module_ptr> get_modules() {
     MODULE(SendToController), MODULE(CurrentTime),
     MODULE(If),               MODULE(Then),
     MODULE(Else),             MODULE(SetupExpirationNotifications),
-    MODULE(EthernetConsume),
+    MODULE(EthernetConsume),  
+    MODULE(IPv4Consume),
   };
 
   return modules;

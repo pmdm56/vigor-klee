@@ -439,5 +439,6 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::Then)
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::Else)
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::EthernetConsume)
+  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::IPv4Consume)
 };
 } // namespace synapse

@@ -45,6 +45,7 @@ class If;
 class Then;
 class Else;
 class EthernetConsume;
+class IPv4Consume;
 } // namespace p4BMv2SimpleSwitchgRPC
 } // namespace targets
 
@@ -87,8 +88,8 @@ public:
   virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::If *node) {}
   virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::Then *node) {}
   virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::Else *node) {}
-  virtual void
-  visit(const targets::p4BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
+  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
+  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::IPv4Consume *node) {}
 };
 
 } // namespace synapse
