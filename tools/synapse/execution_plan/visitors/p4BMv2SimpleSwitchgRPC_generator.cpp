@@ -155,4 +155,7 @@ void p4BMv2SimpleSwitchgRPC_Generator::visit(
 void p4BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::p4BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
 
+void p4BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::p4BMv2SimpleSwitchgRPC::IPv4Consume *node) {}
+
 }; // namespace synapse

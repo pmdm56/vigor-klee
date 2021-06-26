@@ -20,28 +20,6 @@ public:
                Target::p4BMv2SimpleSwitchgRPC, "EthernetConsume", node) {}
 
 private:
-  bool is_first_packet_borrow_next_chunk(const BDD::Node *node) {
-    node = node->get_prev();
-
-    while (node) {
-      if (node->get_type() != BDD::Node::NodeType::CALL) {
-        node = node->get_prev();
-        continue;
-      }
-
-      auto call_node = static_cast<const BDD::Call *>(node);
-      auto call = call_node->get_call();
-
-      if (call.function_name == "packet_borrow_next_chunk") {
-        return false;
-      }
-
-      node = node->get_prev();
-    }
-
-    return true;
-  }
-
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
     return BDD::BDDVisitor::Action::STOP;
   }
@@ -53,9 +31,9 @@ private:
       return BDD::BDDVisitor::Action::STOP;
     }
 
-    auto is_first = is_first_packet_borrow_next_chunk(node);
+    auto all_prev_packet_borrow_next_chunk = get_all_prev_packet_borrow_next_chunk(node);
 
-    if (!is_first) {
+    if (all_prev_packet_borrow_next_chunk.size() != 0) {
       return BDD::BDDVisitor::Action::STOP;
     }
 

@@ -48,6 +48,7 @@ class EthernetConsume;
 class TableLookup;
 class TableMatch;
 class TableMiss;
+class IPv4Consume;
 } // namespace p4BMv2SimpleSwitchgRPC
 } // namespace targets
 
@@ -95,6 +96,8 @@ public:
   }
   virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::TableMatch *node) {}
   virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::TableMiss *node) {}
+  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::IPv4Consume *node) {
+  }
 };
 
 } // namespace synapse

@@ -6,6 +6,7 @@
 #include "ethernet_consume.h"
 #include "if.h"
 #include "ignore.h"
+#include "ipv4_consume.h"
 #include "send_to_controller.h"
 #include "setup_expiration_notifications.h"
 #include "table_lookup.h"
@@ -24,6 +25,7 @@ inline std::vector<Module_ptr> get_modules() {
     MODULE(Else),             MODULE(SetupExpirationNotifications),
     MODULE(EthernetConsume),  MODULE(TableLookup),
     MODULE(TableMatch),       MODULE(TableMiss),
+    MODULE(IPv4Consume),
   };
 
   return modules;

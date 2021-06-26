@@ -442,5 +442,6 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::TableLookup)
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::TableMatch)
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::TableMiss)
+  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::IPv4Consume)
 };
 } // namespace synapse

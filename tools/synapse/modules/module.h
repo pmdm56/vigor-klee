@@ -5,6 +5,7 @@
 #include "../execution_plan/visitors/visitor.h"
 
 #define MODULE(X) (std::make_shared<X>())
+#define UINT_16_SWAP_ENDIANNESS(p) ((((p) & 0xff) << 8) | ((p) >> 8 & 0xff))
 
 namespace synapse {
 
@@ -56,6 +57,7 @@ public:
     p4BMv2SimpleSwitchgRPC_TableLookup,
     p4BMv2SimpleSwitchgRPC_TableMatch,
     p4BMv2SimpleSwitchgRPC_TableMiss,
+    p4BMv2SimpleSwitchgRPC_IPv4Consume,
   };
 
 protected:
@@ -134,6 +136,8 @@ protected:
   const BDD::Node *
   get_past_node_that_generates_symbol(const BDD::Node *current_node,
                                       const std::string &symbol) const;
+  std::vector<const BDD::Node *>
+  get_all_prev_packet_borrow_next_chunk(const BDD::Node *node);
 };
 
 } // namespace synapse
