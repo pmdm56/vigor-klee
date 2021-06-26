@@ -23,7 +23,7 @@ Context Module::process_node(const ExecutionPlan &ep, const BDD::Node *node,
   return *context;
 }
 
-bool Module::query_contains_map_has_key(const BDD::Branch *node) {
+bool Module::query_contains_map_has_key(const BDD::Branch *node) const {
   assert(!node->get_condition().isNull());
   auto _condition = node->get_condition();
 
@@ -46,7 +46,7 @@ bool Module::query_contains_map_has_key(const BDD::Branch *node) {
 
 const BDD::Node *
 Module::get_past_node_that_generates_symbol(const BDD::Node *current_node,
-                                            const std::string &symbol) {
+                                            const std::string &symbol) const {
   assert(current_node);
   auto node = current_node->get_prev();
 

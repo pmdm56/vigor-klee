@@ -17,7 +17,8 @@ public:
   Ignore()
       : Module(ModuleType::p4BMv2SimpleSwitchgRPC_Ignore,
                Target::p4BMv2SimpleSwitchgRPC, "Ignore") {
-    functions_to_ignore = std::vector<std::string>{ "current_time", "map_get" };
+    functions_to_ignore = std::vector<std::string>{ "current_time", "map_get",
+                                                    "packet_return_chunk" };
   }
 
   Ignore(const BDD::Node *node)

@@ -14,6 +14,7 @@ namespace p4BMv2SimpleSwitchgRPC {
 
 class TableLookup : public Module {
 private:
+  uint64_t table_id;
   klee::ref<klee::Expr> condition;
   klee::ref<klee::Expr> key;
 
@@ -22,15 +23,15 @@ public:
       : Module(ModuleType::p4BMv2SimpleSwitchgRPC_TableLookup,
                Target::p4BMv2SimpleSwitchgRPC, "TableLookup") {}
 
-  TableLookup(const BDD::Node *node, klee::ref<klee::Expr> _condition,
-              klee::ref<klee::Expr> _key)
+  TableLookup(const BDD::Node *node, uint64_t _table_id,
+              klee::ref<klee::Expr> _condition, klee::ref<klee::Expr> _key)
       : Module(ModuleType::p4BMv2SimpleSwitchgRPC_TableLookup,
                Target::p4BMv2SimpleSwitchgRPC, "TableLookup", node),
-        condition(_condition), key(_key) {}
+        table_id(_table_id), condition(_condition), key(_key) {}
 
 private:
   call_t get_map_get_call(const BDD::Node *current_node,
-                          klee::ref<klee::Expr> condition) {
+                          klee::ref<klee::Expr> condition) const {
     RetrieveSymbols retriever;
     retriever.visit(condition);
 
@@ -45,6 +46,44 @@ private:
     return map_get_call_node->get_call();
   }
 
+  bool multiple_queries_to_this_table(const BDD::Node *current_node,
+                                      uint64_t _table_id) const {
+    assert(current_node);
+    auto node = current_node->get_prev();
+
+    unsigned int counter = 0;
+
+    while (node) {
+      if (node->get_type() != BDD::Node::NodeType::CALL) {
+        node = node->get_prev();
+        continue;
+      }
+
+      auto call_node = static_cast<const BDD::Call *>(node);
+      auto call = call_node->get_call();
+
+      if (call.function_name != "map_get" && call.function_name != "map_put") {
+        node = node->get_prev();
+        continue;
+      }
+
+      assert(!call.args["map"].expr.isNull());
+      auto map_id = BDD::solver_toolbox.value_from_expr(call.args["map"].expr);
+
+      if (map_id == _table_id) {
+        counter++;
+      }
+
+      if (counter > 1) {
+        return true;
+      }
+
+      node = node->get_prev();
+    }
+
+    return false;
+  }
+
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
     if (!query_contains_map_has_key(node)) {
       return BDD::BDDVisitor::Action::STOP;
@@ -56,14 +95,23 @@ private:
     auto map_get_call = get_map_get_call(node, _condition);
 
     assert(map_get_call.function_name == "map_get");
+    assert(!map_get_call.args["map"].expr.isNull());
     assert(!map_get_call.args["key"].in.isNull());
     assert(!map_get_call.args["value_out"].out.isNull());
 
+    auto _map = map_get_call.args["map"].expr;
     auto _key = map_get_call.args["key"].in;
     auto _value = map_get_call.args["value_out"].out;
 
+    assert(_map->getKind() == klee::Expr::Kind::Constant);
+    auto _table_id = BDD::solver_toolbox.value_from_expr(_map);
+
+    if (multiple_queries_to_this_table(node, _table_id)) {
+      return BDD::BDDVisitor::Action::STOP;
+    }
+
     auto new_lookup_module =
-        std::make_shared<TableLookup>(node, _condition, _key);
+        std::make_shared<TableLookup>(node, _table_id, _condition, _key);
     auto new_match_module = std::make_shared<TableMatch>(node, _value);
     auto new_miss_module = std::make_shared<TableMiss>(node);
 
@@ -109,7 +157,7 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new TableLookup(node, condition, key);
+    auto cloned = new TableLookup(node, table_id, condition, key);
     return std::shared_ptr<Module>(cloned);
   }
 

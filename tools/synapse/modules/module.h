@@ -130,10 +130,10 @@ public:
 
 protected:
   // General useful queries
-  bool query_contains_map_has_key(const BDD::Branch *node);
+  bool query_contains_map_has_key(const BDD::Branch *node) const;
   const BDD::Node *
   get_past_node_that_generates_symbol(const BDD::Node *current_node,
-                                      const std::string &symbol);
+                                      const std::string &symbol) const;
 };
 
 } // namespace synapse
