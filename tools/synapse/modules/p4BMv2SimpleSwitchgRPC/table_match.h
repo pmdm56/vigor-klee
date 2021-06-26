@@ -5,19 +5,25 @@
 #include "../module.h"
 #include "call-paths-to-bdd.h"
 
+#include "else.h"
+
 namespace synapse {
 namespace targets {
 namespace p4BMv2SimpleSwitchgRPC {
 
-class CurrentTime : public Module {
-public:
-  CurrentTime()
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_CurrentTime,
-               Target::p4BMv2SimpleSwitchgRPC, "CurrentTime") {}
+class TableMatch : public Module {
+private:
+  klee::ref<klee::Expr> parameter;
 
-  CurrentTime(const BDD::Node *node)
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_CurrentTime,
-               Target::p4BMv2SimpleSwitchgRPC, "CurrentTime", node) {}
+public:
+  TableMatch()
+      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_TableMatch,
+               Target::p4BMv2SimpleSwitchgRPC, "TableMatch") {}
+
+  TableMatch(const BDD::Node *node, klee::ref<klee::Expr> _parameter)
+      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_TableMatch,
+               Target::p4BMv2SimpleSwitchgRPC, "TableMatch", node),
+        parameter(_parameter) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -25,21 +31,6 @@ private:
   }
 
   BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
-    auto call = node->get_call();
-
-    if (call.function_name == "current_time") {
-      assert(!call.ret.isNull());
-      auto _time = call.ret;
-
-      auto ep = context->get_current();
-      auto new_ep = ExecutionPlan(ep, node->get_next(),
-                                  Target::p4BMv2SimpleSwitchgRPC, bdd);
-
-      auto new_module = std::make_shared<CurrentTime>(node);
-
-      context->add(new_ep, new_module);
-    }
-
     return BDD::BDDVisitor::Action::STOP;
   }
 
@@ -59,7 +50,7 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new CurrentTime(node);
+    auto cloned = new TableMatch(node, parameter);
     return std::shared_ptr<Module>(cloned);
   }
 };

@@ -432,12 +432,15 @@ public:
    *
    ********************************************/
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::SendToController)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::CurrentTime)
+  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::Ignore)
   VISIT_PRINT_MODULE_NAME(
       targets::p4BMv2SimpleSwitchgRPC::SetupExpirationNotifications)
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::If)
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::Then)
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::Else)
   VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::EthernetConsume)
+  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::TableLookup)
+  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::TableMatch)
+  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::TableMiss)
 };
 } // namespace synapse

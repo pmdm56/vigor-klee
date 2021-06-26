@@ -39,12 +39,15 @@ class B;
 namespace p4BMv2SimpleSwitchgRPC {
 class SendToController;
 class ParserConsume;
-class CurrentTime;
+class Ignore;
 class SetupExpirationNotifications;
 class If;
 class Then;
 class Else;
 class EthernetConsume;
+class TableLookup;
+class TableMatch;
+class TableMiss;
 } // namespace p4BMv2SimpleSwitchgRPC
 } // namespace targets
 
@@ -79,8 +82,7 @@ public:
 
   virtual void
   visit(const targets::p4BMv2SimpleSwitchgRPC::SendToController *node) {}
-  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::CurrentTime *node) {
-  }
+  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::Ignore *node) {}
   virtual void
   visit(const targets::p4BMv2SimpleSwitchgRPC::SetupExpirationNotifications *
             node) {}
@@ -89,6 +91,10 @@ public:
   virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::Else *node) {}
   virtual void
   visit(const targets::p4BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
+  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::TableLookup *node) {
+  }
+  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::TableMatch *node) {}
+  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::TableMiss *node) {}
 };
 
 } // namespace synapse
