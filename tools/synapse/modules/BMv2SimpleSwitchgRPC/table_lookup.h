@@ -10,7 +10,7 @@
 
 namespace synapse {
 namespace targets {
-namespace p4BMv2SimpleSwitchgRPC {
+namespace BMv2SimpleSwitchgRPC {
 
 class TableLookup : public Module {
 private:
@@ -20,13 +20,13 @@ private:
 
 public:
   TableLookup()
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_TableLookup,
-               Target::p4BMv2SimpleSwitchgRPC, "TableLookup") {}
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_TableLookup,
+               Target::BMv2SimpleSwitchgRPC, "TableLookup") {}
 
   TableLookup(const BDD::Node *node, uint64_t _table_id,
               klee::ref<klee::Expr> _condition, klee::ref<klee::Expr> _key)
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_TableLookup,
-               Target::p4BMv2SimpleSwitchgRPC, "TableLookup", node),
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_TableLookup,
+               Target::BMv2SimpleSwitchgRPC, "TableLookup", node),
         table_id(_table_id), condition(_condition), key(_key) {}
 
 private:
@@ -163,6 +163,6 @@ public:
 
   const klee::ref<klee::Expr> &get_condition() const { return condition; }
 };
-} // namespace p4BMv2SimpleSwitchgRPC
+} // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 } // namespace synapse

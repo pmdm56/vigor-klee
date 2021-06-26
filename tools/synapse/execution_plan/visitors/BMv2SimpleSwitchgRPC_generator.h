@@ -12,7 +12,7 @@
 
 namespace synapse {
 
-class p4BMv2SimpleSwitchgRPC_Generator : public ExecutionPlanVisitor {
+class BMv2SimpleSwitchgRPC_Generator : public ExecutionPlanVisitor {
 private:
   struct state_t {
     std::string label;
@@ -76,14 +76,15 @@ private:
   void dump() const;
 
 public:
-  p4BMv2SimpleSwitchgRPC_Generator(std::ostream &_os) : os(_os), lvl(0) {}
+  BMv2SimpleSwitchgRPC_Generator(std::ostream &_os) : os(_os), lvl(0) {}
 
   void visit(ExecutionPlan ep) override;
 
-  void visit(const targets::p4BMv2SimpleSwitchgRPC::If *node) override;
-  void visit(const targets::p4BMv2SimpleSwitchgRPC::Then *node) override;
-  void visit(const targets::p4BMv2SimpleSwitchgRPC::Else *node) override;
-  void visit(const targets::p4BMv2SimpleSwitchgRPC::EthernetConsume *node) override;
-  void visit(const targets::p4BMv2SimpleSwitchgRPC::IPv4Consume *node) override;
+  void visit(const targets::BMv2SimpleSwitchgRPC::If *node) override;
+  void visit(const targets::BMv2SimpleSwitchgRPC::Then *node) override;
+  void visit(const targets::BMv2SimpleSwitchgRPC::Else *node) override;
+  void
+  visit(const targets::BMv2SimpleSwitchgRPC::EthernetConsume *node) override;
+  void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) override;
 };
 } // namespace synapse

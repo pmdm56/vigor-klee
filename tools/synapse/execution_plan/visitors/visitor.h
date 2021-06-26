@@ -36,7 +36,7 @@ class A;
 class B;
 } // namespace tofino
 
-namespace p4BMv2SimpleSwitchgRPC {
+namespace BMv2SimpleSwitchgRPC {
 class SendToController;
 class ParserConsume;
 class Ignore;
@@ -45,11 +45,13 @@ class If;
 class Then;
 class Else;
 class EthernetConsume;
+class EthernetModify;
 class TableLookup;
 class TableMatch;
 class TableMiss;
 class IPv4Consume;
-} // namespace p4BMv2SimpleSwitchgRPC
+class IPv4Modify;
+} // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 
 class ExecutionPlanVisitor {
@@ -82,22 +84,23 @@ public:
   virtual void visit(const targets::tofino::B *node) {}
 
   virtual void
-  visit(const targets::p4BMv2SimpleSwitchgRPC::SendToController *node) {}
-  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::Ignore *node) {}
-  virtual void
-  visit(const targets::p4BMv2SimpleSwitchgRPC::SetupExpirationNotifications *
-            node) {}
-  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::If *node) {}
-  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::Then *node) {}
-  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::Else *node) {}
-  virtual void
-  visit(const targets::p4BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
-  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::TableLookup *node) {
+  visit(const targets::BMv2SimpleSwitchgRPC::SendToController *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::Ignore *node) {}
+  virtual void visit(
+      const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications *node) {
   }
-  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::TableMatch *node) {}
-  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::TableMiss *node) {}
-  virtual void visit(const targets::p4BMv2SimpleSwitchgRPC::IPv4Consume *node) {
-  }
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::If *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::Then *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::Else *node) {}
+  virtual void
+  visit(const targets::BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
+  virtual void
+  visit(const targets::BMv2SimpleSwitchgRPC::EthernetModify *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableMatch *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableMiss *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) {}
 };
 
 } // namespace synapse

@@ -5,21 +5,18 @@
 #include "../module.h"
 #include "call-paths-to-bdd.h"
 
-#include "else.h"
-
 namespace synapse {
 namespace targets {
-namespace p4BMv2SimpleSwitchgRPC {
+namespace BMv2SimpleSwitchgRPC {
 
-class Then : public Module {
+class Else : public Module {
 public:
-  Then()
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_Then,
-               Target::p4BMv2SimpleSwitchgRPC, "Then") {}
-
-  Then(const BDD::Node *node)
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_Then,
-               Target::p4BMv2SimpleSwitchgRPC, "Then", node) {}
+  Else()
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_Else,
+               Target::BMv2SimpleSwitchgRPC, "Else") {}
+  Else(const BDD::Node *node)
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_Else,
+               Target::BMv2SimpleSwitchgRPC, "Else", node) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -46,10 +43,10 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new Then(node);
+    auto cloned = new Else(node);
     return std::shared_ptr<Module>(cloned);
   }
 };
-} // namespace p4BMv2SimpleSwitchgRPC
+} // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 } // namespace synapse

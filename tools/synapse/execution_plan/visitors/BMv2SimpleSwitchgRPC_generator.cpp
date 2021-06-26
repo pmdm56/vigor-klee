@@ -1,8 +1,8 @@
-#include "p4BMv2SimpleSwitchgRPC_generator.h"
+#include "BMv2SimpleSwitchgRPC_generator.h"
 
 namespace synapse {
 
-void p4BMv2SimpleSwitchgRPC_Generator::parser_t::dump(std::ostream &os) const {
+void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(std::ostream &os) const {
   auto label_pad = std::string(label.size() + 8, ' ');
 
   os << "parser " << label << "(";
@@ -14,7 +14,7 @@ void p4BMv2SimpleSwitchgRPC_Generator::parser_t::dump(std::ostream &os) const {
   os << "}\n";
 }
 
-void p4BMv2SimpleSwitchgRPC_Generator::verify_checksum_t::dump(
+void BMv2SimpleSwitchgRPC_Generator::verify_checksum_t::dump(
     std::ostream &os) const {
   auto label_pad = std::string(label.size() + 9, ' ');
 
@@ -25,7 +25,7 @@ void p4BMv2SimpleSwitchgRPC_Generator::verify_checksum_t::dump(
   os << "}\n";
 }
 
-void p4BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) const {
+void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) const {
   auto label_pad = std::string(label.size() + 9, ' ');
 
   os << "control " << label << "(";
@@ -36,7 +36,7 @@ void p4BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) const {
   os << "}\n";
 }
 
-void p4BMv2SimpleSwitchgRPC_Generator::egress_t::dump(std::ostream &os) const {
+void BMv2SimpleSwitchgRPC_Generator::egress_t::dump(std::ostream &os) const {
   auto label_pad = std::string(label.size() + 9, ' ');
 
   os << "control " << label << "(";
@@ -47,7 +47,7 @@ void p4BMv2SimpleSwitchgRPC_Generator::egress_t::dump(std::ostream &os) const {
   os << "}\n";
 }
 
-void p4BMv2SimpleSwitchgRPC_Generator::compute_checksum_t::dump(
+void BMv2SimpleSwitchgRPC_Generator::compute_checksum_t::dump(
     std::ostream &os) const {
   auto label_pad = std::string(label.size() + 9, ' ');
 
@@ -58,8 +58,7 @@ void p4BMv2SimpleSwitchgRPC_Generator::compute_checksum_t::dump(
   os << "}\n";
 }
 
-void p4BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(
-    std::ostream &os) const {
+void BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(std::ostream &os) const {
   auto label_pad = std::string(label.size() + 9, ' ');
 
   os << "control " << label << "(";
@@ -69,7 +68,7 @@ void p4BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(
   os << "}\n";
 }
 
-void p4BMv2SimpleSwitchgRPC_Generator::dump() const {
+void BMv2SimpleSwitchgRPC_Generator::dump() const {
   os << "#include <core.p4>\n";
   os << "#include <v1model.p4>\n";
 
@@ -138,24 +137,24 @@ void p4BMv2SimpleSwitchgRPC_Generator::dump() const {
   os << "\n";
 }
 
-void p4BMv2SimpleSwitchgRPC_Generator::visit(ExecutionPlan ep) {
+void BMv2SimpleSwitchgRPC_Generator::visit(ExecutionPlan ep) {
   ExecutionPlanVisitor::visit(ep);
   dump();
 }
 
-void p4BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::p4BMv2SimpleSwitchgRPC::If *node) {}
+void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::If *node) {}
 
-void p4BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::p4BMv2SimpleSwitchgRPC::Then *node) {}
+void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::Then *node) {}
 
-void p4BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::p4BMv2SimpleSwitchgRPC::Else *node) {}
+void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::Else *node) {}
 
-void p4BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::p4BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
+void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
 
-void p4BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::p4BMv2SimpleSwitchgRPC::IPv4Consume *node) {}
+void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) {}
 
 }; // namespace synapse

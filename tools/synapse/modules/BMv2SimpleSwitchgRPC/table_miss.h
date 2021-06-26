@@ -5,25 +5,18 @@
 #include "../module.h"
 #include "call-paths-to-bdd.h"
 
-#include "else.h"
-
 namespace synapse {
 namespace targets {
-namespace p4BMv2SimpleSwitchgRPC {
+namespace BMv2SimpleSwitchgRPC {
 
-class TableMatch : public Module {
-private:
-  klee::ref<klee::Expr> parameter;
-
+class TableMiss : public Module {
 public:
-  TableMatch()
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_TableMatch,
-               Target::p4BMv2SimpleSwitchgRPC, "TableMatch") {}
-
-  TableMatch(const BDD::Node *node, klee::ref<klee::Expr> _parameter)
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_TableMatch,
-               Target::p4BMv2SimpleSwitchgRPC, "TableMatch", node),
-        parameter(_parameter) {}
+  TableMiss()
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_TableMiss,
+               Target::BMv2SimpleSwitchgRPC, "TableMiss") {}
+  TableMiss(const BDD::Node *node)
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_TableMiss,
+               Target::BMv2SimpleSwitchgRPC, "TableMiss", node) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -50,10 +43,10 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new TableMatch(node, parameter);
+    auto cloned = new TableMiss(node);
     return std::shared_ptr<Module>(cloned);
   }
 };
-} // namespace p4BMv2SimpleSwitchgRPC
+} // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 } // namespace synapse

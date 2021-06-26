@@ -14,7 +14,7 @@ enum Target {
   Tofino,
   Netronome,
   FPGA,
-  p4BMv2SimpleSwitchgRPC,
+  BMv2SimpleSwitchgRPC,
 };
 
 class ExecutionPlan;
@@ -47,17 +47,33 @@ public:
     x86_PacketGetUnreadLength,
     x86_SetIpv4UdpTcpChecksum,
     x86_DchainIsIndexAllocated,
-    p4BMv2SimpleSwitchgRPC_SendToController,
-    p4BMv2SimpleSwitchgRPC_Ignore,
-    p4BMv2SimpleSwitchgRPC_SetupExpirationNotifications,
-    p4BMv2SimpleSwitchgRPC_If,
-    p4BMv2SimpleSwitchgRPC_Then,
-    p4BMv2SimpleSwitchgRPC_Else,
-    p4BMv2SimpleSwitchgRPC_EthernetConsume,
-    p4BMv2SimpleSwitchgRPC_TableLookup,
-    p4BMv2SimpleSwitchgRPC_TableMatch,
-    p4BMv2SimpleSwitchgRPC_TableMiss,
-    p4BMv2SimpleSwitchgRPC_IPv4Consume,
+    BMv2SimpleSwitchgRPC_SendToController,
+    BMv2SimpleSwitchgRPC_Ignore,
+    BMv2SimpleSwitchgRPC_SetupExpirationNotifications,
+    BMv2SimpleSwitchgRPC_If,
+    BMv2SimpleSwitchgRPC_Then,
+    BMv2SimpleSwitchgRPC_Else,
+    BMv2SimpleSwitchgRPC_EthernetConsume,
+    BMv2SimpleSwitchgRPC_EthernetModify,
+    BMv2SimpleSwitchgRPC_TableLookup,
+    BMv2SimpleSwitchgRPC_TableMatch,
+    BMv2SimpleSwitchgRPC_TableMiss,
+    BMv2SimpleSwitchgRPC_IPv4Consume,
+    BMv2SimpleSwitchgRPC_IPv4Modify,
+    BMv2SimpleSwitchgRPC_TCPModify,
+    BMv2SimpleSwitchgRPC_UDPModify,
+  };
+
+protected:
+  struct modification_t {
+    unsigned byte;
+    klee::ref<klee::Expr> expr;
+
+    modification_t(unsigned _byte, klee::ref<klee::Expr> _expr)
+        : byte(_byte), expr(_expr) {}
+
+    modification_t(const modification_t &modification)
+        : byte(modification.byte), expr(modification.expr) {}
   };
 
 protected:
@@ -115,8 +131,8 @@ public:
       return "Netronome";
     case FPGA:
       return "FPGA";
-    case p4BMv2SimpleSwitchgRPC:
-      return "p4BMv2SimpleSwitchgRPC";
+    case BMv2SimpleSwitchgRPC:
+      return "BMv2SimpleSwitchgRPC";
     }
 
     assert(false && "I should not be here");
@@ -137,7 +153,11 @@ protected:
   get_past_node_that_generates_symbol(const BDD::Node *current_node,
                                       const std::string &symbol) const;
   std::vector<const BDD::Node *>
-  get_all_prev_packet_borrow_next_chunk(const BDD::Node *node);
+  get_all_prev_functions(const BDD::Node *node,
+                         const std::string &function_name);
+  std::vector<modification_t>
+  get_modifications(klee::ref<klee::Expr> before,
+                    klee::ref<klee::Expr> after) const;
 };
 
 } // namespace synapse

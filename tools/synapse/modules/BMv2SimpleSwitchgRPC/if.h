@@ -10,7 +10,7 @@
 
 namespace synapse {
 namespace targets {
-namespace p4BMv2SimpleSwitchgRPC {
+namespace BMv2SimpleSwitchgRPC {
 
 class If : public Module {
 private:
@@ -18,12 +18,12 @@ private:
 
 public:
   If()
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_If,
-               Target::p4BMv2SimpleSwitchgRPC, "If") {}
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_If,
+               Target::BMv2SimpleSwitchgRPC, "If") {}
 
   If(const BDD::Node *node, klee::ref<klee::Expr> _condition)
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_If,
-               Target::p4BMv2SimpleSwitchgRPC, "If", node),
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_If,
+               Target::BMv2SimpleSwitchgRPC, "If", node),
         condition(_condition) {}
 
 private:
@@ -85,6 +85,6 @@ public:
 
   const klee::ref<klee::Expr> &get_condition() const { return condition; }
 };
-} // namespace p4BMv2SimpleSwitchgRPC
+} // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 } // namespace synapse

@@ -7,7 +7,7 @@
 
 namespace synapse {
 namespace targets {
-namespace p4BMv2SimpleSwitchgRPC {
+namespace BMv2SimpleSwitchgRPC {
 
 class SetupExpirationNotifications : public Module {
 private:
@@ -19,9 +19,8 @@ private:
 
 public:
   SetupExpirationNotifications()
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_SetupExpirationNotifications,
-               Target::p4BMv2SimpleSwitchgRPC, "SetupExpirationNotifications") {
-  }
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_SetupExpirationNotifications,
+               Target::BMv2SimpleSwitchgRPC, "SetupExpirationNotifications") {}
 
   SetupExpirationNotifications(const BDD::Node *node,
                                klee::ref<klee::Expr> _dchain_addr,
@@ -29,8 +28,8 @@ public:
                                klee::ref<klee::Expr> _map_addr,
                                klee::ref<klee::Expr> _time,
                                klee::ref<klee::Expr> _number_of_freed_flows)
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_SetupExpirationNotifications,
-               Target::p4BMv2SimpleSwitchgRPC, "SetupExpirationNotifications",
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_SetupExpirationNotifications,
+               Target::BMv2SimpleSwitchgRPC, "SetupExpirationNotifications",
                node),
         dchain_addr(_dchain_addr), vector_addr(_vector_addr),
         map_addr(_map_addr), time(_time),
@@ -104,6 +103,6 @@ public:
     return number_of_freed_flows;
   }
 };
-} // namespace p4BMv2SimpleSwitchgRPC
+} // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 } // namespace synapse

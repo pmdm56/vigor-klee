@@ -90,7 +90,7 @@ public:
                                        { Target::Tofino, "darkolivegreen2" },
                                        { Target::Netronome, "gold" },
                                        { Target::FPGA, "coral1" },
-                                       { Target::p4BMv2SimpleSwitchgRPC,
+                                       { Target::BMv2SimpleSwitchgRPC,
                                          "firebrick2" }, };
 
     ofs.open(fpath);
@@ -428,20 +428,22 @@ public:
 
   /********************************************
    *
-   *              p4BMv2SimpleSwitchgRPC
+   *              BMv2SimpleSwitchgRPC
    *
    ********************************************/
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::SendToController)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::Ignore)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::SendToController)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Ignore)
   VISIT_PRINT_MODULE_NAME(
-      targets::p4BMv2SimpleSwitchgRPC::SetupExpirationNotifications)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::If)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::Then)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::Else)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::EthernetConsume)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::TableLookup)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::TableMatch)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::TableMiss)
-  VISIT_PRINT_MODULE_NAME(targets::p4BMv2SimpleSwitchgRPC::IPv4Consume)
+      targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::If)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Then)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Else)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::EthernetConsume)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::EthernetModify)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::TableLookup)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::TableMatch)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::TableMiss)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::IPv4Consume)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::IPv4Modify)
 };
 } // namespace synapse

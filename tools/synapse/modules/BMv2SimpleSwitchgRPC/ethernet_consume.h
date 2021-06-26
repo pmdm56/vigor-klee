@@ -7,17 +7,17 @@
 
 namespace synapse {
 namespace targets {
-namespace p4BMv2SimpleSwitchgRPC {
+namespace BMv2SimpleSwitchgRPC {
 
 class EthernetConsume : public Module {
 public:
   EthernetConsume()
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_EthernetConsume,
-               Target::p4BMv2SimpleSwitchgRPC, "EthernetConsume") {}
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_EthernetConsume,
+               Target::BMv2SimpleSwitchgRPC, "EthernetConsume") {}
 
   EthernetConsume(const BDD::Node *node)
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_EthernetConsume,
-               Target::p4BMv2SimpleSwitchgRPC, "EthernetConsume", node) {}
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_EthernetConsume,
+               Target::BMv2SimpleSwitchgRPC, "EthernetConsume", node) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -31,7 +31,8 @@ private:
       return BDD::BDDVisitor::Action::STOP;
     }
 
-    auto all_prev_packet_borrow_next_chunk = get_all_prev_packet_borrow_next_chunk(node);
+    auto all_prev_packet_borrow_next_chunk =
+        get_all_prev_functions(node, "packet_borrow_next_chunk");
 
     if (all_prev_packet_borrow_next_chunk.size() != 0) {
       return BDD::BDDVisitor::Action::STOP;
@@ -76,6 +77,6 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 };
-} // namespace p4BMv2SimpleSwitchgRPC
+} // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 } // namespace synapse

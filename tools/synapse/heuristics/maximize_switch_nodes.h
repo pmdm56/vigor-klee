@@ -11,8 +11,7 @@ struct MaximizeSwitchNodesComparator : public HeuristicConfiguration {
     unsigned switch_nodes = 0;
 
     const auto &nodes_per_target = e.get_nodes_per_target();
-    auto switch_nodes_it =
-        nodes_per_target.find(Target::p4BMv2SimpleSwitchgRPC);
+    auto switch_nodes_it = nodes_per_target.find(Target::BMv2SimpleSwitchgRPC);
 
     if (switch_nodes_it != nodes_per_target.end()) {
       switch_nodes = switch_nodes_it->second;

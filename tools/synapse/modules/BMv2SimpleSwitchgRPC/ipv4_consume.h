@@ -7,17 +7,17 @@
 
 namespace synapse {
 namespace targets {
-namespace p4BMv2SimpleSwitchgRPC {
+namespace BMv2SimpleSwitchgRPC {
 
 class IPv4Consume : public Module {
 public:
   IPv4Consume()
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_IPv4Consume,
-               Target::p4BMv2SimpleSwitchgRPC, "IPv4Consume") {}
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Consume,
+               Target::BMv2SimpleSwitchgRPC, "IPv4Consume") {}
 
   IPv4Consume(const BDD::Node *node)
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_IPv4Consume,
-               Target::p4BMv2SimpleSwitchgRPC, "IPv4Consume", node) {}
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Consume,
+               Target::BMv2SimpleSwitchgRPC, "IPv4Consume", node) {}
 
 private:
   bool is_valid_ipv4(const BDD::Node *ethernet_node, klee::ref<klee::Expr> len,
@@ -73,7 +73,7 @@ private:
 
     // IPv4 should come after L2 Consume
     auto all_prev_packet_borrow_next_chunk =
-        get_all_prev_packet_borrow_next_chunk(node);
+        get_all_prev_functions(node, "packet_borrow_next_chunk");
 
     if (all_prev_packet_borrow_next_chunk.size() != 1) {
       return BDD::BDDVisitor::Action::STOP;
@@ -116,6 +116,6 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 };
-} // namespace p4BMv2SimpleSwitchgRPC
+} // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 } // namespace synapse

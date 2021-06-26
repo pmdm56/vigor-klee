@@ -7,7 +7,7 @@
 
 namespace synapse {
 namespace targets {
-namespace p4BMv2SimpleSwitchgRPC {
+namespace BMv2SimpleSwitchgRPC {
 
 class Ignore : public Module {
 private:
@@ -15,15 +15,15 @@ private:
 
 public:
   Ignore()
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_Ignore,
-               Target::p4BMv2SimpleSwitchgRPC, "Ignore") {
-    functions_to_ignore = std::vector<std::string>{ "current_time", "map_get",
-                                                    "packet_return_chunk" };
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_Ignore,
+               Target::BMv2SimpleSwitchgRPC, "Ignore") {
+    functions_to_ignore =
+        std::vector<std::string>{ "current_time", "map_get", };
   }
 
   Ignore(const BDD::Node *node)
-      : Module(ModuleType::p4BMv2SimpleSwitchgRPC_Ignore,
-               Target::p4BMv2SimpleSwitchgRPC, "Ignore", node) {}
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_Ignore,
+               Target::BMv2SimpleSwitchgRPC, "Ignore", node) {}
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
@@ -39,7 +39,7 @@ private:
     if (found_it != functions_to_ignore.end()) {
       auto ep = context->get_current();
       auto new_ep = ExecutionPlan(ep, node->get_next(),
-                                  Target::p4BMv2SimpleSwitchgRPC, bdd);
+                                  Target::BMv2SimpleSwitchgRPC, bdd);
 
       auto new_module = std::make_shared<Ignore>(node);
       context->add(new_ep, new_module);
@@ -68,6 +68,6 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 };
-} // namespace p4BMv2SimpleSwitchgRPC
+} // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 } // namespace synapse

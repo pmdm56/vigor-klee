@@ -76,7 +76,8 @@ Module::get_past_node_that_generates_symbol(const BDD::Node *current_node,
 }
 
 std::vector<const BDD::Node *>
-Module::get_all_prev_packet_borrow_next_chunk(const BDD::Node *node) {
+Module::get_all_prev_functions(const BDD::Node *node,
+                               const std::string &function_name) {
   std::vector<const BDD::Node *> prev_packet_borrow_next_chunk;
 
   node = node->get_prev();
@@ -90,7 +91,7 @@ Module::get_all_prev_packet_borrow_next_chunk(const BDD::Node *node) {
     auto call_node = static_cast<const BDD::Call *>(node);
     auto call = call_node->get_call();
 
-    if (call.function_name == "packet_borrow_next_chunk") {
+    if (call.function_name == function_name) {
       prev_packet_borrow_next_chunk.push_back(node);
     }
 
@@ -98,6 +99,30 @@ Module::get_all_prev_packet_borrow_next_chunk(const BDD::Node *node) {
   }
 
   return prev_packet_borrow_next_chunk;
+}
+
+std::vector<Module::modification_t>
+Module::get_modifications(klee::ref<klee::Expr> before,
+                          klee::ref<klee::Expr> after) const {
+  std::vector<modification_t> _modifications;
+  assert(before->getWidth() == after->getWidth());
+
+  auto size = before->getWidth();
+
+  for (unsigned int b = 0; b < size; b += 8) {
+    auto before_byte =
+        BDD::solver_toolbox.exprBuilder->Extract(before, b, klee::Expr::Int8);
+    auto after_byte =
+        BDD::solver_toolbox.exprBuilder->Extract(after, b, klee::Expr::Int8);
+
+    if (BDD::solver_toolbox.are_exprs_always_equal(before_byte, after_byte)) {
+      continue;
+    }
+
+    _modifications.emplace_back(b / 8, after_byte);
+  }
+
+  return _modifications;
 }
 
 } // namespace synapse

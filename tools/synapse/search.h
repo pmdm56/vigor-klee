@@ -36,8 +36,8 @@ public:
     case Target::FPGA:
       _modules = targets::fpga::get_modules();
       break;
-    case Target::p4BMv2SimpleSwitchgRPC:
-      _modules = targets::p4BMv2SimpleSwitchgRPC::get_modules();
+    case Target::BMv2SimpleSwitchgRPC:
+      _modules = targets::BMv2SimpleSwitchgRPC::get_modules();
       break;
     }
 
