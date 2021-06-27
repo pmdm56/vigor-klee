@@ -24,12 +24,77 @@ public:
   }
 
 private:
+  const BDD::Node *clone_calls(const BDD::Node *current,
+                               std::vector<uint64_t> &cloned_ids) const {
+    BDD::Node *root = nullptr;
+    assert(current);
+
+    auto node = current;
+
+    while (node->get_prev()) {
+      node = node->get_prev();
+
+      if (node->get_type() == BDD::Node::NodeType::CALL) {
+        auto cloned_current = current->clone();
+        root = node->clone();
+
+        root->replace_next(cloned_current);
+        root->replace_prev(nullptr);
+
+        cloned_ids.push_back(cloned_current->get_id());
+        cloned_ids.push_back(root->get_id());
+        break;
+      }
+    }
+
+    if (!root) {
+      return root;
+    }
+
+    while (node->get_prev()) {
+      node = node->get_prev();
+
+      if (node->get_type() == BDD::Node::NodeType::CALL) {
+        auto clone = node->clone();
+
+        clone->replace_next(root);
+        clone->replace_prev(nullptr);
+
+        root = clone;
+        cloned_ids.push_back(root->get_id());
+      }
+    }
+
+    return root;
+  }
+
   void process(const BDD::Node *node) {
+    std::vector<uint64_t> cloned_ids;
+    auto next = clone_calls(node, cloned_ids);
+
+    if (!next) {
+      next = node;
+      cloned_ids.push_back(node->get_id());
+    }
+
     auto new_module = std::make_shared<SendToController>(node);
     auto ep_node = ExecutionPlanNode::build(new_module);
-    auto new_leaf = ExecutionPlan::leaf_t(ep_node, node);
+    auto new_leaf = ExecutionPlan::leaf_t(ep_node, next);
     auto ep = context->get_current();
-    auto new_ep = ExecutionPlan(ep, new_leaf, bdd, false);
+    auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
+
+    std::cerr << "node " << node->get_id() << "\n";
+    for (auto cloned_id : cloned_ids) {
+      std::cerr << "removing " << cloned_id << "\n";
+      new_ep.remove_from_processed_bdd_nodes(cloned_id);
+    }
+
+    auto n = next;
+    while (n) {
+      std::cerr << n->get_id() << " => ";
+      n = n->get_next();
+    }
+    std::cerr << "\n";
 
     context->add(new_ep, new_module);
   }
@@ -46,13 +111,11 @@ private:
 
   BDD::BDDVisitor::Action
   visitReturnInit(const BDD::ReturnInit *node) override {
-    process(node);
     return BDD::BDDVisitor::Action::STOP;
   }
 
   BDD::BDDVisitor::Action
   visitReturnProcess(const BDD::ReturnProcess *node) override {
-    process(node);
     return BDD::BDDVisitor::Action::STOP;
   }
 

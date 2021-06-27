@@ -314,6 +314,11 @@ public:
     return processed_bdd_nodes;
   }
 
+  void remove_from_processed_bdd_nodes(uint64_t id) {
+    auto found_it = processed_bdd_nodes.find(id);
+    processed_bdd_nodes.erase(found_it);
+  }
+
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(*this); }
 
   ExecutionPlan clone(bool deep = false) const {
