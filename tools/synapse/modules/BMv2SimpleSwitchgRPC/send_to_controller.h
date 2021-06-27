@@ -83,18 +83,9 @@ private:
     auto ep = context->get_current();
     auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
 
-    std::cerr << "node " << node->get_id() << "\n";
     for (auto cloned_id : cloned_ids) {
-      std::cerr << "removing " << cloned_id << "\n";
       new_ep.remove_from_processed_bdd_nodes(cloned_id);
     }
-
-    auto n = next;
-    while (n) {
-      std::cerr << n->get_id() << " => ";
-      n = n->get_next();
-    }
-    std::cerr << "\n";
 
     context->add(new_ep, new_module);
   }
