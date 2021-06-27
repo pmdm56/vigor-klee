@@ -74,6 +74,33 @@ public:
         new SetIpv4UdpTcpChecksum(node, ip_header_addr, l4_header_addr);
     return std::shared_ptr<Module>(cloned);
   }
+
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const SetIpv4UdpTcpChecksum *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             ip_header_addr, other_cast->get_ip_header_addr())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             l4_header_addr, other_cast->get_l4_header_addr())) {
+      return false;
+    }
+
+    return true;
+  }
+
+  const klee::ref<klee::Expr> &get_ip_header_addr() const {
+    return ip_header_addr;
+  }
+  const klee::ref<klee::Expr> &get_l4_header_addr() const {
+    return l4_header_addr;
+  }
 };
 } // namespace x86
 } // namespace targets

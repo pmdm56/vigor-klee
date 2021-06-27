@@ -73,6 +73,26 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const PacketGetUnreadLength *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(p_addr,
+                                                    other_cast->get_p_addr())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             unread_length, other_cast->get_unread_length())) {
+      return false;
+    }
+
+    return true;
+  }
+
   const klee::ref<klee::Expr> &get_p_addr() const { return p_addr; }
   const klee::ref<klee::Expr> &get_unread_length() const {
     return unread_length;

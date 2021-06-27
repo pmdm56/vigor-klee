@@ -78,14 +78,41 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const MapGet *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             map_addr, other_cast->get_map_addr())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(key,
+                                                    other_cast->get_key())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             map_has_this_key, other_cast->get_map_has_this_key())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             value_out, other_cast->get_value_out())) {
+      return false;
+    }
+
+    return true;
+  }
+
   const klee::ref<klee::Expr> &get_map_addr() const { return map_addr; }
-
   const klee::ref<klee::Expr> &get_key() const { return key; }
-
   const klee::ref<klee::Expr> &get_map_has_this_key() const {
     return map_has_this_key;
   }
-
   const klee::ref<klee::Expr> &get_value_out() const { return value_out; }
 };
 } // namespace x86

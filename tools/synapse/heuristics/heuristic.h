@@ -70,7 +70,21 @@ public:
 
   void add(Context context) {
     assert(context.get_next_eps().size());
+
     for (auto ep : context.get_next_eps()) {
+      auto found = false;
+
+      for (auto saved_ep : execution_plans) {
+        if (saved_ep == ep) {
+          found = true;
+          break;
+        }
+      }
+
+      if (found) {
+        continue;
+      }
+
       execution_plans.insert(ep);
     }
   }

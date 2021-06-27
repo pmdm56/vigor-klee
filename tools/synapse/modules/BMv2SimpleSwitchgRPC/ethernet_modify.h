@@ -74,7 +74,8 @@ private:
     assert(curr_ether_chunk->getWidth() == 14 * 8);
     assert(prev_ether_chunk->getWidth() == 14 * 8);
 
-    auto _modifications = get_modifications(prev_ether_chunk, curr_ether_chunk);
+    auto _modifications =
+        build_modifications(prev_ether_chunk, curr_ether_chunk);
 
     if (_modifications.size() == 0) {
       // ignore
@@ -115,6 +116,40 @@ public:
   virtual Module_ptr clone() const override {
     auto cloned = new EthernetModify(node, modifications);
     return std::shared_ptr<Module>(cloned);
+  }
+
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const EthernetModify *>(other);
+
+    auto other_modifications = other_cast->get_modifications();
+
+    if (modifications.size() != other_modifications.size()) {
+      return false;
+    }
+
+    for (unsigned i = 0; i < modifications.size(); i++) {
+      auto modification = modifications[i];
+      auto other_modification = other_modifications[i];
+
+      if (modification.byte != other_modification.byte) {
+        return false;
+      }
+
+      if (!BDD::solver_toolbox.are_exprs_always_equal(
+               modification.expr, other_modification.expr)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  const std::vector<modification_t> &get_modifications() const {
+    return modifications;
   }
 };
 } // namespace BMv2SimpleSwitchgRPC

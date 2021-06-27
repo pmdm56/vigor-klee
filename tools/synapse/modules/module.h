@@ -121,7 +121,7 @@ public:
     assert(node);
   }
 
-  std::string get_target_name() const {
+  static std::string target_to_string(Target target) {
     switch (target) {
     case x86:
       return "x86";
@@ -138,11 +138,14 @@ public:
     assert(false && "I should not be here");
   }
 
+  std::string get_target_name() const { return target_to_string(target); }
+
   Context process_node(const ExecutionPlan &_ep, const BDD::Node *node,
                        const BDD::BDD &bdd);
 
   virtual void visit(ExecutionPlanVisitor &visitor) const = 0;
   virtual Module_ptr clone() const = 0;
+  virtual bool equals(const Module *other) const = 0;
 
   ~Module();
 
@@ -156,8 +159,8 @@ protected:
   get_all_prev_functions(const BDD::Node *node,
                          const std::string &function_name);
   std::vector<modification_t>
-  get_modifications(klee::ref<klee::Expr> before,
-                    klee::ref<klee::Expr> after) const;
+  build_modifications(klee::ref<klee::Expr> before,
+                      klee::ref<klee::Expr> after) const;
 };
 
 } // namespace synapse

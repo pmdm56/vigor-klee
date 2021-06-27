@@ -87,11 +87,17 @@ public:
         Log::dbg() << "\n";
         Log::dbg()
             << "=======================================================\n";
-        Log::dbg() << "Available " << available << "\n";
-        Log::dbg() << "Node      " << next_node->dump(true) << "\n";
+        Log::dbg() << "Available      " << available << "\n";
+        Log::dbg() << "Node           " << next_node->dump(true) << "\n";
+
+        if (next_ep.get_current_platform().first) {
+          auto platform = next_ep.get_current_platform().second;
+          Log::dbg() << "Current target " << Module::target_to_string(platform)
+                     << "\n";
+        }
 
         for (unsigned i = 0; i < report.target_name.size(); i++) {
-          Log::dbg() << "MATCH     " << report.target_name[i]
+          Log::dbg() << "MATCH          " << report.target_name[i]
                      << "::" << report.name[i] << " -> "
                      << report.generated_contexts[i] << " exec plans"
                      << "\n";
@@ -103,11 +109,17 @@ public:
         Log::dbg() << "\n";
         Log::dbg()
             << "=======================================================\n";
-        Log::dbg() << "Available " << available << "\n";
-        Log::dbg() << "Node      " << next_node->dump(true) << "\n";
+        Log::dbg() << "Available      " << available << "\n";
+        Log::dbg() << "Node           " << next_node->dump(true) << "\n";
+
+        if (next_ep.get_current_platform().first) {
+          auto platform = next_ep.get_current_platform().second;
+          Log::dbg() << "Current target " << Module::target_to_string(platform)
+                     << "\n";
+        }
 
         Log::wrn() << "No module can handle this BDD node"
-                      "in the current context.\n";
+                      " in the current context.\n";
         Log::wrn() << "Deleting solution from search space.\n";
 
         Log::dbg()
@@ -115,6 +127,7 @@ public:
       }
     }
 
+    std::cerr << h.get_all().size() << " solutions:\n";
     for (auto &ep : h.get_all()) {
       synapse::Graphviz::visualize(ep);
     }

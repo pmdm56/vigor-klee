@@ -78,6 +78,31 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const DchainRejuvenateIndex *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             dchain_addr, other_cast->get_dchain_addr())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(index,
+                                                    other_cast->get_index())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(time,
+                                                    other_cast->get_time())) {
+      return false;
+    }
+
+    return true;
+  }
+
   const klee::ref<klee::Expr> &get_dchain_addr() const { return dchain_addr; }
   const klee::ref<klee::Expr> &get_index() const { return index; }
   const klee::ref<klee::Expr> &get_time() const { return time; }

@@ -84,12 +84,39 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const DchainAllocateNewIndex *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             dchain_addr, other_cast->get_dchain_addr())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(time,
+                                                    other_cast->get_time())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             index_out, other_cast->get_index_out())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             success, other_cast->get_success())) {
+      return false;
+    }
+
+    return true;
+  }
+
   const klee::ref<klee::Expr> &get_dchain_addr() const { return dchain_addr; }
-
   const klee::ref<klee::Expr> &get_time() const { return time; }
-
   const klee::ref<klee::Expr> &get_index_out() const { return index_out; }
-
   const klee::ref<klee::Expr> &get_success() const { return success; }
 };
 } // namespace x86

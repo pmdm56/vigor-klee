@@ -65,6 +65,21 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const CurrentTime *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(time,
+                                                    other_cast->get_time())) {
+      return false;
+    }
+
+    return true;
+  }
+
   const klee::ref<klee::Expr> &get_time() const { return time; }
 };
 } // namespace x86

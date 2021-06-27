@@ -73,8 +73,27 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
-  const klee::ref<klee::Expr> &get_chunk() const { return chunk; }
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
 
+    auto other_cast = static_cast<const PacketReturnChunk *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(chunk,
+                                                    other_cast->get_chunk())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             chunk_addr, other_cast->get_chunk_addr())) {
+      return false;
+    }
+
+    return true;
+  }
+
+  const klee::ref<klee::Expr> &get_chunk() const { return chunk; }
   const klee::ref<klee::Expr> &get_chunk_addr() const { return chunk_addr; }
 };
 } // namespace x86

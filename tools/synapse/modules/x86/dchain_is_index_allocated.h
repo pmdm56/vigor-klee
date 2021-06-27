@@ -78,6 +78,35 @@ public:
         new DchainIsIndexAllocated(node, dchain_addr, index, is_allocated);
     return std::shared_ptr<Module>(cloned);
   }
+
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const DchainIsIndexAllocated *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             dchain_addr, other_cast->get_dchain_addr())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(index,
+                                                    other_cast->get_index())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             is_allocated, other_cast->get_is_allocated())) {
+      return false;
+    }
+
+    return true;
+  }
+
+  const klee::ref<klee::Expr> &get_dchain_addr() const { return dchain_addr; }
+  const klee::ref<klee::Expr> &get_index() const { return index; }
+  const klee::ref<klee::Expr> &get_is_allocated() const { return is_allocated; }
 };
 } // namespace x86
 } // namespace targets

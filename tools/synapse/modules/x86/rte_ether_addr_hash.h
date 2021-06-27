@@ -71,6 +71,26 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const RteEtherAddrHash *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(obj,
+                                                    other_cast->get_obj())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(hash,
+                                                    other_cast->get_hash())) {
+      return false;
+    }
+
+    return true;
+  }
+
   const klee::ref<klee::Expr> &get_obj() const { return obj; }
   const klee::ref<klee::Expr> &get_hash() const { return hash; }
 };

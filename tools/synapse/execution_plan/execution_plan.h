@@ -339,4 +339,45 @@ public:
     return copy;
   }
 };
+
+inline bool operator==(const ExecutionPlan &lhs, const ExecutionPlan &rhs) {
+  if ((lhs.get_root() == nullptr && rhs.get_root() != nullptr) ||
+      (lhs.get_root() != nullptr && rhs.get_root() == nullptr)) {
+    return false;
+  }
+
+  std::vector<ExecutionPlanNode_ptr> lhs_nodes{ lhs.get_root() };
+  std::vector<ExecutionPlanNode_ptr> rhs_nodes{ rhs.get_root() };
+
+  while (lhs_nodes.size()) {
+    auto lhs_node = lhs_nodes[0];
+    auto rhs_node = rhs_nodes[0];
+
+    lhs_nodes.erase(lhs_nodes.begin());
+    rhs_nodes.erase(rhs_nodes.begin());
+
+    auto lhs_module = lhs_node->get_module();
+    auto rhs_module = rhs_node->get_module();
+
+    assert(lhs_module);
+    assert(rhs_module);
+
+    if (!lhs_module->equals(rhs_module.get())) {
+      return false;
+    }
+
+    auto lhs_branches = lhs_node->get_next();
+    auto rhs_branches = rhs_node->get_next();
+
+    if (lhs_branches.size() != rhs_branches.size()) {
+      return false;
+    }
+
+    lhs_nodes.insert(lhs_nodes.end(), lhs_branches.begin(), lhs_branches.end());
+    rhs_nodes.insert(rhs_nodes.end(), rhs_branches.begin(), rhs_branches.end());
+  }
+
+  return true;
+}
+
 } // namespace synapse

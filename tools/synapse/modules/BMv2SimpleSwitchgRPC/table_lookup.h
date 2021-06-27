@@ -161,7 +161,33 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const TableLookup *>(other);
+
+    if (table_id != other_cast->get_table_id()) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             condition, other_cast->get_condition())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(key,
+                                                    other_cast->get_key())) {
+      return false;
+    }
+
+    return true;
+  }
+
+  uint64_t get_table_id() const { return table_id; }
   const klee::ref<klee::Expr> &get_condition() const { return condition; }
+  const klee::ref<klee::Expr> &get_key() const { return key; }
 };
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets

@@ -61,6 +61,20 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const Forward *>(other);
+
+    if (port != other_cast->get_port()) {
+      return false;
+    }
+
+    return true;
+  }
+
   int get_port() const { return port; }
 };
 } // namespace x86

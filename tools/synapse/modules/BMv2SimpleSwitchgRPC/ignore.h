@@ -17,8 +17,7 @@ public:
   Ignore()
       : Module(ModuleType::BMv2SimpleSwitchgRPC_Ignore,
                Target::BMv2SimpleSwitchgRPC, "Ignore") {
-    functions_to_ignore =
-        std::vector<std::string>{ "current_time", "map_get", };
+    functions_to_ignore = std::vector<std::string>{ "current_time", "map_get" };
   }
 
   Ignore(const BDD::Node *node)
@@ -66,6 +65,10 @@ public:
   virtual Module_ptr clone() const override {
     auto cloned = new Ignore(node);
     return std::shared_ptr<Module>(cloned);
+  }
+
+  virtual bool equals(const Module *other) const override {
+    return other->get_type() == type;
   }
 };
 } // namespace BMv2SimpleSwitchgRPC

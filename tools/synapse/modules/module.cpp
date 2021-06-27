@@ -102,8 +102,8 @@ Module::get_all_prev_functions(const BDD::Node *node,
 }
 
 std::vector<Module::modification_t>
-Module::get_modifications(klee::ref<klee::Expr> before,
-                          klee::ref<klee::Expr> after) const {
+Module::build_modifications(klee::ref<klee::Expr> before,
+                            klee::ref<klee::Expr> after) const {
   std::vector<modification_t> _modifications;
   assert(before->getWidth() == after->getWidth());
 

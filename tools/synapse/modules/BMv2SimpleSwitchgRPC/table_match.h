@@ -53,6 +53,23 @@ public:
     auto cloned = new TableMatch(node, parameter);
     return std::shared_ptr<Module>(cloned);
   }
+
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const TableMatch *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             parameter, other_cast->get_parameter())) {
+      return false;
+    }
+
+    return true;
+  }
+
+  const klee::ref<klee::Expr> &get_parameter() const { return parameter; }
 };
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets

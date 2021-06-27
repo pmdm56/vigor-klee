@@ -83,6 +83,21 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const If *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             condition, other_cast->get_condition())) {
+      return false;
+    }
+
+    return true;
+  }
+
   const klee::ref<klee::Expr> &get_condition() const { return condition; }
 };
 } // namespace BMv2SimpleSwitchgRPC

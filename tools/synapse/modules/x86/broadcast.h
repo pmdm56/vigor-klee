@@ -54,6 +54,10 @@ public:
     auto cloned = new Broadcast(node);
     return std::shared_ptr<Module>(cloned);
   }
+
+  virtual bool equals(const Module *other) const override {
+    return other->get_type() == type;
+  }
 };
 } // namespace x86
 } // namespace targets

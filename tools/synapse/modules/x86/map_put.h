@@ -77,6 +77,36 @@ public:
     return std::shared_ptr<Module>(cloned);
   }
 
+  virtual bool equals(const Module *other) const override {
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const MapPut *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             map_addr, other_cast->get_map_addr())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             key_addr, other_cast->get_key_addr())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(key,
+                                                    other_cast->get_key())) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(value,
+                                                    other_cast->get_value())) {
+      return false;
+    }
+
+    return true;
+  }
+
   const klee::ref<klee::Expr> &get_map_addr() const { return map_addr; }
   const klee::ref<klee::Expr> &get_key_addr() const { return key_addr; }
   const klee::ref<klee::Expr> &get_key() const { return key; }
