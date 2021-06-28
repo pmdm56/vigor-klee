@@ -8,12 +8,68 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack,
                       bool is_signed);
 std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack);
 
-bool is_read_lsb(klee::ref<klee::Expr> e);
-
 class KleeExprToC : public klee::ExprVisitor::ExprVisitor {
 private:
   std::stringstream code;
   stack_t &stack;
+
+  bool is_read_lsb(klee::ref<klee::Expr> e) const {
+    RetrieveSymbols retriever;
+    retriever.visit(e);
+
+    if (retriever.get_retrieved_strings().size() != 1) {
+      return false;
+    }
+
+    auto sz = e->getWidth();
+    assert(sz % 8 == 0);
+    auto index = (sz / 8) - 1;
+
+    if (e->getKind() != klee::Expr::Kind::Concat) {
+      return false;
+    }
+
+    while (e->getKind() == klee::Expr::Kind::Concat) {
+      auto msb = e->getKid(0);
+      auto lsb = e->getKid(1);
+
+      if (msb->getKind() != klee::Expr::Kind::Read) {
+        return false;
+      }
+
+      auto msb_index = msb->getKid(0);
+
+      if (msb_index->getKind() != klee::Expr::Kind::Constant) {
+        return false;
+      }
+
+      auto const_msb_index = static_cast<klee::ConstantExpr *>(msb_index.get());
+
+      if (const_msb_index->getZExtValue() != index) {
+        return false;
+      }
+
+      index--;
+      e = lsb;
+    }
+
+    if (e->getKind() == klee::Expr::Kind::Read) {
+      auto last_index = e->getKid(0);
+
+      if (last_index->getKind() != klee::Expr::Kind::Constant) {
+        return false;
+      }
+
+      auto const_last_index =
+          static_cast<klee::ConstantExpr *>(last_index.get());
+
+      if (const_last_index->getZExtValue() != index) {
+        return false;
+      }
+    }
+
+    return index == 0;
+  }
 
 public:
   KleeExprToC(stack_t &_stack) : ExprVisitor(false), stack(_stack) {}
@@ -613,63 +669,6 @@ public:
     return klee::ExprVisitor::Action::skipChildren();
   }
 };
-
-bool is_read_lsb(klee::ref<klee::Expr> e) {
-  RetrieveSymbols retriever;
-  retriever.visit(e);
-
-  if (retriever.get_retrieved_strings().size() != 1) {
-    return false;
-  }
-
-  auto sz = e->getWidth();
-  assert(sz % 8 == 0);
-  auto index = (sz / 8) - 1;
-
-  if (e->getKind() != klee::Expr::Kind::Concat) {
-    return false;
-  }
-
-  while (e->getKind() == klee::Expr::Kind::Concat) {
-    auto msb = e->getKid(0);
-    auto lsb = e->getKid(1);
-
-    if (msb->getKind() != klee::Expr::Kind::Read) {
-      return false;
-    }
-
-    auto msb_index = msb->getKid(0);
-
-    if (msb_index->getKind() != klee::Expr::Kind::Constant) {
-      return false;
-    }
-
-    auto const_msb_index = static_cast<klee::ConstantExpr *>(msb_index.get());
-
-    if (const_msb_index->getZExtValue() != index) {
-      return false;
-    }
-
-    index--;
-    e = lsb;
-  }
-
-  if (e->getKind() == klee::Expr::Kind::Read) {
-    auto last_index = e->getKid(0);
-
-    if (last_index->getKind() != klee::Expr::Kind::Constant) {
-      return false;
-    }
-
-    auto const_last_index = static_cast<klee::ConstantExpr *>(last_index.get());
-
-    if (const_last_index->getZExtValue() != index) {
-      return false;
-    }
-  }
-
-  return index == 0;
-}
 
 void apply_changes(const klee::ref<klee::Expr> &before,
                    const klee::ref<klee::Expr> &after, stack_t &stack,
