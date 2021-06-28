@@ -60,8 +60,7 @@ public:
     BMv2SimpleSwitchgRPC_TableMiss,
     BMv2SimpleSwitchgRPC_IPv4Consume,
     BMv2SimpleSwitchgRPC_IPv4Modify,
-    BMv2SimpleSwitchgRPC_TCPModify,
-    BMv2SimpleSwitchgRPC_UDPModify,
+    BMv2SimpleSwitchgRPC_Drop,
   };
 
 protected:

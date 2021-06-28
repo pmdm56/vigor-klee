@@ -2,6 +2,7 @@
 
 #include "../module.h"
 
+#include "drop.h"
 #include "else.h"
 #include "ethernet_consume.h"
 #include "ethernet_modify.h"
@@ -28,7 +29,7 @@ inline std::vector<Module_ptr> get_modules() {
     MODULE(EthernetConsume),  MODULE(TableLookup),
     MODULE(TableMatch),       MODULE(TableMiss),
     MODULE(IPv4Consume),      MODULE(EthernetModify),
-    MODULE(IPv4Modify),
+    MODULE(IPv4Modify),       MODULE(Drop),
   };
 
   return modules;

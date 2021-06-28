@@ -51,6 +51,7 @@ class TableMatch;
 class TableMiss;
 class IPv4Consume;
 class IPv4Modify;
+class Drop;
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 
@@ -101,6 +102,7 @@ public:
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableMiss *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::Drop *node) {}
 };
 
 } // namespace synapse
