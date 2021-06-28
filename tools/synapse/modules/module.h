@@ -61,6 +61,7 @@ public:
     BMv2SimpleSwitchgRPC_IPv4Consume,
     BMv2SimpleSwitchgRPC_IPv4Modify,
     BMv2SimpleSwitchgRPC_Drop,
+    BMv2SimpleSwitchgRPC_Forward,
   };
 
 protected:

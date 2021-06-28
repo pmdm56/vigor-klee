@@ -446,5 +446,6 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::IPv4Consume)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::IPv4Modify)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Drop)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Forward)
 };
 } // namespace synapse

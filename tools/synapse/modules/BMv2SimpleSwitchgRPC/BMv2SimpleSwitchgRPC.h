@@ -16,6 +16,7 @@
 #include "table_match.h"
 #include "table_miss.h"
 #include "then.h"
+#include "forward.h"
 
 namespace synapse {
 namespace targets {
@@ -30,6 +31,7 @@ inline std::vector<Module_ptr> get_modules() {
     MODULE(TableMatch),       MODULE(TableMiss),
     MODULE(IPv4Consume),      MODULE(EthernetModify),
     MODULE(IPv4Modify),       MODULE(Drop),
+    MODULE(Forward),
   };
 
   return modules;
