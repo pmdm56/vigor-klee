@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../../log.h"
-#include "../../modules/modules.h"
-#include "../execution_plan.h"
+#include "../../../log.h"
+#include "../../../modules/modules.h"
+#include "../../execution_plan.h"
 #include "visitor.h"
 
 #include <ctime>
@@ -14,9 +14,11 @@
 namespace synapse {
 
 class KleeExprToP4;
+class KeysFromKleeExpr;
 
 class BMv2SimpleSwitchgRPC_Generator : public ExecutionPlanVisitor {
   friend class KleeExprToP4;
+  friend class KeysFromKleeExpr;
 
 private:
   static void pad(std::ostream &_os, unsigned lvl) {
@@ -86,20 +88,23 @@ private:
     std::vector<std::string> keys;
     uint64_t size;
 
-    std::string param_type;
-    std::string param_label;
+    std::pair<bool, std::string> param_type;
 
     table_t(std::string _label, std::vector<std::string> _keys)
-        : label(_label), keys(_keys), size(256) {}
+        : label(_label), keys(_keys), size(256) {
+      param_type.first = false;
+    }
 
     void dump(std::ostream &os, unsigned lvl) {
+      assert(param_type.first);
+
       // ============== Action ==============
       pad(os, lvl);
       os << "action " << label << "_populate(";
-      os << param_type << " " << param_label << ") {\n";
+      os << param_type.second << " param) {\n";
 
       pad(os, lvl + 1);
-      os << "meta." << label << " = " << param_label << ";\n";
+      os << "meta." << label << " = param;\n";
 
       pad(os, lvl);
       os << "}\n";
@@ -141,6 +146,14 @@ private:
     }
   };
 
+  struct metadata_t {
+    std::string label;
+    klee::ref<klee::Expr> expr;
+
+    metadata_t(std::string _label, klee::ref<klee::Expr> _expr)
+        : label(_label), expr(_expr) {}
+  };
+
   struct parser_t : stage_t {
     std::vector<std::string> headers_labels;
 
@@ -158,6 +171,7 @@ private:
   struct ingress_t : stage_t {
     std::stringstream apply_block;
     std::stack<bool> pending_ifs;
+
     std::vector<table_t> tables;
 
     ingress_t() : stage_t("SyNAPSE_Ingress") {}
@@ -190,6 +204,7 @@ private:
   bool parsing_headers;
 
   std::vector<header_t> headers;
+  std::vector<metadata_t> metadata;
 
   // pipeline stages
   parser_t parser;
@@ -204,8 +219,12 @@ private:
   void dump();
   void close_if_clauses(std::ostream &os, unsigned _lvl);
 
+  std::string p4_type_from_expr(klee::ref<klee::Expr> expr) const;
+  std::string label_from_packet_chunk(klee::ref<klee::Expr> expr) const;
+  std::string label_from_metadata(klee::ref<klee::Expr> expr,
+                                  bool relaxed = false) const;
   std::vector<std::string> get_keys_from_expr(klee::ref<klee::Expr> expr) const;
-  std::string transpile(const klee::ref<klee::Expr> &e,
+  std::string transpile(const klee::ref<klee::Expr> &e, bool relaxed = false,
                         bool is_signed = false) const;
 
 public:

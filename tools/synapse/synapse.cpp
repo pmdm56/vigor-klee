@@ -24,7 +24,7 @@
 
 #include "execution_plan/context.h"
 #include "execution_plan/execution_plan.h"
-#include "execution_plan/visitors/BMv2SimpleSwitchgRPC_generator.h"
+#include "execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/BMv2SimpleSwitchgRPC_generator.h"
 #include "execution_plan/visitors/graphviz.h"
 #include "execution_plan/visitors/x86_generator.h"
 #include "heuristics/heuristics.h"
