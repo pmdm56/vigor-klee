@@ -64,7 +64,7 @@ BMv2SimpleSwitchgRPC_Generator::label_from_metadata(klee::ref<klee::Expr> expr,
 
   auto sz = expr->getWidth();
 
-  for (auto meta : metadata) {
+  for (auto meta : metadata.get()) {
     auto meta_expr = meta.expr;
     auto meta_sz = meta_expr->getWidth();
 
@@ -95,7 +95,7 @@ BMv2SimpleSwitchgRPC_Generator::label_from_metadata(klee::ref<klee::Expr> expr,
 
   std::cerr << "label_from_metadata error\n";
   std::cerr << "expr   " << expr_to_string(expr, true) << "\n";
-  for (auto meta : metadata) {
+  for (auto meta : metadata.get()) {
     std::cerr << "meta   " << meta.label << " "
               << expr_to_string(meta.expr, true) << "\n";
   }
@@ -198,12 +198,15 @@ void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) {
   os << label_pad << "inout standard_metadata_t standard_metadata) {\n";
 
   for (auto table : tables) {
-    table.dump(os, lvl);
+    table.dump(os, 1);
   }
+
+  os << "\n";
+  pad(os, 1);
+  os << "apply {\n";
 
   os << apply_block.str();
 
-  close_if_clauses(os, pending_ifs);
   os << "}\n";
 }
 
@@ -235,6 +238,11 @@ void BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(std::ostream &os) {
   os << "control " << label << "(";
   os << "packet_out packet,\n";
   os << label_pad << "in headers hdr) {\n";
+
+  for (auto header_label : headers_labels) {
+    pad(os, lvl);
+    os << "packet.emit(hdr." << header_label << ");\n";
+  }
 
   os << "}\n";
 }
@@ -276,7 +284,10 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
   lvl--;
   os << "}\n";
 
+  os << "\n";
   os << "/**************** B O I L E R P L A T E  ****************/\n";
+
+  os << "\n";
 
   pad();
   os << "action drop() {\n";
@@ -288,6 +299,7 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
   lvl--;
   os << "}\n";
 
+  os << "\n";
   pad();
   os << "action forward(bit<9> port) {\n";
 
@@ -417,13 +429,13 @@ void BMv2SimpleSwitchgRPC_Generator::visit(const ExecutionPlanNode *ep_node) {
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::BMv2SimpleSwitchgRPC::Drop *node) {
-  // assert(false && "TODO");
-}
-
-void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Else *node) {
-  // assert(false && "TODO");
+  metadata.pop();
+
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "else {\n";
+
+  ingress.lvl++;
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -437,17 +449,38 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   auto label = "ethernet";
 
   headers.emplace_back(chunk, label, fields);
+
   parser.headers_labels.push_back(label);
+  deparser.headers_labels.push_back(label);
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::EthernetModify *node) {
-  // assert(false && "TODO");
+  assert(false && "TODO");
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Forward *node) {
-  // assert(false && "TODO");
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "forward(" << node->get_port() << ");\n";
+
+  ingress.lvl--;
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "}\n";
+
+  ingress.close_if_clauses(ingress.apply_block);
+}
+
+void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::Drop *node) {
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "drop();\n";
+
+  ingress.lvl--;
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "}\n";
+
+  ingress.close_if_clauses(ingress.apply_block);
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -458,9 +491,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "if (";
-  std::cerr << " if " << expr_to_string(node->get_condition(), true) << "\n";
   ingress.apply_block << transpile(node->get_condition(), true);
-  std::cerr << "done\n";
   ingress.apply_block << ") {\n";
 
   ingress.lvl++;
@@ -468,43 +499,40 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::BMv2SimpleSwitchgRPC::Ignore *node) {
-  // assert(false && "TODO");
-}
+    const targets::BMv2SimpleSwitchgRPC::Ignore *node) {}
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) {
-  // assert(false && "TODO");
+  assert(false && "TODO");
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) {
-  // assert(false && "TODO");
+  assert(false && "TODO");
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::SendToController *node) {
-  // assert(false && "TODO");
+  assert(false && "TODO");
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications *node) {
-  // assert(false && "TODO");
+  assert(false && "TODO");
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {
-  auto table_id = node->get_table_id();
   auto condition = node->get_condition();
   auto key = node->get_key();
+  auto bdd_function = node->get_bdd_function();
 
   auto keys = get_keys_from_expr(key);
 
   assert(node->get_node());
 
   std::stringstream code_table_id;
-  code_table_id << "_";
-  code_table_id << table_id;
+  code_table_id << bdd_function;
   code_table_id << "_";
   code_table_id << node->get_node()->get_id();
 
@@ -521,6 +549,8 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::TableMatch *node) {
+  metadata.push();
+
   assert(ingress.tables.size());
   auto parameter = node->get_parameter();
 
@@ -529,22 +559,20 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   table.param_type.first = true;
 
   metadata_t meta_param(table.label, parameter);
-  metadata.push_back(meta_param);
-
-  std::cerr << "added meta " << meta_param.label << " => "
-            << expr_to_string(meta_param.expr, true) << "\n";
+  metadata.append(meta_param);
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::TableMiss *node) {
+  metadata.pop();
+
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "else {\n";
+
   ingress.lvl++;
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::BMv2SimpleSwitchgRPC::Then *node) {
-  // assert(false && "TODO");
-}
+    const targets::BMv2SimpleSwitchgRPC::Then *node) {}
 
 }; // namespace synapse

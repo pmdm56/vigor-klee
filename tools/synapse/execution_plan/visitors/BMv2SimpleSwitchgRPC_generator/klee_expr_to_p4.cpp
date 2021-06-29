@@ -105,10 +105,6 @@ klee::ExprVisitor::Action KleeExprToP4::visitConcat(const klee::ConcatExpr &e) {
 
 klee::ExprVisitor::Action
 KleeExprToP4::visitExtract(const klee::ExtractExpr &e) {
-  auto expr = e.expr;
-  auto offset = e.offset;
-  auto sz = e.width;
-
   assert(false && "TODO");
   return klee::ExprVisitor::Action::skipChildren();
 }

@@ -28,11 +28,13 @@ private:
   struct stage_t {
     std::string label;
     unsigned lvl;
+    std::stack<bool> pending_ifs;
 
     stage_t(std::string _label) : label(_label), lvl(1) {}
+    stage_t(std::string _label, unsigned _lvl) : label(_label), lvl(_lvl) {}
     virtual void dump(std::ostream &os) = 0;
 
-    void close_if_clauses(std::ostream &os, std::stack<bool> pending_ifs) {
+    void close_if_clauses(std::ostream &os) {
       auto if_clause = pending_ifs.top();
       pending_ifs.pop();
       while (!if_clause) {
@@ -99,6 +101,8 @@ private:
       assert(param_type.first);
 
       // ============== Action ==============
+      os << "\n";
+
       pad(os, lvl);
       os << "action " << label << "_populate(";
       os << param_type.second << " param) {\n";
@@ -110,6 +114,7 @@ private:
       os << "}\n";
 
       // ============== Table ==============
+      os << "\n";
 
       pad(os, lvl);
       os << "table " << label << "{\n";
@@ -125,7 +130,10 @@ private:
         os << key << ": exact;\n";
       }
 
+      os << "\n";
+
       lvl--;
+      pad(os, lvl);
       os << "}\n";
 
       pad(os, lvl);
@@ -138,10 +146,13 @@ private:
       pad(os, lvl);
       os << "}\n";
 
+      os << "\n";
+
       pad(os, lvl);
-      os << "size = " << size << "\n";
+      os << "size = " << size << ";\n";
 
       lvl--;
+      pad(os, lvl);
       os << "}\n";
     }
   };
@@ -152,6 +163,33 @@ private:
 
     metadata_t(std::string _label, klee::ref<klee::Expr> _expr)
         : label(_label), expr(_expr) {}
+  };
+
+  struct metadata_stack_t {
+    std::vector<std::vector<metadata_t>> stack;
+
+    void push() { stack.emplace_back(); }
+
+    void pop() {
+      if (stack.size()) {
+        stack.pop_back();
+      }
+    }
+
+    std::vector<metadata_t> get() const {
+      std::vector<metadata_t> meta;
+
+      for (auto frame : stack) {
+        meta.insert(meta.end(), frame.begin(), frame.end());
+      }
+
+      return meta;
+    }
+
+    void append(metadata_t metadata) {
+      assert(stack.size());
+      stack.back().push_back(metadata);
+    }
   };
 
   struct parser_t : stage_t {
@@ -170,11 +208,9 @@ private:
 
   struct ingress_t : stage_t {
     std::stringstream apply_block;
-    std::stack<bool> pending_ifs;
-
     std::vector<table_t> tables;
 
-    ingress_t() : stage_t("SyNAPSE_Ingress") {}
+    ingress_t() : stage_t("SyNAPSE_Ingress", 2) {}
 
     void dump(std::ostream &os) override;
   };
@@ -193,6 +229,7 @@ private:
   };
 
   struct deparser_t : stage_t {
+    std::vector<std::string> headers_labels;
     deparser_t() : stage_t("SyNAPSE_Deparser") {}
 
     void dump(std::ostream &os) override;
@@ -204,7 +241,7 @@ private:
   bool parsing_headers;
 
   std::vector<header_t> headers;
-  std::vector<metadata_t> metadata;
+  metadata_stack_t metadata;
 
   // pipeline stages
   parser_t parser;

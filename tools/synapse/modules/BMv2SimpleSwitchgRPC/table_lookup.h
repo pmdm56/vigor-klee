@@ -17,6 +17,7 @@ private:
   uint64_t table_id;
   klee::ref<klee::Expr> condition;
   klee::ref<klee::Expr> key;
+  std::string bdd_function;
 
 public:
   TableLookup()
@@ -24,10 +25,12 @@ public:
                Target::BMv2SimpleSwitchgRPC, "TableLookup") {}
 
   TableLookup(const BDD::Node *node, uint64_t _table_id,
-              klee::ref<klee::Expr> _condition, klee::ref<klee::Expr> _key)
+              klee::ref<klee::Expr> _condition, klee::ref<klee::Expr> _key,
+              const std::string &_bdd_function)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_TableLookup,
                Target::BMv2SimpleSwitchgRPC, "TableLookup", node),
-        table_id(_table_id), condition(_condition), key(_key) {}
+        table_id(_table_id), condition(_condition), key(_key),
+        bdd_function(_bdd_function) {}
 
 private:
   call_t get_map_get_call(const BDD::Node *current_node,
@@ -110,8 +113,8 @@ private:
       return BDD::BDDVisitor::Action::STOP;
     }
 
-    auto new_lookup_module =
-        std::make_shared<TableLookup>(node, _table_id, _condition, _key);
+    auto new_lookup_module = std::make_shared<TableLookup>(
+        node, _table_id, _condition, _key, map_get_call.function_name);
     auto new_match_module = std::make_shared<TableMatch>(node, _value);
     auto new_miss_module = std::make_shared<TableMiss>(node);
 
@@ -157,7 +160,7 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new TableLookup(node, table_id, condition, key);
+    auto cloned = new TableLookup(node, table_id, condition, key, bdd_function);
     return std::shared_ptr<Module>(cloned);
   }
 
@@ -182,12 +185,17 @@ public:
       return false;
     }
 
+    if (bdd_function != other_cast->get_bdd_function()) {
+      return false;
+    }
+
     return true;
   }
 
   uint64_t get_table_id() const { return table_id; }
   const klee::ref<klee::Expr> &get_condition() const { return condition; }
   const klee::ref<klee::Expr> &get_key() const { return key; }
+  const std::string &get_bdd_function() const { return bdd_function; }
 };
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
