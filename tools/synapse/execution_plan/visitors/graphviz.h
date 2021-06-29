@@ -441,8 +441,6 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::EthernetConsume)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::EthernetModify)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::TableLookup)
-  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::TableMatch)
-  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::TableMiss)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::IPv4Consume)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::IPv4Modify)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Drop)

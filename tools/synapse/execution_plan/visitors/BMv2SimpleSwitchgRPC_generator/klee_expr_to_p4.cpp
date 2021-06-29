@@ -94,7 +94,7 @@ klee::ExprVisitor::Action KleeExprToP4::visitConcat(const klee::ConcatExpr &e) {
       return klee::ExprVisitor::Action::skipChildren();
     }
 
-    auto label = generator.label_from_metadata(eref, relaxed);
+    auto label = generator.label_from_vars(eref, relaxed);
     code << label;
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -428,10 +428,44 @@ klee::ExprVisitor::Action KleeExprToP4::visitEq(const klee::EqExpr &e) {
   auto lhs = e.getKid(0);
   auto rhs = e.getKid(1);
 
-  auto lhs_parsed = generator.transpile(lhs, relaxed);
+  bool convert_to_bool = false;
+
+  if (rhs->getKind() == klee::Expr::Concat && is_read_lsb(rhs)) {
+    RetrieveSymbols retriever;
+    retriever.visit(rhs);
+
+    auto symbols = retriever.get_retrieved_strings();
+    assert(symbols.size() == 1);
+    auto symbol = symbols[0];
+
+    for (auto local_var : generator.local_vars.get()) {
+      auto local_var_vigor_symbol = local_var.symbol;
+
+      if (symbol == local_var_vigor_symbol) {
+        convert_to_bool = true;
+      }
+    }
+  }
+
+  convert_to_bool |= (lhs->getWidth() == 1);
+
+  if (convert_to_bool) {
+    if (lhs->getKind() == klee::Expr::Constant) {
+      auto constant = static_cast<klee::ConstantExpr *>(lhs.get());
+      assert(constant->getWidth() <= 64);
+      auto value = constant->getZExtValue();
+
+      code << (value == 0 ? "false" : "true");
+    } else {
+      assert(false && "TODO");
+    }
+  } else {
+    auto lhs_parsed = generator.transpile(lhs, relaxed);
+    code << "(" << lhs_parsed << ")";
+  }
+
   auto rhs_parsed = generator.transpile(rhs, relaxed);
 
-  code << "(" << lhs_parsed << ")";
   code << " == ";
   code << "(" << rhs_parsed << ")";
 

@@ -28,10 +28,6 @@ public:
 
 private:
   BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    if (query_contains_map_has_key(node)) {
-      return BDD::BDDVisitor::Action::STOP;
-    }
-
     assert(!node->get_condition().isNull());
     auto _condition = node->get_condition();
 

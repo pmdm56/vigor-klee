@@ -96,7 +96,7 @@ KeysFromKleeExpr::visitConcat(const klee::ConcatExpr &e) {
       return klee::ExprVisitor::Action::skipChildren();
     }
 
-    auto label = generator.label_from_metadata(eref);
+    auto label = generator.label_from_vars(eref);
     keys.push_back(label);
     return klee::ExprVisitor::Action::skipChildren();
   }

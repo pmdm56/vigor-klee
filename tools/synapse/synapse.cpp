@@ -36,7 +36,13 @@ namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::Positional,
                                                llvm::cl::OneOrMore);
-}
+
+llvm::cl::OptionCategory SyNAPSE("SyNAPSE specific options");
+
+llvm::cl::opt<std::string>
+    Out("out", llvm::cl::desc("Output directory for every generated file."),
+        llvm::cl::cat(SyNAPSE));
+} // namespace
 
 int main(int argc, char **argv) {
   synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::DEBUG;
@@ -75,9 +81,22 @@ int main(int argc, char **argv) {
   // synapse::x86_Generator x86_generator(std::cerr);
   // winner.visit(x86_generator);
 
-  synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
-      std::cerr);
-  winner.visit(BMv2SimpleSwitchgRPC_generator);
+  // std::ostream &os = std::cerr;
+
+  if (Out.size()) {
+    auto file = std::ofstream(Out + "/bmv2_ss_grpc.p4");
+    assert(file.is_open());
+
+    // os = file;
+
+    synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
+        file);
+    winner.visit(BMv2SimpleSwitchgRPC_generator);
+  } else {
+    synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
+        std::cerr);
+    winner.visit(BMv2SimpleSwitchgRPC_generator);
+  }
 
   for (auto call_path : call_paths) {
     delete call_path;

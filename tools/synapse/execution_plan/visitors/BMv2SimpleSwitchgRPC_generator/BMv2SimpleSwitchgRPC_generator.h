@@ -88,24 +88,21 @@ private:
   struct table_t {
     std::string label;
     std::vector<std::string> keys;
+    std::string param_type;
+
     uint64_t size;
 
-    std::pair<bool, std::string> param_type;
-
-    table_t(std::string _label, std::vector<std::string> _keys)
-        : label(_label), keys(_keys), size(256) {
-      param_type.first = false;
-    }
+    table_t(std::string _label, std::vector<std::string> _keys,
+            std::string _param_type)
+        : label(_label), keys(_keys), param_type(_param_type), size(256) {}
 
     void dump(std::ostream &os, unsigned lvl) {
-      assert(param_type.first);
-
       // ============== Action ==============
       os << "\n";
 
       pad(os, lvl);
       os << "action " << label << "_populate(";
-      os << param_type.second << " param) {\n";
+      os << param_type << " param) {\n";
 
       pad(os, lvl + 1);
       os << "meta." << label << " = param;\n";
@@ -165,8 +162,19 @@ private:
         : label(_label), expr(_expr) {}
   };
 
-  struct metadata_stack_t {
-    std::vector<std::vector<metadata_t>> stack;
+  struct var_vigor_symbol_t {
+    std::string label;
+    std::string symbol;
+    uint64_t size;
+
+    var_vigor_symbol_t(std::string _label, std::string _symbol, uint64_t _size)
+        : label(_label), symbol(_symbol), size(_size) {}
+  };
+
+  struct var_vigor_symbol_stack_t {
+    std::vector<std::vector<var_vigor_symbol_t>> stack;
+
+    var_vigor_symbol_stack_t() { push(); }
 
     void push() { stack.emplace_back(); }
 
@@ -176,19 +184,19 @@ private:
       }
     }
 
-    std::vector<metadata_t> get() const {
-      std::vector<metadata_t> meta;
+    std::vector<var_vigor_symbol_t> get() const {
+      std::vector<var_vigor_symbol_t> vars;
 
       for (auto frame : stack) {
-        meta.insert(meta.end(), frame.begin(), frame.end());
+        vars.insert(vars.end(), frame.begin(), frame.end());
       }
 
-      return meta;
+      return vars;
     }
 
-    void append(metadata_t metadata) {
+    void append(var_vigor_symbol_t var) {
       assert(stack.size());
-      stack.back().push_back(metadata);
+      stack.back().push_back(var);
     }
   };
 
@@ -241,7 +249,8 @@ private:
   bool parsing_headers;
 
   std::vector<header_t> headers;
-  metadata_stack_t metadata;
+  std::vector<metadata_t> metadata;
+  var_vigor_symbol_stack_t local_vars;
 
   // pipeline stages
   parser_t parser;
@@ -258,8 +267,8 @@ private:
 
   std::string p4_type_from_expr(klee::ref<klee::Expr> expr) const;
   std::string label_from_packet_chunk(klee::ref<klee::Expr> expr) const;
-  std::string label_from_metadata(klee::ref<klee::Expr> expr,
-                                  bool relaxed = false) const;
+  std::string label_from_vars(klee::ref<klee::Expr> expr,
+                              bool relaxed = false) const;
   std::vector<std::string> get_keys_from_expr(klee::ref<klee::Expr> expr) const;
   std::string transpile(const klee::ref<klee::Expr> &e, bool relaxed = false,
                         bool is_signed = false) const;
@@ -288,8 +297,6 @@ public:
   visit(const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications *node)
       override;
   void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node) override;
-  void visit(const targets::BMv2SimpleSwitchgRPC::TableMatch *node) override;
-  void visit(const targets::BMv2SimpleSwitchgRPC::TableMiss *node) override;
   void visit(const targets::BMv2SimpleSwitchgRPC::Then *node) override;
 };
 } // namespace synapse

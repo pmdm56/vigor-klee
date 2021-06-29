@@ -1,4 +1,5 @@
 #include "BMv2SimpleSwitchgRPC_generator.h"
+#include "../../../log.h"
 #include "keys_from_klee_expr.h"
 #include "klee_expr_to_p4.h"
 
@@ -44,18 +45,20 @@ std::string BMv2SimpleSwitchgRPC_Generator::label_from_packet_chunk(
     }
   }
 
-  std::cerr << "label_from_chunk error\n";
-  std::cerr << "expr   " << expr_to_string(expr, true) << "\n";
+  Log::err() << "label_from_chunk error\n";
+  Log::err() << "expr   " << expr_to_string(expr, true) << "\n";
   for (auto header : headers) {
-    std::cerr << "header " << header.label << " "
-              << expr_to_string(header.chunk, true) << "\n";
+    Log::err() << "header " << header.label << " "
+               << expr_to_string(header.chunk, true) << "\n";
   }
+  Log::err() << "\n";
+
   assert(false);
 }
 
 std::string
-BMv2SimpleSwitchgRPC_Generator::label_from_metadata(klee::ref<klee::Expr> expr,
-                                                    bool relaxed) const {
+BMv2SimpleSwitchgRPC_Generator::label_from_vars(klee::ref<klee::Expr> expr,
+                                                bool relaxed) const {
   RetrieveSymbols retriever;
   retriever.visit(expr);
 
@@ -64,7 +67,7 @@ BMv2SimpleSwitchgRPC_Generator::label_from_metadata(klee::ref<klee::Expr> expr,
 
   auto sz = expr->getWidth();
 
-  for (auto meta : metadata.get()) {
+  for (auto meta : metadata) {
     auto meta_expr = meta.expr;
     auto meta_sz = meta_expr->getWidth();
 
@@ -93,12 +96,29 @@ BMv2SimpleSwitchgRPC_Generator::label_from_metadata(klee::ref<klee::Expr> expr,
     }
   }
 
-  std::cerr << "label_from_metadata error\n";
-  std::cerr << "expr   " << expr_to_string(expr, true) << "\n";
-  for (auto meta : metadata.get()) {
-    std::cerr << "meta   " << meta.label << " "
-              << expr_to_string(meta.expr, true) << "\n";
+  for (auto local_var : local_vars.get()) {
+    auto local_var_vigor_symbol = local_var.symbol;
+
+    if (symbols[0] == local_var_vigor_symbol) {
+      return local_var.label;
+    }
   }
+
+  Log::err() << "label_from_metadata error\n";
+  Log::err() << "expr   " << expr_to_string(expr, true) << "\n";
+
+  for (auto meta : metadata) {
+    Log::err() << "meta   " << meta.label << " "
+               << expr_to_string(meta.expr, true) << "\n";
+  }
+
+  Log::err() << "\n";
+  for (auto local_var : local_vars.get()) {
+    Log::err() << "var    " << local_var.label << " " << local_var.symbol
+               << "\n";
+  }
+
+  Log::err() << "\n";
   assert(false);
 }
 
@@ -109,8 +129,6 @@ std::vector<std::string> BMv2SimpleSwitchgRPC_Generator::get_keys_from_expr(
   return keysFromKleeExpr.get_keys();
 }
 
-// TODO: allow relaxed transpilation (without matching labels to expressions
-// 100%, ie allow extracts)
 std::string
 BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
                                           bool relaxed, bool is_signed) const {
@@ -186,6 +204,9 @@ void BMv2SimpleSwitchgRPC_Generator::verify_checksum_t::dump(std::ostream &os) {
   os << "inout headers hdr,\n";
   os << label_pad << "inout metadata meta) {\n";
 
+  pad(os, lvl);
+  os << "apply {}\n";
+
   os << "}\n";
 }
 
@@ -196,6 +217,36 @@ void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) {
   os << "inout headers hdr,\n";
   os << label_pad << "inout metadata meta,\n";
   os << label_pad << "inout standard_metadata_t standard_metadata) {\n";
+
+  pad(os, lvl);
+  os << "\n";
+  pad(os, lvl);
+  os << "/**************** B O I L E R P L A T E  ****************/\n";
+  pad(os, lvl);
+  os << "\n";
+
+  pad(os, lvl);
+  os << "action drop() {\n";
+
+  lvl++;
+  pad(os, lvl);
+  os << "standard_metadata.egress_spec = DROP_PORT;\n";
+
+  lvl--;
+  pad(os, lvl);
+  os << "}\n";
+
+  os << "\n";
+  pad(os, lvl);
+  os << "action forward(bit<9> port) {\n";
+
+  lvl++;
+  pad(os, lvl);
+  os << "standard_metadata.egress_spec = port;\n";
+
+  lvl--;
+  pad(os, lvl);
+  os << "}\n";
 
   for (auto table : tables) {
     table.dump(os, 1);
@@ -218,6 +269,9 @@ void BMv2SimpleSwitchgRPC_Generator::egress_t::dump(std::ostream &os) {
   os << label_pad << "inout metadata meta,\n";
   os << label_pad << "inout standard_metadata_t standard_metadata) {\n";
 
+  pad(os, lvl);
+  os << "apply {}\n";
+
   os << "}\n";
 }
 
@@ -229,6 +283,9 @@ void BMv2SimpleSwitchgRPC_Generator::compute_checksum_t::dump(
   os << "inout headers hdr,\n";
   os << label_pad << "inout metadata meta) {\n";
 
+  pad(os, lvl);
+  os << "apply {}\n";
+
   os << "}\n";
 }
 
@@ -239,10 +296,16 @@ void BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(std::ostream &os) {
   os << "packet_out packet,\n";
   os << label_pad << "in headers hdr) {\n";
 
+  pad(os, lvl);
+  os << "apply {\n";
+
   for (auto header_label : headers_labels) {
-    pad(os, lvl);
+    pad(os, lvl + 1);
     os << "packet.emit(hdr." << header_label << ");\n";
   }
+
+  pad(os, lvl);
+  os << "}\n";
 
   os << "}\n";
 }
@@ -285,27 +348,13 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
   os << "}\n";
 
   os << "\n";
-  os << "/**************** B O I L E R P L A T E  ****************/\n";
-
-  os << "\n";
-
-  pad();
-  os << "action drop() {\n";
-
+  os << "struct metadata {\n";
   lvl++;
-  pad();
-  os << "standard_metadata.egress_spec = DROP_PORT;\n";
 
-  lvl--;
-  os << "}\n";
-
-  os << "\n";
-  pad();
-  os << "action forward(bit<9> port) {\n";
-
-  lvl++;
-  pad();
-  os << "standard_metadata.egress_spec = port;\n";
+  for (auto meta : metadata) {
+    pad(os, lvl);
+    os << p4_type_from_expr(meta.expr) << " " << meta.label << ";\n";
+  }
 
   lvl--;
   os << "}\n";
@@ -370,7 +419,7 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
   os << "         " << ingress.label << "(),\n";
   os << "         " << egress.label << "(),\n";
   os << "         " << compute_checksum.label << "(),\n";
-  os << "         " << deparser.label << "(),\n";
+  os << "         " << deparser.label << "()\n";
   os << ") main;";
   os << "\n";
 }
@@ -430,7 +479,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(const ExecutionPlanNode *ep_node) {
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Else *node) {
-  metadata.pop();
+  local_vars.pop();
 
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "else {\n";
@@ -489,6 +538,8 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     assert(false && "TODO");
   }
 
+  local_vars.push();
+
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "if (";
   ingress.apply_block << transpile(node->get_condition(), true);
@@ -523,10 +574,12 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {
-  auto condition = node->get_condition();
   auto key = node->get_key();
+  auto value = node->get_value();
   auto bdd_function = node->get_bdd_function();
+  auto has_this_key = node->get_map_has_this_key_label();
 
+  auto param_type = p4_type_from_expr(value);
   auto keys = get_keys_from_expr(key);
 
   assert(node->get_node());
@@ -536,40 +589,19 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   code_table_id << "_";
   code_table_id << node->get_node()->get_id();
 
-  table_t table(code_table_id.str(), keys);
+  table_t table(code_table_id.str(), keys, param_type);
   ingress.tables.push_back(table);
 
-  pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "if (";
-  ingress.apply_block << table.label << ".apply().hit) {\n";
+  metadata_t meta_param(table.label, value);
+  metadata.push_back(meta_param);
 
-  ingress.lvl++;
-  ingress.pending_ifs.push(true);
-}
-
-void BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::BMv2SimpleSwitchgRPC::TableMatch *node) {
-  metadata.push();
-
-  assert(ingress.tables.size());
-  auto parameter = node->get_parameter();
-
-  auto &table = ingress.tables.back();
-  table.param_type.second = p4_type_from_expr(parameter);
-  table.param_type.first = true;
-
-  metadata_t meta_param(table.label, parameter);
-  metadata.append(meta_param);
-}
-
-void BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::BMv2SimpleSwitchgRPC::TableMiss *node) {
-  metadata.pop();
+  var_vigor_symbol_t hit_var(table.label + "_hit", has_this_key, 1);
+  local_vars.append(hit_var);
 
   pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "else {\n";
-
-  ingress.lvl++;
+  ingress.apply_block << "bool " << hit_var.label;
+  ingress.apply_block << " = ";
+  ingress.apply_block << table.label << ".apply().hit;\n";
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(

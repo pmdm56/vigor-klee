@@ -47,8 +47,6 @@ class Else;
 class EthernetConsume;
 class EthernetModify;
 class TableLookup;
-class TableMatch;
-class TableMiss;
 class IPv4Consume;
 class IPv4Modify;
 class Drop;
@@ -99,8 +97,6 @@ public:
   virtual void
   visit(const targets::BMv2SimpleSwitchgRPC::EthernetModify *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {}
-  virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableMatch *node) {}
-  virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableMiss *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Drop *node) {}
