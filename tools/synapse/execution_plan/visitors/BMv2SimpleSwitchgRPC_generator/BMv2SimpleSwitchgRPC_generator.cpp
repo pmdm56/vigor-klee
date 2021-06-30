@@ -13,6 +13,27 @@ std::string BMv2SimpleSwitchgRPC_Generator::p4_type_from_expr(
   return label.str();
 }
 
+std::string get_bytes_of_label(std::string label, unsigned size, unsigned offset){
+  std::stringstream code;
+  uint64_t mask = 0;
+  for (unsigned b = 0; b < size; b++) {
+    mask <<= 1;
+    mask |= 1;
+  }
+
+  assert(mask > 0);
+  if (offset > 0) {
+    code << "(";
+  }
+  code << label;
+  if (offset > 0) {
+    code << " >> " << offset << ")";
+  }
+  code << " & " << mask << "u";
+
+  return code.str();
+}
+
 std::string BMv2SimpleSwitchgRPC_Generator::label_from_packet_chunk(
     klee::ref<klee::Expr> expr) const {
   RetrieveSymbols retriever;
@@ -29,16 +50,15 @@ std::string BMv2SimpleSwitchgRPC_Generator::label_from_packet_chunk(
     auto offset = 0u;
 
     for (auto field : header.fields) {
-      if (field.sz != sz) {
-        offset += field.sz;
-        continue;
-      }
+      
+      for (unsigned byte = 0; byte*8+sz <= field.sz; byte ++){
+        auto field_expr =
+            BDD::solver_toolbox.exprBuilder->Extract(chunk, offset+byte*8, sz);
 
-      auto field_expr =
-          BDD::solver_toolbox.exprBuilder->Extract(chunk, offset, sz);
-
-      if (BDD::solver_toolbox.are_exprs_always_equal(field_expr, expr)) {
-        return "hdr." + header.label + "." + field.label;
+        if (BDD::solver_toolbox.are_exprs_always_equal(field_expr, expr)) {
+          auto label = "hdr." + header.label + "." + field.label;
+          return get_bytes_of_label(label, sz, byte*8);
+        } 
       }
 
       offset += field.sz;
@@ -247,6 +267,22 @@ void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) {
   lvl--;
   pad(os, lvl);
   os << "}\n";
+  
+  os << "\n";
+  pad(os, lvl);
+  os << "action send_to_controller(bit<32> code_id) {\n";
+
+  lvl++;
+  pad(os, lvl);
+  os << "standard_metadata.egress_spec = CPU_PORT;\n";
+  pad(os, lvl);
+  os << "hdr.packet_in.setValid();\n";
+  pad(os, lvl);
+  os << "hdr.packet_in.code_id = code_id;\n";
+
+  lvl--;
+  pad(os, lvl);
+  os << "}\n";
 
   for (auto table : tables) {
     table.dump(os, 1);
@@ -320,6 +356,15 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
 
   os << "\n";
   os << "/**************** H E A D E R S  ****************/\n";
+ 
+  os << "\n";
+  os << "@controller_header(\"packet_in\")\n";
+  os << "header packet_in_t {\n";
+  lvl++;
+  pad();
+  os << "bit<32> code_id;\n";
+  lvl--;
+  os << "}\n";
 
   for (auto header : headers) {
     os << "\n";
@@ -443,6 +488,10 @@ bool pending_packet_borrow_next_chunk(const ExecutionPlanNode *ep_node) {
     auto module = node->get_module();
     assert(module);
 
+    if(module->get_target() != Target::BMv2SimpleSwitchgRPC){
+      continue;
+    }
+
     auto bdd_node = module->get_node();
     assert(bdd_node);
 
@@ -471,7 +520,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(const ExecutionPlanNode *ep_node) {
   if (!pending_packet_borrow_next_chunk(ep_node)) {
     parsing_headers = false;
   }
-
+  
   for (auto branch : next) {
     branch->visit(*this);
   }
@@ -564,7 +613,9 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::SendToController *node) {
-  assert(false && "TODO");
+  //FIXME: missing code id
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "send_to_controller(0);\n";
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(

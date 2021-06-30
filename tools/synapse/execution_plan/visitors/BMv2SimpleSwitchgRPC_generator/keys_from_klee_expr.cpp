@@ -60,9 +60,20 @@ bool KeysFromKleeExpr::is_read_lsb(klee::ref<klee::Expr> e) const {
 }
 
 klee::ExprVisitor::Action KeysFromKleeExpr::visitRead(const klee::ReadExpr &e) {
-  e.dump();
-  std::cerr << "\n";
-  assert(false && "TODO");
+  klee::ref<klee::Expr> eref = const_cast<klee::ReadExpr *>(&e);
+  
+  RetrieveSymbols retriever;
+  retriever.visit(eref);
+  auto symbol = retriever.get_retrieved_strings()[0];
+
+  if (symbol == "packet_chunks") {
+    auto label = generator.label_from_packet_chunk(eref);
+    keys.push_back(label);
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+  
+  auto label = generator.label_from_vars(eref);
+  keys.push_back(label);
   return klee::ExprVisitor::Action::skipChildren();
 }
 

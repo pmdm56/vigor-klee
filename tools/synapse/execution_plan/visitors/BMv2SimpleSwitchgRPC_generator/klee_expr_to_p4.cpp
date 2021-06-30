@@ -105,6 +105,21 @@ klee::ExprVisitor::Action KleeExprToP4::visitConcat(const klee::ConcatExpr &e) {
 
 klee::ExprVisitor::Action
 KleeExprToP4::visitExtract(const klee::ExtractExpr &e) {
+  // simplifyng extract SIZE followed by zext SIZE_2 followed by expr of SIZE
+  auto sz = e.getWidth();
+  auto expr = e.expr;
+  auto offset = e.offset;
+
+  if (offset == 0 && expr->getKind() == klee::Expr::ZExt) {
+    assert(expr->getNumKids() == 1);
+    auto extended = expr->getKid(0);
+
+    if (extended->getWidth() == sz) {
+      code << generator.transpile(extended, relaxed);
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+  }
+  
   assert(false && "TODO");
   return klee::ExprVisitor::Action::skipChildren();
 }
