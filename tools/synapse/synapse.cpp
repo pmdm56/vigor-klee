@@ -49,6 +49,16 @@ int main(int argc, char **argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
+  std::ostream *os_ptr;
+
+  if (Out.size()) {
+    auto file = new std::ofstream(Out + "/bmv2_ss_grpc.p4");
+    assert(file->is_open());
+    os_ptr = file;
+  } else {
+    os_ptr = &std::cerr;
+  }
+
   std::vector<call_path_t *> call_paths;
 
   for (auto file : InputCallPathFiles) {
@@ -81,25 +91,16 @@ int main(int argc, char **argv) {
   // synapse::x86_Generator x86_generator(std::cerr);
   // winner.visit(x86_generator);
 
-  // std::ostream &os = std::cerr;
-
-  if (Out.size()) {
-    auto file = std::ofstream(Out + "/bmv2_ss_grpc.p4");
-    assert(file.is_open());
-
-    // os = file;
-
-    synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
-        file);
-    winner.visit(BMv2SimpleSwitchgRPC_generator);
-  } else {
-    synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
-        std::cerr);
-    winner.visit(BMv2SimpleSwitchgRPC_generator);
-  }
+  synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
+      *os_ptr);
+  winner.visit(BMv2SimpleSwitchgRPC_generator);
 
   for (auto call_path : call_paths) {
     delete call_path;
+  }
+
+  if (os_ptr != &std::cerr) {
+    delete os_ptr;
   }
 
   return 0;
