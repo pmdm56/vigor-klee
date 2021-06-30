@@ -17,7 +17,7 @@ public:
   Ignore()
       : Module(ModuleType::BMv2SimpleSwitchgRPC_Ignore,
                Target::BMv2SimpleSwitchgRPC, "Ignore") {
-    functions_to_ignore = std::vector<std::string>{ "current_time", "map_get" };
+    functions_to_ignore = std::vector<std::string>{"current_time", "rte_ether_addr_hash", "dchain_rejuvenate_index"};
   }
 
   Ignore(const BDD::Node *node)

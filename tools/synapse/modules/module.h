@@ -62,6 +62,7 @@ public:
     BMv2SimpleSwitchgRPC_IPv4Modify,
     BMv2SimpleSwitchgRPC_Drop,
     BMv2SimpleSwitchgRPC_Forward,
+    BMv2SimpleSwitchgRPC_VectorReturn,
   };
 
 protected:

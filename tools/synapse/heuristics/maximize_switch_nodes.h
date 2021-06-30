@@ -21,7 +21,7 @@ struct MaximizeSwitchNodesComparator : public HeuristicConfiguration {
     return s;
   }
 
-  bool terminate_on_first_solution() const override { return false; }
+  bool terminate_on_first_solution() const override { return true; }
 };
 
 using MaximizeSwitchNodes = Heuristic<MaximizeSwitchNodesComparator>;

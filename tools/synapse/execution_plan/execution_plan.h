@@ -89,6 +89,7 @@ public:
     id = counter++;
     leaf_replace_next(_next, bdd_node_processed);
     leaf_replace_current_platform(_target);
+    nodes_per_target[_target]++;
   }
 
   ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next, Target _target,

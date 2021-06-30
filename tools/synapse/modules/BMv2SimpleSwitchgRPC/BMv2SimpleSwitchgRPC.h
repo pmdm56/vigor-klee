@@ -15,6 +15,7 @@
 #include "setup_expiration_notifications.h"
 #include "table_lookup.h"
 #include "then.h"
+#include "vector_return.h"
 
 namespace synapse {
 namespace targets {
@@ -28,7 +29,7 @@ inline std::vector<Module_ptr> get_modules() {
     MODULE(EthernetConsume),  MODULE(TableLookup),
     MODULE(IPv4Consume),      MODULE(EthernetModify),
     MODULE(IPv4Modify),       MODULE(Drop),
-    MODULE(Forward),
+    MODULE(Forward),          MODULE(VectorReturn),
   };
 
   return modules;

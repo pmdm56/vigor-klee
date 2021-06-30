@@ -51,6 +51,7 @@ class IPv4Consume;
 class IPv4Modify;
 class Drop;
 class Forward;
+class VectorReturn;
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets
 
@@ -101,6 +102,7 @@ public:
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Drop *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Forward *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::VectorReturn *node) {}
 };
 
 } // namespace synapse

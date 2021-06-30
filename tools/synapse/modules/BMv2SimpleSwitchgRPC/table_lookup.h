@@ -49,15 +49,21 @@ private:
       auto call_node = static_cast<const BDD::Call *>(node);
       auto call = call_node->get_call();
 
-      if (call.function_name != "map_get" && call.function_name != "map_put") {
+      if (call.function_name != "map_get" && call.function_name != "map_put" && call.function_name != "vector_borrow") {
         node = node->get_prev();
         continue;
       }
 
-      assert(!call.args["map"].expr.isNull());
-      auto map_id = BDD::solver_toolbox.value_from_expr(call.args["map"].expr);
-
-      if (map_id == _table_id) {
+      uint64_t this_table_id = 0;
+      if (call.function_name == "map_get" || call.function_name == "map_put"){
+        assert(!call.args["map"].expr.isNull());
+        this_table_id = BDD::solver_toolbox.value_from_expr(call.args["map"].expr);
+      } else if(call.function_name == "vector_borrow"){
+        assert(!call.args["vector"].expr.isNull());
+        this_table_id = BDD::solver_toolbox.value_from_expr(call.args["vector"].expr);
+      }
+    
+      if (this_table_id == _table_id) {
         counter++;
       }
 
@@ -71,15 +77,11 @@ private:
     return false;
   }
 
-  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
+  bool process_map_get(const BDD::Call *node) {
     auto call = node->get_call();
 
     if (call.function_name != "map_get") {
-      return BDD::BDDVisitor::Action::STOP;
+      return false;
     }
 
     assert(call.function_name == "map_get");
@@ -95,7 +97,7 @@ private:
     auto _table_id = BDD::solver_toolbox.value_from_expr(_map);
 
     if (multiple_queries_to_this_table(node, _table_id)) {
-      return BDD::BDDVisitor::Action::STOP;
+      return false;
     }
 
     auto symbols = node->get_generated_symbols();
@@ -112,6 +114,57 @@ private:
 
     context->add(new_ep, new_module);
 
+    return true;
+  }
+
+  bool process_vector_borrow(const BDD::Call *node){
+    auto call = node->get_call();
+
+    if (call.function_name != "vector_borrow") {
+      return false;
+    }
+
+    assert(call.function_name == "vector_borrow");
+    assert(!call.args["vector"].expr.isNull());
+    assert(!call.args["index"].expr.isNull());
+    assert(!call.extra_vars["borrowed_cell"].second.isNull());
+
+    auto _vector = call.args["vector"].expr;
+    auto _index = call.args["index"].expr;
+    auto _borrowed_cell = call.extra_vars["borrowed_cell"].second;
+
+    assert(_vector->getKind() == klee::Expr::Kind::Constant);
+    auto _table_id = BDD::solver_toolbox.value_from_expr(_vector);
+
+    if (multiple_queries_to_this_table(node, _table_id)) {
+      return false;
+    }
+
+    auto new_module = std::make_shared<TableLookup>(
+      node, _table_id, _index, _borrowed_cell, "",
+      call.function_name);
+    
+    auto ep_node = ExecutionPlanNode::build(new_module);
+    auto ep = context->get_current();
+    auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
+    auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
+
+    context->add(new_ep, new_module);
+
+    return true;
+  }
+  
+  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
+    return BDD::BDDVisitor::Action::STOP;
+  }
+
+  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
+    if(process_map_get(node)){
+      return BDD::BDDVisitor::Action::STOP;
+    }
+    if(process_vector_borrow(node)){
+      return BDD::BDDVisitor::Action::STOP;
+    }
     return BDD::BDDVisitor::Action::STOP;
   }
 

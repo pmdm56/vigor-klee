@@ -569,7 +569,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications *node) {
-  assert(false && "TODO");
+  //FIXME: assert(false && "TODO"); 
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -595,13 +595,18 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   metadata_t meta_param(table.label, value);
   metadata.push_back(meta_param);
 
-  var_vigor_symbol_t hit_var(table.label + "_hit", has_this_key, 1);
-  local_vars.append(hit_var);
+  if(has_this_key.size()){
+    var_vigor_symbol_t hit_var(table.label + "_hit", has_this_key, 1);
+    local_vars.append(hit_var);
 
-  pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "bool " << hit_var.label;
-  ingress.apply_block << " = ";
-  ingress.apply_block << table.label << ".apply().hit;\n";
+    pad(ingress.apply_block, ingress.lvl);
+    ingress.apply_block << "bool " << hit_var.label;
+    ingress.apply_block << " = ";
+    ingress.apply_block << table.label << ".apply().hit;\n";
+  } else {
+    pad(ingress.apply_block, ingress.lvl);
+    ingress.apply_block << table.label << ".apply();\n";
+  }
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
