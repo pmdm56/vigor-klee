@@ -617,10 +617,12 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "}\n";
 
-  ingress.close_if_clauses(ingress.apply_block);
+  auto closed = ingress.close_if_clauses(ingress.apply_block);
 
-  local_vars.pop();
-  metadata.pop();
+  for (auto i = 0; i < closed; i++) {
+    local_vars.pop();
+    metadata.pop();
+  }
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -632,10 +634,12 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "}\n";
 
-  ingress.close_if_clauses(ingress.apply_block);
+  auto closed = ingress.close_if_clauses(ingress.apply_block);
 
-  local_vars.pop();
-  metadata.pop();
+  for (auto i = 0; i < closed; i++) {
+    local_vars.pop();
+    metadata.pop();
+  }
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -679,10 +683,12 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "}\n";
 
-  ingress.close_if_clauses(ingress.apply_block);
+  auto closed = ingress.close_if_clauses(ingress.apply_block);
 
-  local_vars.pop();
-  metadata.pop();
+  for (auto i = 0; i < closed; i++) {
+    local_vars.pop();
+    metadata.pop();
+  }
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(

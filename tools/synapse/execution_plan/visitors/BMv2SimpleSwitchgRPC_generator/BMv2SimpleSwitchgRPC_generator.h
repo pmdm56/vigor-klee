@@ -34,9 +34,11 @@ private:
     stage_t(std::string _label, unsigned _lvl) : label(_label), lvl(_lvl) {}
     virtual void dump(std::ostream &os) = 0;
 
-    void close_if_clauses(std::ostream &os) {
+    int close_if_clauses(std::ostream &os) {
+      int closed = 0;
       auto if_clause = pending_ifs.top();
       pending_ifs.pop();
+      closed++;
       while (!if_clause) {
         lvl--;
         pad(os, lvl);
@@ -45,11 +47,13 @@ private:
         if (pending_ifs.size()) {
           if_clause = pending_ifs.top();
           pending_ifs.pop();
+          closed++;
         } else {
           if_clause = true;
         }
       }
       pending_ifs.push(false);
+      return closed;
     }
   };
 
