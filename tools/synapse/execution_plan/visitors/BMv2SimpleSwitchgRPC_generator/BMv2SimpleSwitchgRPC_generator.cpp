@@ -5,6 +5,39 @@
 
 namespace synapse {
 
+void BMv2SimpleSwitchgRPC_Generator::err_label_from_chunk(
+    klee::ref<klee::Expr> expr) const {
+  Log::err() << "label_from_chunk error\n";
+  Log::err() << "expr   " << expr_to_string(expr, true) << "\n";
+  for (auto header : headers) {
+    Log::err() << "header " << header.label << " "
+               << expr_to_string(header.chunk, true) << "\n";
+  }
+  Log::err() << "\n";
+
+  assert(false);
+}
+
+void BMv2SimpleSwitchgRPC_Generator::err_label_from_vars(
+    klee::ref<klee::Expr> expr) const {
+  Log::err() << "label_from_vars error\n";
+  Log::err() << "expr   " << expr_to_string(expr, true) << "\n";
+
+  for (auto meta : metadata.get()) {
+    Log::err() << "meta   " << meta.label << " "
+               << expr_to_string(meta.expr, true) << "\n";
+  }
+
+  Log::err() << "\n";
+  for (auto local_var : local_vars.get()) {
+    Log::err() << "var    " << local_var.label << " " << local_var.symbol
+               << "\n";
+  }
+
+  Log::err() << "\n";
+  assert(false);
+}
+
 std::string BMv2SimpleSwitchgRPC_Generator::p4_type_from_expr(
     klee::ref<klee::Expr> expr) const {
   auto sz = expr->getWidth();
@@ -47,6 +80,11 @@ std::string BMv2SimpleSwitchgRPC_Generator::label_from_packet_chunk(
   retriever.visit(expr);
 
   auto symbols = retriever.get_retrieved_strings();
+
+  if (symbols.size() != 1 || symbols[0] != "packet_chunks") {
+    return "";
+  }
+
   assert(symbols.size() == 1);
   assert(symbols[0] == "packet_chunks");
 
@@ -77,20 +115,11 @@ std::string BMv2SimpleSwitchgRPC_Generator::label_from_packet_chunk(
     }
   }
 
-  Log::err() << "label_from_chunk error\n";
-  Log::err() << "expr   " << expr_to_string(expr, true) << "\n";
-  for (auto header : headers) {
-    Log::err() << "header " << header.label << " "
-               << expr_to_string(header.chunk, true) << "\n";
-  }
-  Log::err() << "\n";
-
-  assert(false);
+  return "";
 }
 
-std::string
-BMv2SimpleSwitchgRPC_Generator::label_from_vars(klee::ref<klee::Expr> expr,
-                                                bool relaxed) const {
+std::string BMv2SimpleSwitchgRPC_Generator::label_from_vars(
+    klee::ref<klee::Expr> expr) const {
   RetrieveSymbols retriever;
   retriever.visit(expr);
 
@@ -99,35 +128,23 @@ BMv2SimpleSwitchgRPC_Generator::label_from_vars(klee::ref<klee::Expr> expr,
 
   auto sz = expr->getWidth();
 
-  for (auto meta : metadata) {
+  for (auto meta : metadata.get()) {
     auto meta_expr = meta.expr;
     auto meta_sz = meta_expr->getWidth();
 
-    if ((!relaxed && meta_sz != sz) || sz > meta_sz) {
-      continue;
-    }
+    for (auto byte = 0u; byte * 8 + sz <= meta_sz; byte++) {
+      auto extracted =
+          BDD::solver_toolbox.exprBuilder->Extract(meta_expr, byte * 8, sz);
 
-    auto extracted = BDD::solver_toolbox.exprBuilder->Extract(meta.expr, 0, sz);
+      if (BDD::solver_toolbox.are_exprs_always_equal(expr, extracted)) {
+        auto label = "meta." + meta.label;
 
-    if (BDD::solver_toolbox.are_exprs_always_equal(expr, extracted)) {
-      std::stringstream label;
-      label << "meta." << meta.label;
+        if (meta_sz == sz) {
+          return label;
+        }
 
-      if (sz == meta_sz) {
-        return label.str();
+        return get_bytes_of_label(label, sz, byte * 8);
       }
-
-      uint64_t mask = 0;
-      for (unsigned b = 0; b < sz; b++) {
-        mask <<= 1;
-        mask |= 1;
-      }
-
-      label << std::hex;
-      label << " & 0x" << mask;
-      label << std::dec;
-
-      return label.str();
     }
   }
 
@@ -139,34 +156,40 @@ BMv2SimpleSwitchgRPC_Generator::label_from_vars(klee::ref<klee::Expr> expr,
     }
   }
 
-  Log::err() << "label_from_metadata error\n";
-  Log::err() << "expr   " << expr_to_string(expr, true) << "\n";
-
-  for (auto meta : metadata) {
-    Log::err() << "meta   " << meta.label << " "
-               << expr_to_string(meta.expr, true) << "\n";
-  }
-
-  Log::err() << "\n";
-  for (auto local_var : local_vars.get()) {
-    Log::err() << "var    " << local_var.label << " " << local_var.symbol
-               << "\n";
-  }
-
-  Log::err() << "\n";
-  assert(false);
+  return "";
 }
 
-std::vector<std::string> BMv2SimpleSwitchgRPC_Generator::get_keys_from_expr(
-    klee::ref<klee::Expr> expr) const {
-  KeysFromKleeExpr keysFromKleeExpr(*this);
-  keysFromKleeExpr.visit(expr);
-  return keysFromKleeExpr.get_keys();
+std::vector<std::string>
+BMv2SimpleSwitchgRPC_Generator::assign_key_bytes(klee::ref<klee::Expr> expr) {
+  std::vector<std::string> assignments;
+  auto sz = expr->getWidth();
+
+  for (auto byte = 0u; byte * 8 < sz; byte++) {
+    auto key_byte = BDD::solver_toolbox.exprBuilder->Extract(expr, byte * 8, 8);
+    auto key_byte_code = transpile(key_byte, true);
+
+    if (byte + 1 > ingress.key_bytes.size()) {
+      std::stringstream label;
+      label << "key_byte_" << byte;
+
+      ingress.key_bytes.emplace_back(label.str(), 8);
+    }
+
+    auto key_byte_declaration = ingress.key_bytes[byte];
+
+    std::stringstream assignment;
+    assignment << key_byte_declaration.label;
+    assignment << " = (bit<8>) (" << key_byte_code << ")";
+
+    assignments.push_back(assignment.str());
+  }
+
+  return assignments;
 }
 
 std::string
 BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
-                                          bool relaxed, bool is_signed) const {
+                                          bool is_signed) const {
   if (e->getKind() == klee::Expr::Kind::Constant) {
     std::stringstream ss;
     auto constant = static_cast<klee::ConstantExpr *>(e.get());
@@ -175,7 +198,7 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
     return ss.str();
   }
 
-  KleeExprToP4 kleeExprToP4(*this, relaxed);
+  KleeExprToP4 kleeExprToP4(*this);
   kleeExprToP4.visit(e);
 
   auto code = kleeExprToP4.get_code();
@@ -299,6 +322,12 @@ void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) {
   pad(os, lvl);
   os << "}\n";
 
+  os << "\n";
+  for (auto key_byte : key_bytes) {
+    pad(os, lvl);
+    os << "bit<" << key_byte.size << "> " << key_byte.label << ";\n";
+  }
+
   for (auto table : tables) {
     table.dump(os, 1);
   }
@@ -417,7 +446,7 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
   os << "struct metadata {\n";
   lvl++;
 
-  for (auto meta : metadata) {
+  for (auto meta : metadata.get_all()) {
     pad(os, lvl);
     os << p4_type_from_expr(meta.expr) << " " << meta.label << ";\n";
   }
@@ -549,7 +578,8 @@ void BMv2SimpleSwitchgRPC_Generator::visit(const ExecutionPlanNode *ep_node) {
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Else *node) {
-  local_vars.pop();
+  local_vars.push();
+  metadata.push();
 
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "else {\n";
@@ -588,6 +618,9 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   ingress.apply_block << "}\n";
 
   ingress.close_if_clauses(ingress.apply_block);
+
+  local_vars.pop();
+  metadata.pop();
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -600,6 +633,9 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   ingress.apply_block << "}\n";
 
   ingress.close_if_clauses(ingress.apply_block);
+
+  local_vars.pop();
+  metadata.pop();
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -609,6 +645,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   }
 
   local_vars.push();
+  metadata.push();
 
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "if (";
@@ -643,6 +680,9 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   ingress.apply_block << "}\n";
 
   ingress.close_if_clauses(ingress.apply_block);
+
+  local_vars.pop();
+  metadata.pop();
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -658,7 +698,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   auto has_this_key = node->get_map_has_this_key_label();
 
   auto param_type = p4_type_from_expr(value);
-  auto keys = get_keys_from_expr(key);
+  auto assignments = assign_key_bytes(key);
 
   assert(node->get_node());
 
@@ -667,14 +707,25 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   code_table_id << "_";
   code_table_id << node->get_node()->get_id();
 
+  std::vector<std::string> keys;
+  for (unsigned i = 0; i < assignments.size(); i++) {
+    assert(i < ingress.key_bytes.size());
+    keys.push_back(ingress.key_bytes[i].label);
+  }
+
   table_t table(code_table_id.str(), keys, param_type);
   ingress.tables.push_back(table);
 
   metadata_t meta_param(table.label, value);
-  metadata.push_back(meta_param);
+  metadata.append(meta_param);
+
+  for (auto assignment : assignments) {
+    pad(ingress.apply_block, ingress.lvl);
+    ingress.apply_block << assignment << ";\n";
+  }
 
   if (has_this_key.size()) {
-    var_vigor_symbol_t hit_var(table.label + "_hit", has_this_key, 1);
+    var_t hit_var(table.label + "_hit", has_this_key, 1);
     local_vars.append(hit_var);
 
     pad(ingress.apply_block, ingress.lvl);

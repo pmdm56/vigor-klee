@@ -162,30 +162,64 @@ private:
         : label(_label), expr(_expr) {}
   };
 
-  struct var_vigor_symbol_t {
-    std::string label;
-    std::string symbol;
-    uint64_t size;
+  struct metadata_stack_t {
+    std::vector<metadata_t> all_metadata;
+    std::vector<std::vector<metadata_t>> stack;
 
-    var_vigor_symbol_t(std::string _label, std::string _symbol, uint64_t _size)
-        : label(_label), symbol(_symbol), size(_size) {}
-  };
-
-  struct var_vigor_symbol_stack_t {
-    std::vector<std::vector<var_vigor_symbol_t>> stack;
-
-    var_vigor_symbol_stack_t() { push(); }
+    metadata_stack_t() { push(); }
 
     void push() { stack.emplace_back(); }
 
     void pop() {
-      if (stack.size()) {
-        stack.pop_back();
-      }
+      assert(stack.size());
+      stack.pop_back();
     }
 
-    std::vector<var_vigor_symbol_t> get() const {
-      std::vector<var_vigor_symbol_t> vars;
+    std::vector<metadata_t> get() const {
+      std::vector<metadata_t> meta;
+
+      for (auto frame : stack) {
+        meta.insert(meta.end(), frame.begin(), frame.end());
+      }
+
+      return meta;
+    }
+
+    std::vector<metadata_t> get_all() const { return all_metadata; }
+
+    void append(metadata_t meta) {
+      assert(stack.size());
+      stack.back().push_back(meta);
+      all_metadata.push_back(meta);
+    }
+  };
+
+  struct var_t {
+    std::string label;
+    std::string symbol;
+    uint64_t size;
+
+    var_t(std::string _label, std::string _symbol, uint64_t _size)
+        : label(_label), symbol(_symbol), size(_size) {}
+
+    var_t(std::string _label, uint64_t _size)
+        : label(_label), symbol(""), size(_size) {}
+  };
+
+  struct var_stack_t {
+    std::vector<std::vector<var_t>> stack;
+
+    var_stack_t() { push(); }
+
+    void push() { stack.emplace_back(); }
+
+    void pop() {
+      assert(stack.size());
+      stack.pop_back();
+    }
+
+    std::vector<var_t> get() const {
+      std::vector<var_t> vars;
 
       for (auto frame : stack) {
         vars.insert(vars.end(), frame.begin(), frame.end());
@@ -194,7 +228,7 @@ private:
       return vars;
     }
 
-    void append(var_vigor_symbol_t var) {
+    void append(var_t var) {
       assert(stack.size());
       stack.back().push_back(var);
     }
@@ -216,7 +250,9 @@ private:
 
   struct ingress_t : stage_t {
     std::stringstream apply_block;
+
     std::vector<table_t> tables;
+    std::vector<var_t> key_bytes;
 
     ingress_t() : stage_t("SyNAPSE_Ingress", 2) {}
 
@@ -249,8 +285,8 @@ private:
   bool parsing_headers;
 
   std::vector<header_t> headers;
-  std::vector<metadata_t> metadata;
-  var_vigor_symbol_stack_t local_vars;
+  metadata_stack_t metadata;
+  var_stack_t local_vars;
 
   // pipeline stages
   parser_t parser;
@@ -267,11 +303,12 @@ private:
 
   std::string p4_type_from_expr(klee::ref<klee::Expr> expr) const;
   std::string label_from_packet_chunk(klee::ref<klee::Expr> expr) const;
-  std::string label_from_vars(klee::ref<klee::Expr> expr,
-                              bool relaxed = false) const;
-  std::vector<std::string> get_keys_from_expr(klee::ref<klee::Expr> expr) const;
-  std::string transpile(const klee::ref<klee::Expr> &e, bool relaxed = false,
+  std::string label_from_vars(klee::ref<klee::Expr> expr) const;
+  std::vector<std::string> assign_key_bytes(klee::ref<klee::Expr> expr);
+  std::string transpile(const klee::ref<klee::Expr> &e,
                         bool is_signed = false) const;
+  void err_label_from_chunk(klee::ref<klee::Expr> expr) const;
+  void err_label_from_vars(klee::ref<klee::Expr> expr) const;
 
 public:
   BMv2SimpleSwitchgRPC_Generator(std::ostream &_os)

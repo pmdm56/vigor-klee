@@ -6,13 +6,12 @@ class KleeExprToP4 : public klee::ExprVisitor::ExprVisitor {
 private:
   const BMv2SimpleSwitchgRPC_Generator &generator;
   std::stringstream code;
-  bool relaxed;
 
   bool is_read_lsb(klee::ref<klee::Expr> e) const;
 
 public:
-  KleeExprToP4(const BMv2SimpleSwitchgRPC_Generator &_generator, bool _relaxed)
-      : ExprVisitor(false), generator(_generator), relaxed(_relaxed) {}
+  KleeExprToP4(const BMv2SimpleSwitchgRPC_Generator &_generator)
+      : ExprVisitor(false), generator(_generator) {}
 
   std::string get_code() { return code.str(); }
 
