@@ -127,11 +127,11 @@ private:
         os << key << ": exact;\n";
       }
 
-      os << "\n";
-
       lvl--;
       pad(os, lvl);
       os << "}\n";
+
+      os << "\n";
 
       pad(os, lvl);
       os << "actions = {\n";

@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
   std::ostream *os_ptr;
 
   if (Out.size()) {
-    auto file = new std::ofstream(Out + "/bmv2_ss_grpc.p4");
+    auto file = new std::ofstream(Out + "/bmv2_ss_grpc.gen.p4");
     assert(file->is_open());
     os_ptr = file;
   } else {
