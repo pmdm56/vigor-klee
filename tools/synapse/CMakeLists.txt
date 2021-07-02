@@ -10,6 +10,7 @@ add_executable(synapse
   synapse.cpp
   modules/module.cpp
   execution_plan/execution_plan.cpp
+  execution_plan/memory_bank.cpp
   execution_plan/context.cpp
   execution_plan/visitors/visitor.cpp
   execution_plan/visitors/x86_generator.cpp

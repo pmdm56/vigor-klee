@@ -4,6 +4,7 @@
 
 #include "../log.h"
 #include "execution_plan_node.h"
+#include "memory_bank.h"
 #include "visitors/visitor.h"
 
 #include <unordered_set>
@@ -43,6 +44,8 @@ private:
 
   // Implementation details
 private:
+  MemoryBank memory_bank;
+
   std::unordered_set<uint64_t> processed_bdd_nodes;
 
   // When reordering nodes, it can happen that a function call
@@ -72,6 +75,7 @@ public:
 
   ExecutionPlan(const ExecutionPlan &ep)
       : root(ep.root), leaves(ep.leaves), bdd(ep.bdd),
+        memory_bank(ep.memory_bank),
         processed_bdd_nodes(ep.processed_bdd_nodes), depth(ep.depth),
         nodes(ep.nodes), nodes_per_target(ep.nodes_per_target),
         reordered_nodes(ep.reordered_nodes), id(ep.id) {}
@@ -318,6 +322,18 @@ public:
   void remove_from_processed_bdd_nodes(uint64_t id) {
     auto found_it = processed_bdd_nodes.find(id);
     processed_bdd_nodes.erase(found_it);
+  }
+
+  template <typename T> int can_recall(const Module *module, int key) const {
+    return memory_bank.contains<T>(module->get_target(), key);
+  }
+
+  template <typename T> T recall(const Module *module, int key) const {
+    return memory_bank.read<T>(module->get_target(), key);
+  }
+
+  template <typename T> void remember(const Module *module, int key, T value) {
+    return memory_bank.write<T>(module->get_target(), key, value);
   }
 
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(*this); }

@@ -14,10 +14,13 @@ private:
   int port;
 
 public:
-  Forward() : Module(ModuleType::BMv2SimpleSwitchgRPC_Forward, Target::BMv2SimpleSwitchgRPC, "Forward") {}
+  Forward()
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_Forward,
+               Target::BMv2SimpleSwitchgRPC, "Forward") {}
 
   Forward(const BDD::Node *node, int _port)
-      : Module(ModuleType::BMv2SimpleSwitchgRPC_Forward, Target::BMv2SimpleSwitchgRPC, "Forward", node),
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_Forward,
+               Target::BMv2SimpleSwitchgRPC, "Forward", node),
         port(_port) {}
 
 private:
