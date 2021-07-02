@@ -328,8 +328,13 @@ void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) {
     os << "bit<" << key_byte.size << "> " << key_byte.label << ";\n";
   }
 
+  std::vector<std::string> declared_table_ids;
   for (auto table : tables) {
-    table.dump(os, 1);
+    auto found_it = std::find(declared_table_ids.begin(), declared_table_ids.end(), table.label);
+    if(found_it == declared_table_ids.end()){
+      table.dump(os, 1);
+      declared_table_ids.push_back(table.label);
+    }
   }
 
   os << "\n";
@@ -702,6 +707,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   auto value = node->get_value();
   auto bdd_function = node->get_bdd_function();
   auto has_this_key = node->get_map_has_this_key_label();
+  auto table_id = node->get_table_id();
 
   auto param_type = p4_type_from_expr(value);
   auto assignments = assign_key_bytes(key);
@@ -711,7 +717,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   std::stringstream code_table_id;
   code_table_id << bdd_function;
   code_table_id << "_";
-  code_table_id << node->get_node()->get_id();
+  code_table_id << table_id;
 
   std::vector<std::string> keys;
   for (unsigned i = 0; i < assignments.size(); i++) {
