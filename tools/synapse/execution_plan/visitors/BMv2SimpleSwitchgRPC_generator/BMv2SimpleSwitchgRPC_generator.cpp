@@ -704,12 +704,16 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {
   auto key = node->get_key();
-  auto value = node->get_value();
+  auto params = node->get_params();
   auto bdd_function = node->get_bdd_function();
   auto has_this_key = node->get_map_has_this_key_label();
   auto table_id = node->get_table_id();
 
-  auto param_type = p4_type_from_expr(value);
+  std::vector<std::string> params_type;
+  for(auto param : params) {
+    auto param_type = p4_type_from_expr(param);
+    params_type.push_back(param_type);
+  }
   auto assignments = assign_key_bytes(key);
 
   assert(node->get_node());
@@ -725,11 +729,20 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     keys.push_back(ingress.key_bytes[i].label);
   }
 
-  table_t table(code_table_id.str(), keys, param_type);
-  ingress.tables.push_back(table);
+  std::vector<metadata_t> new_metadata;
 
-  metadata_t meta_param(table.label, value);
-  metadata.append(meta_param);
+  for (auto i = 0u; i < params.size(); i++){
+    std::stringstream meta_label;
+    meta_label << code_table_id.str();
+    meta_label << "_" << i;
+
+    metadata_t meta_param(meta_label.str(), params[i]);
+    metadata.append(meta_param);
+    new_metadata.push_back(meta_param);
+  }
+  
+  table_t table(code_table_id.str(), keys, params_type, new_metadata);
+  ingress.tables.push_back(table);
 
   for (auto assignment : assignments) {
     pad(ingress.apply_block, ingress.lvl);

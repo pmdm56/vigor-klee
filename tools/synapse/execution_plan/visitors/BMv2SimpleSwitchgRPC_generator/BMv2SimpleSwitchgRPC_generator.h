@@ -89,16 +89,109 @@ private:
     }
   };
 
+  struct metadata_t {
+    std::string label;
+    klee::ref<klee::Expr> expr;
+
+    metadata_t(std::string _label, klee::ref<klee::Expr> _expr)
+        : label(_label), expr(_expr) {}
+  };
+
+  struct metadata_stack_t {
+    std::vector<metadata_t> all_metadata;
+    std::vector<std::vector<metadata_t>> stack;
+
+    metadata_stack_t() { push(); }
+
+    void push() { stack.emplace_back(); }
+
+    void pop() {
+      assert(stack.size());
+      stack.pop_back();
+    }
+
+    std::vector<metadata_t> get() const {
+      std::vector<metadata_t> meta;
+
+      for (auto frame : stack) {
+        meta.insert(meta.end(), frame.begin(), frame.end());
+      }
+
+      return meta;
+    }
+
+    std::vector<metadata_t> get_all() const { return all_metadata; }
+
+    void append(metadata_t meta) {
+      assert(stack.size());
+
+      auto found_it = std::find_if(
+          all_metadata.begin(), all_metadata.end(),
+          [&](const metadata_t &_meta) { return meta.label == _meta.label; });
+
+      if (found_it != all_metadata.end()) {
+        (*found_it) = meta;
+      } else {
+        all_metadata.push_back(meta);
+      }
+
+      stack.back().push_back(meta);
+    }
+  };
+
+  struct var_t {
+    std::string label;
+    std::string symbol;
+    uint64_t size;
+
+    var_t(std::string _label, std::string _symbol, uint64_t _size)
+        : label(_label), symbol(_symbol), size(_size) {}
+
+    var_t(std::string _label, uint64_t _size)
+        : label(_label), symbol(""), size(_size) {}
+  };
+
+  struct var_stack_t {
+    std::vector<std::vector<var_t>> stack;
+
+    var_stack_t() { push(); }
+
+    void push() { stack.emplace_back(); }
+
+    void pop() {
+      assert(stack.size());
+      stack.pop_back();
+    }
+
+    std::vector<var_t> get() const {
+      std::vector<var_t> vars;
+
+      for (auto frame : stack) {
+        vars.insert(vars.end(), frame.begin(), frame.end());
+      }
+
+      return vars;
+    }
+
+    void append(var_t var) {
+      assert(stack.size());
+      stack.back().push_back(var);
+    }
+  };
+
   struct table_t {
     std::string label;
     std::vector<std::string> keys;
-    std::string param_type;
+    std::vector<std::string> params_type;
+    std::vector<metadata_t> meta_params;
 
     uint64_t size;
 
     table_t(std::string _label, std::vector<std::string> _keys,
-            std::string _param_type)
-        : label(_label), keys(_keys), param_type(_param_type), size(256) {}
+            std::vector<std::string> _params_type,
+            std::vector<metadata_t> _meta_params)
+        : label(_label), keys(_keys), params_type(_params_type),
+          meta_params(_meta_params), size(256) {}
 
     void dump(std::ostream &os, unsigned lvl) {
       // ============== Action ==============
@@ -106,10 +199,24 @@ private:
 
       pad(os, lvl);
       os << "action " << label << "_populate(";
-      os << param_type << " param) {\n";
+      for (auto i = 0u; i < params_type.size(); i++) {
+        std::stringstream param_label;
+        param_label << "param_" << i;
+        if (i != 0) {
+          os << ", ";
+        }
+        os << params_type[i] << " " << param_label.str();
+      }
+      os << ") {\n";
 
-      pad(os, lvl + 1);
-      os << "meta." << label << " = param;\n";
+      for (auto i = 0u; i < params_type.size(); i++) {
+        std::stringstream param_label;
+        param_label << "param_" << i;
+
+        pad(os, lvl + 1);
+        os << "meta." << meta_params[i].label << " = " << param_label.str()
+           << ";\n";
+      }
 
       pad(os, lvl);
       os << "}\n";
@@ -155,86 +262,6 @@ private:
       lvl--;
       pad(os, lvl);
       os << "}\n";
-    }
-  };
-
-  struct metadata_t {
-    std::string label;
-    klee::ref<klee::Expr> expr;
-
-    metadata_t(std::string _label, klee::ref<klee::Expr> _expr)
-        : label(_label), expr(_expr) {}
-  };
-
-  struct metadata_stack_t {
-    std::vector<metadata_t> all_metadata;
-    std::vector<std::vector<metadata_t>> stack;
-
-    metadata_stack_t() { push(); }
-
-    void push() { stack.emplace_back(); }
-
-    void pop() {
-      assert(stack.size());
-      stack.pop_back();
-    }
-
-    std::vector<metadata_t> get() const {
-      std::vector<metadata_t> meta;
-
-      for (auto frame : stack) {
-        meta.insert(meta.end(), frame.begin(), frame.end());
-      }
-
-      return meta;
-    }
-
-    std::vector<metadata_t> get_all() const { return all_metadata; }
-
-    void append(metadata_t meta) {
-      assert(stack.size());
-      stack.back().push_back(meta);
-      all_metadata.push_back(meta);
-    }
-  };
-
-  struct var_t {
-    std::string label;
-    std::string symbol;
-    uint64_t size;
-
-    var_t(std::string _label, std::string _symbol, uint64_t _size)
-        : label(_label), symbol(_symbol), size(_size) {}
-
-    var_t(std::string _label, uint64_t _size)
-        : label(_label), symbol(""), size(_size) {}
-  };
-
-  struct var_stack_t {
-    std::vector<std::vector<var_t>> stack;
-
-    var_stack_t() { push(); }
-
-    void push() { stack.emplace_back(); }
-
-    void pop() {
-      assert(stack.size());
-      stack.pop_back();
-    }
-
-    std::vector<var_t> get() const {
-      std::vector<var_t> vars;
-
-      for (auto frame : stack) {
-        vars.insert(vars.end(), frame.begin(), frame.end());
-      }
-
-      return vars;
-    }
-
-    void append(var_t var) {
-      assert(stack.size());
-      stack.back().push_back(var);
     }
   };
 
