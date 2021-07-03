@@ -133,7 +133,7 @@ public:
     //}
 
     // synapse::Graphviz::visualize(h.get(), search_space);
-    // synapse::Graphviz::visualize(h.get());
+    synapse::Graphviz::visualize(h.get());
 
     return h.get();
   }

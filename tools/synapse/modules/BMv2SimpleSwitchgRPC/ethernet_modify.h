@@ -64,7 +64,6 @@ private:
       return BDD::BDDVisitor::Action::STOP;
     }
 
-    std::cerr << call << "\n";
     assert(!call.args["the_chunk"].in.isNull());
 
     auto borrow_ethernet = all_prev_packet_borrow_next_chunk.back();

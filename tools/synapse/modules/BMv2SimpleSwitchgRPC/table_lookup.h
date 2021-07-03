@@ -93,48 +93,90 @@ private:
     return false;
   }
 
-  // bool will_be_merged(const BDD::Node *node, klee::ref<klee::Expr> obj) {
-  //   assert(node);
-  //   assert(!obj.isNull());
+  bool will_be_merged(const BDD::Node *node, klee::ref<klee::Expr> obj) {
+    assert(node);
+    assert(!obj.isNull());
 
-  //   auto prev_it_node = node;
+    auto prev_it_node = node;
+    auto prev_node = node;
+    auto answer = false;
 
-  //   while (node->get_prev()) {
-  //     prev_it_node = node;
-  //     node = node->get_prev();
+    std::vector<const BDD::Node *> successful_candidates;
+    std::vector<const BDD::Node *> candidates;
 
-  //     if (node->get_type() != BDD::Node::NodeType::BRANCH) {
-  //       continue;
-  //     }
+    while (prev_node->get_prev()) {
+      prev_it_node = prev_node;
+      prev_node = prev_node->get_prev();
 
-  //     auto branch_node = static_cast<const BDD::Branch *>(node);
-  //     auto on_true = branch_node->get_on_true();
+      if (prev_node->get_type() != BDD::Node::NodeType::BRANCH) {
+        continue;
+      }
 
-  //   std::vector<const BDD::Node*> candidates;
-  //   if(on_true->get_id() == prev_it_node->get_id()){
+      auto branch_node = static_cast<const BDD::Branch *>(prev_node);
+      auto on_true = branch_node->get_on_true();
 
-  //   }
-  //   }
-  // }
+      if (on_true->get_id() == prev_it_node->get_id()) {
+        candidates.push_back(branch_node->get_on_false());
+      } else {
+        candidates.push_back(on_true);
+      }
+    }
 
-  void attempt_map_vector_merge(const BDD::Call *node) {
-    // auto call = node->get_call();
+    while (candidates.size()) {
+      auto candidate = candidates[0];
+      candidates.erase(candidates.begin());
 
-    // assert(call.function_name == "map_get");
-    // assert(!call.args["map"].expr.isNull());
-    // assert(!call.args["key"].in.isNull());
-    // assert(!call.args["value_out"].out.isNull());
+      switch (candidate->get_type()) {
+      case BDD::Node::NodeType::CALL: {
+        auto candidate_call = static_cast<const BDD::Call *>(candidate);
+        auto call = candidate_call->get_call();
 
-    // auto _map = call.args["map"].expr;
-    // auto _key = call.args["key"].in;
-    // auto _value = call.args["value_out"].out;
+        klee::ref<klee::Expr> current_obj;
+        if (call.function_name == "vector_borrow") {
+          assert(!call.args["vector"].expr.isNull());
+          current_obj = call.args["vector"].expr;
+        } else if (call.function_name == "map_get") {
+          assert(!call.args["map"].expr.isNull());
+          current_obj = call.args["map"].expr;
+        } else {
+          assert(candidate->get_next());
+          candidates.push_back(candidate->get_next());
+          continue;
+        }
 
-    // assert(_map->getKind() == klee::Expr::Kind::Constant);
-    // auto _table_id = BDD::solver_toolbox.value_from_expr(_map);
+        auto eq = BDD::solver_toolbox.are_exprs_always_equal(obj, current_obj);
+        if (eq) {
+          answer = true;
+          successful_candidates.push_back(candidate);
+          continue;
+        }
 
-    // auto symbols = node->get_generated_symbols();
-    // assert(symbols.size() == 2);
-    // auto _map_has_this_key_label = symbols[0].label;
+        assert(candidate->get_next());
+        candidates.push_back(candidate->get_next());
+        break;
+      }
+      case BDD::Node::NodeType::BRANCH: {
+        auto candidate_branch = static_cast<const BDD::Branch *>(candidate);
+        assert(candidate_branch->get_on_true());
+        assert(candidate_branch->get_on_false());
+
+        candidates.push_back(candidate_branch->get_on_true());
+        candidates.push_back(candidate_branch->get_on_false());
+        break;
+      }
+      default: {}
+      }
+    }
+
+    if (successful_candidates.size() > 0) {
+      std::cerr << "\n"
+                << "node_id: " << node->get_id() << "\n";
+      for (auto candidate : successful_candidates) {
+        std::cerr << "candidate_id: " << candidate->get_id() << "\n";
+      }
+    }
+
+    return answer;
   }
 
   bool process_map_get(const BDD::Call *node) {
@@ -160,15 +202,12 @@ private:
       return false;
     }
 
-    auto _table_id = node->get_id();
-    // uint64_t _table_id;
-    // if (will_be_merged(node)) {
-    //   _table_id = _map_value;
-    // } else {
-    //   _table_id = node->get_id();
-    // }
-
-    attempt_map_vector_merge(node);
+    uint64_t _table_id;
+    if (will_be_merged(node, _map)) {
+      _table_id = _map_value;
+    } else {
+      _table_id = node->get_id();
+    }
 
     auto symbols = node->get_generated_symbols();
     assert(symbols.size() == 2);
@@ -210,7 +249,12 @@ private:
       return false;
     }
 
-    auto _table_id = node->get_id();
+    uint64_t _table_id;
+    if (will_be_merged(node, _vector)) {
+      _table_id = _vector_value;
+    } else {
+      _table_id = node->get_id();
+    }
 
     auto new_module = std::make_shared<TableLookup>(
         node, _table_id, _index, _borrowed_cell, "", call.function_name);
