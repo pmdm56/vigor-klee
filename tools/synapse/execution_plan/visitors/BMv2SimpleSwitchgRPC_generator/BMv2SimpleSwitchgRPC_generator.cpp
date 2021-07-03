@@ -330,8 +330,9 @@ void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) {
 
   std::vector<std::string> declared_table_ids;
   for (auto table : tables) {
-    auto found_it = std::find(declared_table_ids.begin(), declared_table_ids.end(), table.label);
-    if(found_it == declared_table_ids.end()){
+    auto found_it = std::find(declared_table_ids.begin(),
+                              declared_table_ids.end(), table.label);
+    if (found_it == declared_table_ids.end()) {
       table.dump(os, 1);
       declared_table_ids.push_back(table.label);
     }
@@ -703,14 +704,17 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {
-  auto key = node->get_key();
+  auto keys = node->get_keys();
   auto params = node->get_params();
   auto bdd_function = node->get_bdd_function();
   auto has_this_key = node->get_map_has_this_key_label();
   auto table_id = node->get_table_id();
 
+  assert(keys.size() == 1);
+  auto key = keys[0].expr;
+
   std::vector<std::string> params_type;
-  for(auto param : params) {
+  for (auto param : params) {
     auto param_type = p4_type_from_expr(param);
     params_type.push_back(param_type);
   }
@@ -723,15 +727,15 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   code_table_id << "_";
   code_table_id << table_id;
 
-  std::vector<std::string> keys;
+  std::vector<std::string> key_bytes_label;
   for (unsigned i = 0; i < assignments.size(); i++) {
     assert(i < ingress.key_bytes.size());
-    keys.push_back(ingress.key_bytes[i].label);
+    key_bytes_label.push_back(ingress.key_bytes[i].label);
   }
 
   std::vector<metadata_t> new_metadata;
 
-  for (auto i = 0u; i < params.size(); i++){
+  for (auto i = 0u; i < params.size(); i++) {
     std::stringstream meta_label;
     meta_label << code_table_id.str();
     meta_label << "_" << i;
@@ -740,8 +744,9 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     metadata.append(meta_param);
     new_metadata.push_back(meta_param);
   }
-  
-  table_t table(code_table_id.str(), keys, params_type, new_metadata);
+
+  table_t table(code_table_id.str(), key_bytes_label, params_type,
+                new_metadata);
   ingress.tables.push_back(table);
 
   for (auto assignment : assignments) {
