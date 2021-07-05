@@ -163,11 +163,12 @@ private:
     if (!leaves[0].next)
       return;
 
-    auto processed_node = leaves[0].next;
+    auto processed_node = get_next_node();
 
     auto processed_node_id = processed_node->get_id();
     auto search = processed_bdd_nodes.find(processed_node_id);
     assert(search == processed_bdd_nodes.end());
+
     processed_bdd_nodes.insert(processed_node_id);
   }
 
@@ -257,8 +258,27 @@ public:
   const BDD::Node *get_next_node() const {
     const BDD::Node *next = nullptr;
 
-    if (leaves.size()) {
-      next = leaves[0].next;
+    if (leaves.size() == 0) {
+      return next;
+    }
+
+    next = leaves[0].next;
+
+    while (1) {
+      auto found_it = std::find(processed_bdd_nodes.begin(),
+                                processed_bdd_nodes.end(), next->get_id());
+      if (found_it == processed_bdd_nodes.end()) {
+        return next;
+      }
+
+      // TODO: add branch leaves
+      assert(next->get_type() == BDD::Node::NodeType::CALL && "TODO");
+
+      if (!next->get_next()) {
+        return next;
+      }
+
+      next = next->get_next();
     }
 
     return next;
@@ -322,6 +342,13 @@ public:
   void remove_from_processed_bdd_nodes(uint64_t id) {
     auto found_it = processed_bdd_nodes.find(id);
     processed_bdd_nodes.erase(found_it);
+  }
+
+  void add_processed_bdd_node(uint64_t id) {
+    auto found_it = processed_bdd_nodes.find(id);
+    if (found_it == processed_bdd_nodes.end()) {
+      processed_bdd_nodes.insert(id);
+    }
   }
 
   template <typename T> int can_recall(const Module *module, int key) const {

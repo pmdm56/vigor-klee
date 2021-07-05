@@ -233,6 +233,12 @@ symbols_t Node::get_all_generated_symbols() const {
   symbols_t symbols;
   const Node *node = this;
 
+  // symbols always known
+
+  // hack
+  klee::ref<klee::Expr> empty_expr;
+  symbols.emplace_back("VIGOR_DEVICE", empty_expr);
+
   while (node) {
     if (node->get_type() == Node::NodeType::CALL) {
       const Call *call = static_cast<const Call *>(node);

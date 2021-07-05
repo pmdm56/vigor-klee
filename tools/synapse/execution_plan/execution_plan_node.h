@@ -37,6 +37,11 @@ public:
     next = _next;
   }
 
+  void set_next(ExecutionPlanNode_ptr _next) {
+    assert(!next.size());
+    next.push_back(_next);
+  }
+
   void set_prev(ExecutionPlanNode_ptr _prev) {
     assert(!prev);
     prev = _prev;
@@ -48,6 +53,19 @@ public:
   const Branches &get_next() const { return next; }
   ExecutionPlanNode_ptr get_prev() const { return prev; }
   int get_id() const { return id; }
+
+  void replace_next(ExecutionPlanNode_ptr before, ExecutionPlanNode_ptr after) {
+    for (auto &branch : next) {
+      if (branch->get_id() == before->get_id()) {
+        branch = after;
+        return;
+      }
+    }
+
+    assert(false && "Before ExecutionPlanNode not found");
+  }
+
+  void replace_prev(ExecutionPlanNode_ptr _prev) { prev = _prev; }
 
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(this); }
 

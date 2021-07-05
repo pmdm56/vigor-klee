@@ -14,7 +14,9 @@ public:
     SentToController,
     NumberOfReorderedNodes,
     NumberOfNodes,
+    NumberOfControllerNodes,
     NumberOfSwitchNodes,
+    NumberOfTables,
     Depth,
   };
 

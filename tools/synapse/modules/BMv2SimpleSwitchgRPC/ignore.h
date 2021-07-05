@@ -41,7 +41,6 @@ private:
       auto ep = context->get_current();
       auto new_ep = ExecutionPlan(ep, node->get_next(),
                                   Target::BMv2SimpleSwitchgRPC, bdd);
-
       auto new_module = std::make_shared<Ignore>(node);
       context->add(new_ep, new_module);
     }

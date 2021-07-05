@@ -39,13 +39,20 @@ public:
     return !current_platform.first || (current_platform.second == _target);
   }
 
-  void add(const ExecutionPlan &ep, Module_ptr _processed_module) {
-    next_eps.push_back(ep);
-    add_reordered_next_eps(ep);
+  void add(const std::vector<ExecutionPlan> &eps,
+           Module_ptr _processed_module) {
+    for (auto ep : eps) {
+      next_eps.push_back(ep);
+      add_reordered_next_eps(ep);
+    }
 
     success = true;
     assert(!processed_module || processed_module == _processed_module);
     processed_module = _processed_module;
+  }
+
+  void add(const ExecutionPlan &ep, Module_ptr _processed_module) {
+    add(std::vector<ExecutionPlan>{ ep }, _processed_module);
   }
 
   void reset(const ExecutionPlan &_current_ep) {
