@@ -84,18 +84,17 @@ protected:
   const char *name;
   const BDD::Node *node;
 
-  Context *context;    // intermediary data
-  const BDD::BDD *bdd; // intermediary data
+  Context *context; // intermediary data
 
 protected:
   Module(ModuleType _type, Target _target, const char *_name,
          const BDD::Node *_node)
       : type(_type), target(_target), next_target(_target), name(_name),
-        node(_node), context(nullptr), bdd(nullptr) {}
+        node(_node), context(nullptr) {}
 
   Module(ModuleType _type, Target _target, const char *_name)
       : type(_type), target(_target), next_target(_target), name(_name),
-        node(nullptr), context(nullptr), bdd(nullptr) {}
+        node(nullptr), context(nullptr) {}
 
 public:
   Module() {}
@@ -141,8 +140,7 @@ public:
 
   std::string get_target_name() const { return target_to_string(target); }
 
-  Context process_node(const ExecutionPlan &_ep, const BDD::Node *node,
-                       const BDD::BDD &bdd);
+  Context process_node(const ExecutionPlan &_ep, const BDD::Node *node);
 
   virtual void visit(ExecutionPlanVisitor &visitor) const = 0;
   virtual Module_ptr clone() const = 0;

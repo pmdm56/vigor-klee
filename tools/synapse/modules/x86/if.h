@@ -44,8 +44,8 @@ private:
     std::vector<ExecutionPlan::leaf_t> then_else_leaves{ then_leaf, else_leaf };
 
     auto ep = context->get_current();
-    auto ep_if = ExecutionPlan(ep, if_leaves, bdd);
-    auto ep_if_then_else = ExecutionPlan(ep_if, then_else_leaves, bdd);
+    auto ep_if = ExecutionPlan(ep, if_leaves);
+    auto ep_if_then_else = ExecutionPlan(ep_if, then_else_leaves);
 
     context->add(ep_if_then_else, new_if_module);
 

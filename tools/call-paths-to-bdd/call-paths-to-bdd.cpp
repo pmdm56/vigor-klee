@@ -233,18 +233,18 @@ symbols_t Node::get_all_generated_symbols() const {
   symbols_t symbols;
   const Node *node = this;
 
-  // symbols always known
-
-  // hack
+  // hack: symbols always known
   klee::ref<klee::Expr> empty_expr;
   symbols.emplace_back("VIGOR_DEVICE", empty_expr);
 
   while (node) {
     if (node->get_type() == Node::NodeType::CALL) {
       const Call *call = static_cast<const Call *>(node);
-      auto more_symbols = call->get_generated_symbols();
+      auto more_symbols = call->get_generated_symbols(true);
       symbols.insert(symbols.end(), more_symbols.begin(), more_symbols.end());
+      return symbols;
     }
+
     node = node->get_prev();
   }
 
@@ -522,9 +522,7 @@ Node *BDD::populate(call_paths_t call_paths) {
       }
 
       auto call = get_successful_call(on_true.cp);
-      auto generated_symbols = symbol_factory.process(call);
-      Call *node =
-          new Call(get_and_inc_id(), call, generated_symbols, on_true.cp);
+      Call *node = new Call(get_and_inc_id(), call, on_true.cp);
 
       // root node
       if (local_root == nullptr) {
@@ -547,13 +545,8 @@ Node *BDD::populate(call_paths_t call_paths) {
       Branch *node = new Branch(get_and_inc_id(), discriminating_constraint,
                                 call_paths.cp);
 
-      symbol_factory.push();
       Node *on_true_root = populate(on_true);
-      symbol_factory.pop();
-
-      symbol_factory.push();
       Node *on_false_root = populate(on_false);
-      symbol_factory.pop();
 
       node->add_on_true(on_true_root);
       node->add_on_false(on_false_root);

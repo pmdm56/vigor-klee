@@ -6,15 +6,14 @@ namespace synapse {
 
 Module::~Module() { delete context; }
 
-Context Module::process_node(const ExecutionPlan &ep, const BDD::Node *node,
-                             const BDD::BDD &_bdd) {
+Context Module::process_node(const ExecutionPlan &ep, const BDD::Node *node) {
+  assert(node);
+
   if (context == nullptr) {
     context = new Context(ep);
   } else {
     context->reset(ep);
   }
-
-  bdd = &_bdd;
 
   if (context->can_process_platform(target)) {
     node->visit(*this);

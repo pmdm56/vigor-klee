@@ -212,6 +212,7 @@ public:
 
   virtual Node *clone(bool recursive = false) const = 0;
   virtual void recursive_update_ids(uint64_t &new_id) = 0;
+  void update_id(uint64_t new_id) { id = new_id; }
 
   void process_call_paths(std::vector<call_path_t *> call_paths) {
     std::string dir_delim = "/";
@@ -244,30 +245,53 @@ public:
 class Call : public Node {
 private:
   call_t call;
-  symbols_t generated_symbols;
 
 public:
-  Call(uint64_t _id, call_t _call, symbols_t _generated_symbols,
+  Call(uint64_t _id, call_t _call,
        const std::vector<call_path_t *> &_call_paths)
-      : Node(_id, Node::NodeType::CALL, _call_paths), call(_call),
-        generated_symbols(_generated_symbols) {}
+      : Node(_id, Node::NodeType::CALL, _call_paths), call(_call) {}
 
-  Call(uint64_t _id, call_t _call, symbols_t _generated_symbols, Node *_next,
-       Node *_prev, const std::vector<call_path_t *> &_call_paths)
-      : Node(_id, Node::NodeType::CALL, _next, _prev, _call_paths), call(_call),
-        generated_symbols(_generated_symbols) {}
+  Call(uint64_t _id, call_t _call, Node *_next, Node *_prev,
+       const std::vector<call_path_t *> &_call_paths)
+      : Node(_id, Node::NodeType::CALL, _next, _prev, _call_paths),
+        call(_call) {}
 
-  Call(uint64_t _id, call_t _call, symbols_t _generated_symbols, Node *_next,
-       Node *_prev, const std::vector<std::string> &_call_paths_filenames,
+  Call(uint64_t _id, call_t _call, Node *_next, Node *_prev,
+       const std::vector<std::string> &_call_paths_filenames,
        const std::vector<klee::ConstraintManager> &_constraints,
        const std::vector<calls_t> &_missing_calls)
       : Node(_id, Node::NodeType::CALL, _next, _prev, _call_paths_filenames,
              _constraints, _missing_calls),
-        call(_call), generated_symbols(_generated_symbols) {}
+        call(_call) {}
 
   call_t get_call() const { return call; }
 
-  const symbols_t &get_generated_symbols() const { return generated_symbols; }
+  symbols_t get_generated_symbols(bool capture_all = false) const {
+    SymbolFactory symbol_factory;
+    symbols_t symbols;
+    std::vector<const Node *> nodes;
+
+    const Node *node = this;
+    while (node) {
+      nodes.insert(nodes.begin(), node);
+      node = node->get_prev();
+    }
+
+    for (auto node : nodes) {
+      if (node->get_type() == Node::NodeType::CALL) {
+        auto call_node = static_cast<const Call *>(node);
+        auto _symbols = symbol_factory.process(call_node->get_call());
+
+        if (capture_all) {
+          symbols.insert(symbols.end(), _symbols.begin(), _symbols.end());
+        } else {
+          symbols = _symbols;
+        }
+      }
+    }
+
+    return symbols;
+  }
 
   virtual Node *clone(bool recursive = false) const override {
     Call *clone;
@@ -279,8 +303,8 @@ public:
       clone_next = next;
     }
 
-    clone = new Call(id, call, generated_symbols, clone_next, prev,
-                     call_paths_filenames, constraints, missing_calls);
+    clone = new Call(id, call, clone_next, prev, call_paths_filenames,
+                     constraints, missing_calls);
 
     if (recursive && clone_next) {
       clone_next->prev = clone;

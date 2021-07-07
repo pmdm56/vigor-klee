@@ -550,6 +550,7 @@ bool pending_packet_borrow_next_chunk(const ExecutionPlanNode *ep_node) {
 
     auto bdd_node = module->get_node();
     assert(bdd_node);
+    assert(bdd_node->get_id() < 1000);
 
     if (bdd_node->get_type() == BDD::Node::NodeType::CALL) {
       auto call_node = static_cast<const BDD::Call *>(bdd_node);
@@ -559,9 +560,7 @@ bool pending_packet_borrow_next_chunk(const ExecutionPlanNode *ep_node) {
     }
 
     auto branches = node->get_next();
-    for (auto branch : branches) {
-      nodes.push_back(branch);
-    }
+    nodes.insert(nodes.end(), branches.begin(), branches.end());
   }
 
   return false;
@@ -710,25 +709,29 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   auto has_this_key = node->get_map_has_this_key_label();
   auto table_id = node->get_table_id();
 
-  assert(keys.size() == 1);
-  auto key = keys[0].expr;
-
-  std::vector<std::string> params_type;
-  for (auto param : params) {
-    auto param_type = p4_type_from_expr(param);
-    params_type.push_back(param_type);
-  }
-  auto assignments = assign_key_bytes(key);
-
-  assert(node->get_node());
+  assert(keys.size());
 
   std::stringstream code_table_id;
   code_table_id << bdd_function;
   code_table_id << "_";
   code_table_id << table_id;
 
+  std::vector<std::string> params_type;
+  for (auto param : params) {
+    auto param_type = p4_type_from_expr(param);
+    params_type.push_back(param_type);
+  }
+
+  std::vector<std::vector<std::string>> assignments;
+
+  for (auto key : keys) {
+    assignments.push_back(assign_key_bytes(key.expr));
+  }
+
+  assert(node->get_node());
+
   std::vector<std::string> key_bytes_label;
-  for (unsigned i = 0; i < assignments.size(); i++) {
+  for (unsigned i = 0; i < assignments[0].size(); i++) {
     assert(i < ingress.key_bytes.size());
     key_bytes_label.push_back(ingress.key_bytes[i].label);
   }
@@ -749,9 +752,31 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
                 new_metadata);
   ingress.tables.push_back(table);
 
-  for (auto assignment : assignments) {
-    pad(ingress.apply_block, ingress.lvl);
-    ingress.apply_block << assignment << ";\n";
+  if (keys.size() == 1) {
+    for (auto assignment : assignments[0]) {
+      pad(ingress.apply_block, ingress.lvl);
+      ingress.apply_block << assignment << ";\n";
+    }
+  } else {
+    for (auto i = 0u; i < keys.size(); i++) {
+      auto key = keys[i];
+      auto key_assignments = assignments[i];
+
+      pad(ingress.apply_block, ingress.lvl);
+      ingress.apply_block << "if (";
+      ingress.apply_block << transpile(key.condition);
+      ingress.apply_block << ") {\n";
+
+      ingress.lvl++;
+      for (auto assignment : key_assignments) {
+        pad(ingress.apply_block, ingress.lvl);
+        ingress.apply_block << assignment << ";\n";
+      }
+
+      ingress.lvl--;
+      pad(ingress.apply_block, ingress.lvl);
+      ingress.apply_block << "}\n";
+    }
   }
 
   if (has_this_key.size()) {

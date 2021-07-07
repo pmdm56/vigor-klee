@@ -12,6 +12,8 @@
 namespace synapse {
 
 class ExecutionPlan {
+  friend class ExecutionPlanNode;
+
 public:
   struct leaf_t {
     ExecutionPlanNode_ptr leaf;
@@ -45,14 +47,7 @@ private:
   // Implementation details
 private:
   MemoryBank memory_bank;
-
   std::unordered_set<uint64_t> processed_bdd_nodes;
-
-  // When reordering nodes, it can happen that a function call
-  // that is called on different call paths is collapsed into
-  // a single one. We have to merge both their out expressions
-  // into a single one.
-  std::map<std::string, std::string> colapsed_symbols;
 
   // Metadata
 private:
@@ -81,14 +76,14 @@ public:
         reordered_nodes(ep.reordered_nodes), id(ep.id) {}
 
   ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
-                const BDD::BDD *_bdd, bool bdd_node_processed)
+                bool bdd_node_processed)
       : ExecutionPlan(ep.clone()) {
     id = counter++;
     add(leaf, bdd_node_processed);
   }
 
   ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next, Target _target,
-                const BDD::BDD *_bdd, bool bdd_node_processed)
+                bool bdd_node_processed)
       : ExecutionPlan(ep.clone()) {
     id = counter++;
     leaf_replace_next(_next, bdd_node_processed);
@@ -96,25 +91,22 @@ public:
     nodes_per_target[_target]++;
   }
 
-  ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next, Target _target,
-                const BDD::BDD *_bdd)
-      : ExecutionPlan(ep, _next, _target, _bdd, true) {}
+  ExecutionPlan(const ExecutionPlan &ep, const BDD::Node *_next, Target _target)
+      : ExecutionPlan(ep, _next, _target, true) {}
 
-  ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf,
-                const BDD::BDD *_bdd)
-      : ExecutionPlan(ep, leaf, _bdd, true) {}
+  ExecutionPlan(const ExecutionPlan &ep, const leaf_t &leaf)
+      : ExecutionPlan(ep, leaf, true) {}
 
   ExecutionPlan(const ExecutionPlan &ep, const std::vector<leaf_t> &_leaves,
-                const BDD::BDD *_bdd, bool bdd_node_processed)
+                bool bdd_node_processed)
       : ExecutionPlan(ep.clone()) {
     assert(root);
     id = counter++;
     add(_leaves, bdd_node_processed);
   }
 
-  ExecutionPlan(const ExecutionPlan &ep, const std::vector<leaf_t> &_leaves,
-                const BDD::BDD *_bdd)
-      : ExecutionPlan(ep, _leaves, _bdd, true) {}
+  ExecutionPlan(const ExecutionPlan &ep, const std::vector<leaf_t> &_leaves)
+      : ExecutionPlan(ep, _leaves, true) {}
 
 private:
   void update_leaves(leaf_t leaf) {
@@ -135,6 +127,21 @@ private:
   ExecutionPlanNode_ptr clone_nodes(ExecutionPlan &ep,
                                     const ExecutionPlanNode *node) const {
     auto copy = ExecutionPlanNode::build(node);
+
+    auto module = copy->get_module();
+    assert(module);
+
+    auto bdd_node = module->get_node();
+    assert(bdd_node);
+
+    // Different pointers!
+    // We probably cloned the entire BDD in the past, we should update
+    // this node to point to our new BDD.
+    auto found_bdd_node = ep.find_node_in_bdd(bdd_node);
+    if (found_bdd_node && found_bdd_node != bdd_node) {
+      copy->replace_node(found_bdd_node);
+    }
+
     auto old_next = node->get_next();
     Branches new_next;
 
@@ -164,6 +171,7 @@ private:
       return;
 
     auto processed_node = get_next_node();
+    assert(processed_node);
 
     auto processed_node_id = processed_node->get_id();
     auto search = processed_bdd_nodes.find(processed_node_id);
@@ -258,27 +266,8 @@ public:
   const BDD::Node *get_next_node() const {
     const BDD::Node *next = nullptr;
 
-    if (leaves.size() == 0) {
-      return next;
-    }
-
-    next = leaves[0].next;
-
-    while (1) {
-      auto found_it = std::find(processed_bdd_nodes.begin(),
-                                processed_bdd_nodes.end(), next->get_id());
-      if (found_it == processed_bdd_nodes.end()) {
-        return next;
-      }
-
-      // TODO: add branch leaves
-      assert(next->get_type() == BDD::Node::NodeType::CALL && "TODO");
-
-      if (!next->get_next()) {
-        return next;
-      }
-
-      next = next->get_next();
+    if (leaves.size() != 0) {
+      return leaves[0].next;
     }
 
     return next;
@@ -328,9 +317,40 @@ public:
     return new_ep;
   }
 
+  const BDD::Node *find_node_in_bdd(const BDD::Node *target) const {
+    assert(bdd);
+    assert(bdd->get_process());
+
+    std::vector<const BDD::Node *> nodes{ bdd->get_process() };
+
+    while (nodes.size()) {
+      auto node = nodes[0];
+      nodes.erase(nodes.begin());
+
+      if (node->get_id() == target->get_id()) {
+        return node;
+      }
+
+      if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+        auto node_branch = static_cast<const BDD::Branch *>(node);
+        nodes.push_back(node_branch->get_on_true());
+        nodes.push_back(node_branch->get_on_false());
+      } else if (node->get_next()) {
+        nodes.push_back(node->get_next());
+      }
+    }
+
+    return nullptr;
+  }
+
   const std::vector<leaf_t> &get_leaves() const { return leaves; }
 
   const BDD::BDD *get_bdd() const {
+    assert(bdd);
+    return bdd.get();
+  }
+
+  BDD::BDD *get_bdd() {
     assert(bdd);
     return bdd.get();
   }
@@ -348,6 +368,15 @@ public:
     auto found_it = processed_bdd_nodes.find(id);
     if (found_it == processed_bdd_nodes.end()) {
       processed_bdd_nodes.insert(id);
+    }
+
+    for (auto &leaf : leaves) {
+      assert(leaf.next);
+      if (leaf.next->get_id() == id) {
+        assert(leaf.next->get_next());
+        assert(leaf.next->get_type() != BDD::Node::NodeType::BRANCH);
+        leaf.next = leaf.next->get_next();
+      }
     }
   }
 
@@ -375,8 +404,21 @@ public:
     if (root) {
       copy.root = clone_nodes(copy, root.get());
     } else {
-      for (auto leaf : leaves) {
+      for (auto leaf : copy.leaves) {
         assert(!leaf.leaf);
+      }
+    }
+
+    if (!deep) {
+      return copy;
+    }
+
+    for (auto &leaf : copy.leaves) {
+      assert(leaf.next);
+      auto new_next = copy.find_node_in_bdd(leaf.next);
+
+      if (new_next) {
+        leaf.next = new_next;
       }
     }
 

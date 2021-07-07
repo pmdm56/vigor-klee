@@ -68,7 +68,7 @@ struct MaximizeSwitchNodesComparator : public HeuristicConfiguration {
     Score s;
 
     s.set(Score::Category::NumberOfSwitchNodes,
-          get_switch_nodes(e) + get_number_of_merged_tables(e));
+          get_switch_nodes(e) + 2 * get_number_of_merged_tables(e));
 
     return s;
   }

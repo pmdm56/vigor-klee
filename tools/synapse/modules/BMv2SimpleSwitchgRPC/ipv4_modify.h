@@ -79,8 +79,8 @@ private:
     if (_modifications.size() == 0) {
       // ignore
       auto ep = context->get_current();
-      auto new_ep = ExecutionPlan(ep, node->get_next(),
-                                  Target::BMv2SimpleSwitchgRPC, bdd);
+      auto new_ep =
+          ExecutionPlan(ep, node->get_next(), Target::BMv2SimpleSwitchgRPC);
 
       auto new_module = std::make_shared<Ignore>(node);
       context->add(new_ep, new_module);
@@ -89,7 +89,7 @@ private:
       auto ep_node = ExecutionPlanNode::build(new_module);
       auto ep = context->get_current();
       auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-      auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
+      auto new_ep = ExecutionPlan(ep, new_leaf);
 
       context->add(new_ep, new_module);
     }

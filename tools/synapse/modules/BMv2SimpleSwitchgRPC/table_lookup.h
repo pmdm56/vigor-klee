@@ -270,41 +270,11 @@ private:
                             candidates.end());
 
       auto last_common_branch = get_last_common_branch(all_candidates);
-
       // TODO:
       assert(last_common_branch);
 
-      /*
-      // FIXME: remove this
-      std::cerr << "candidate try outs:    " << node->get_id() << "\n";
-      std::cerr << "successful candidates: ";
-      for (auto c : candidates) {
-        std::cerr << c.node->get_id() << " ";
-      }
-      std::cerr << "\n";
-
-      // FIXME: remove this
-      std::cerr << "Last common branch: " << last_common_branch->get_id()
-                << "\n";
-                */
-
       auto symbols = last_common_branch->get_all_generated_symbols();
-
-      /*
-      // FIXME: remove this
-      std::cerr << "known symbols: \n";
-      for (auto symbol : symbols) {
-        std::cerr << symbol.label << " ";
-      }
-      std::cerr << "\n";
-      */
-
       auto condition = conjugate_conditions();
-
-      /*
-      // FIXME: remove this
-      std::cerr << "Condition: " << pretty_print_expr(condition) << "\n";
-      */
 
       RetrieveSymbols retriever;
       retriever.visit(condition);
@@ -317,11 +287,6 @@ private:
         });
 
         if (found_it == symbols.end()) {
-          /*
-          // FIXME: remove this
-          std::cerr << "Missing symbol " << required_symbol << "\n;
-          */
-
           return false;
         }
       }
@@ -462,26 +427,6 @@ private:
         candidate.remove_unwanted_conditions(last_common_branch);
       }
 
-      /*
-            std::cerr << "\n"
-                      << "node id: " << node->get_id() << "\n";
-            for (auto candidate : successful_candidates) {
-              std::cerr << "candidate id:   " << candidate.node->get_id() <<
-         "\n"; assert(candidate.conditions.size() == candidate.branches.size());
-              for (auto i = 0u; i < candidate.conditions.size(); i++) {
-                auto cond = candidate.conditions[i];
-                auto id = candidate.branches[i]->get_id();
-                std::cerr << "candidate cond: " << id << " "
-                          << pretty_print_expr(cond) << "\n";
-              }
-            }
-
-            {
-              char c;
-              std::cin >> c;
-            }
-            */
-
       return merge_candidates_t(successful_candidates, last_common_branch);
     }
 
@@ -503,13 +448,141 @@ private:
       auto module = node->get_module();
       auto bdd_node = module->get_node();
 
-      if (bdd_node->get_id() == last_common_branch->get_id()) {
+      if (bdd_node->get_id() == last_common_branch->get_id() &&
+          module->get_type() == Module::ModuleType::BMv2SimpleSwitchgRPC_If) {
         return node;
       }
+
+      node = node->get_prev();
     }
 
     assert(false && "Last common branch node not found in Execution Plan");
     return node;
+  }
+
+  std::vector<BDD::Node *>
+  pop_nodes_from_cloned_bdd(BDD::Node *root,
+                            std::vector<const BDD::Node *> targets) {
+    std::vector<BDD::Node *> nodes{ root };
+    std::vector<BDD::Node *> cloned_nodes;
+
+    while (nodes.size() && targets.size()) {
+      auto node = nodes[0];
+      nodes.erase(nodes.begin());
+
+      auto found_it = std::find_if(targets.begin(), targets.end(),
+                                   [&](const BDD::Node *target) {
+        return node->get_id() == target->get_id();
+      });
+
+      if (found_it != targets.end()) {
+        targets.erase(found_it);
+        cloned_nodes.push_back(node);
+
+        auto prev_cloned = node->get_prev();
+        assert(node->get_next());
+
+        assert(prev_cloned->get_type() != BDD::Node::NodeType::RETURN_INIT);
+        assert(prev_cloned->get_type() != BDD::Node::NodeType::RETURN_PROCESS);
+        assert(prev_cloned->get_type() != BDD::Node::NodeType::RETURN_RAW);
+
+        if (prev_cloned->get_type() == BDD::Node::NodeType::BRANCH) {
+          auto prev_cloned_branch = static_cast<BDD::Branch *>(prev_cloned);
+
+          if (prev_cloned_branch->get_on_true()->get_id() == node->get_id()) {
+            prev_cloned_branch->replace_on_true(node->get_next());
+          } else {
+            prev_cloned_branch->replace_on_false(node->get_next());
+          }
+        } else {
+          prev_cloned->replace_next(node->get_next());
+        }
+      }
+
+      if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+        auto node_branch = static_cast<BDD::Branch *>(node);
+        nodes.push_back(node_branch->get_on_true());
+        nodes.push_back(node_branch->get_on_false());
+      } else {
+        nodes.push_back(node->get_next());
+      }
+    }
+
+    assert(targets.size() == 0);
+    return cloned_nodes;
+  }
+
+  BDD::Node *get_node_from_clone(BDD::Node *root, const BDD::Node *target) {
+    std::vector<BDD::Node *> nodes{ root };
+
+    while (nodes.size()) {
+      auto node = nodes[0];
+      nodes.erase(nodes.begin());
+
+      if (node->get_id() == target->get_id()) {
+        return node;
+      }
+
+      if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+        auto node_branch = static_cast<BDD::Branch *>(node);
+        nodes.push_back(node_branch->get_on_true());
+        nodes.push_back(node_branch->get_on_false());
+      } else {
+        nodes.push_back(node->get_next());
+      }
+    }
+
+    return nullptr;
+  }
+
+  ExecutionPlan merge_bdd_nodes(merge_candidates_t merged_candidates) {
+    auto ep = context->get_current();
+    auto modified_ep = ep.clone(true);
+    auto cloned_bdd = modified_ep.get_bdd();
+    auto cloned_bdd_root = cloned_bdd->get_process();
+
+    std::vector<const BDD::Node *> nodes;
+    for (auto candidate : merged_candidates.candidates) {
+      nodes.push_back(candidate.node);
+    }
+
+    assert(nodes.size());
+
+    auto last_common_branch = get_node_from_clone(
+        cloned_bdd_root, merged_candidates.last_common_branch);
+    assert(last_common_branch);
+
+    auto prev_last_common_branch = last_common_branch->get_prev();
+    assert(prev_last_common_branch);
+
+    auto cloned_targets =
+        pop_nodes_from_cloned_bdd(prev_last_common_branch, nodes);
+
+    auto merged = cloned_targets[0]->clone();
+
+    // prev_last_common_branch -> merged -> last_common_branch
+
+    assert(prev_last_common_branch->get_type() !=
+           BDD::Node::NodeType::RETURN_INIT);
+    assert(prev_last_common_branch->get_type() !=
+           BDD::Node::NodeType::RETURN_PROCESS);
+    assert(prev_last_common_branch->get_type() !=
+           BDD::Node::NodeType::RETURN_RAW);
+
+    if (prev_last_common_branch->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto branch = static_cast<BDD::Branch *>(prev_last_common_branch);
+
+      if (branch->get_on_true()->get_id() == last_common_branch->get_id()) {
+        branch->replace_on_true(merged);
+      } else {
+        branch->replace_on_false(merged);
+      }
+    } else {
+      prev_last_common_branch->replace_next(merged);
+    }
+
+    merged->replace_next(last_common_branch);
+    return modified_ep;
   }
 
   bool process_map_get(const BDD::Call *node) {
@@ -564,20 +637,23 @@ private:
         _keys.emplace_back(candidate_key, candidate.conjugate_conditions());
       }
 
-      auto new_module = std::make_shared<TableLookup>(
-          node, _table_id, _keys, _value, _map_has_this_key_label,
-          call.function_name);
+      auto merged_ep = merge_bdd_nodes(merge_candidates);
 
-      auto new_ep = ExecutionPlan(ep, node->get_next(),
-                                  Target::BMv2SimpleSwitchgRPC, bdd);
+      auto new_module = std::make_shared<TableLookup>(
+          merged_ep.get_next_node(), _table_id, _keys, _value,
+          _map_has_this_key_label, call.function_name);
+      auto new_ep = ExecutionPlan(merged_ep, merged_ep.get_next_node(),
+                                  Target::BMv2SimpleSwitchgRPC);
       auto ep_node = ExecutionPlanNode::build(new_module);
 
       auto active_leaf = new_ep.get_active_leaf();
       auto ep_node_last_common_branch = get_ep_node_last_common_branch(
           active_leaf, merge_candidates.last_common_branch);
+      assert(ep_node_last_common_branch);
 
       auto prev_ep_node_last_common_branch =
           ep_node_last_common_branch->get_prev();
+      assert(prev_ep_node_last_common_branch);
 
       prev_ep_node_last_common_branch->replace_next(ep_node_last_common_branch,
                                                     ep_node);
@@ -604,7 +680,7 @@ private:
         call.function_name);
     auto ep_node = ExecutionPlanNode::build(new_module);
     auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-    auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
+    auto new_ep = ExecutionPlan(ep, new_leaf);
 
     new_eps.push_back(new_ep);
     context->add(new_eps, new_module);
@@ -643,7 +719,53 @@ private:
         get_merge_candidates(node, _vector, processed_bdd_nodes);
 
     if (merge_candidates.success) {
-      // TODO:
+      auto _table_id = _vector_value;
+
+      std::vector<key_t> _keys;
+      for (auto candidate : merge_candidates.candidates) {
+        assert(candidate.node->get_type() == BDD::Node::NodeType::CALL);
+
+        auto candidate_call_node =
+            static_cast<const BDD::Call *>(candidate.node);
+        auto candidate_call = candidate_call_node->get_call();
+
+        assert(!candidate_call.args["index"].expr.isNull());
+        auto candidate_key = candidate_call.args["index"].expr;
+
+        _keys.emplace_back(candidate_key, candidate.conjugate_conditions());
+      }
+
+      auto merged_ep = merge_bdd_nodes(merge_candidates);
+
+      auto new_module = std::make_shared<TableLookup>(
+          merged_ep.get_next_node(), _table_id, _keys, _borrowed_cell, "",
+          call.function_name);
+      auto new_ep = ExecutionPlan(merged_ep, merged_ep.get_next_node(),
+                                  Target::BMv2SimpleSwitchgRPC);
+      auto ep_node = ExecutionPlanNode::build(new_module);
+
+      auto active_leaf = new_ep.get_active_leaf();
+      auto ep_node_last_common_branch = get_ep_node_last_common_branch(
+          active_leaf, merge_candidates.last_common_branch);
+      assert(ep_node_last_common_branch);
+
+      auto prev_ep_node_last_common_branch =
+          ep_node_last_common_branch->get_prev();
+      assert(prev_ep_node_last_common_branch);
+
+      prev_ep_node_last_common_branch->replace_next(ep_node_last_common_branch,
+                                                    ep_node);
+
+      ep_node->set_prev(prev_ep_node_last_common_branch);
+      ep_node->set_next(ep_node_last_common_branch);
+
+      ep_node_last_common_branch->replace_prev(ep_node);
+
+      for (auto candidate : merge_candidates.candidates) {
+        new_ep.add_processed_bdd_node(candidate.node->get_id());
+      }
+
+      new_eps.push_back(new_ep);
     }
 
     auto _table_id = node->get_id();
@@ -652,7 +774,7 @@ private:
 
     auto ep_node = ExecutionPlanNode::build(new_module);
     auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-    auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
+    auto new_ep = ExecutionPlan(ep, new_leaf);
 
     new_eps.push_back(new_ep);
     context->add(new_eps, new_module);

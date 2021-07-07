@@ -275,20 +275,5 @@ public:
     auto call_processor = found_it->second;
     return (this->*call_processor)(call);
   }
-
-  void push() { stack.emplace_back(); }
-
-  void pop() {
-    if (stack.size() == 0)
-      return;
-
-    for (auto symbol : stack.back()) {
-      assert(symbol_counter.find(symbol) != symbol_counter.end());
-      symbol_counter[symbol]--;
-      assert(symbol_counter[symbol] >= 0);
-    }
-
-    stack.pop_back();
-  }
 };
 } // namespace BDD

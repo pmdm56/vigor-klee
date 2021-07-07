@@ -49,7 +49,6 @@ public:
     SearchSpace search_space(h.get_cfg(), context.get_next_eps()[0]);
 
     h.add(context);
-
     while (!h.finished()) {
       auto available = h.size();
       auto next_ep = h.pop();
@@ -66,19 +65,8 @@ public:
 
       report_t report;
 
-      /*
-      if (next_node->get_id() == 36) {
-        Log::dbg() << "* Node " << next_node->dump(true) << "\n";
-        std::cerr << "processed: ";
-        for (auto processed : next_ep.get_processed_bdd_nodes()) {
-          std::cerr << processed << " ";
-        }
-        synapse::Graphviz::visualize(next_ep);
-      }
-      */
-
       for (auto module : modules) {
-        auto next_context = module->process_node(next_ep, next_node, bdd);
+        auto next_context = module->process_node(next_ep, next_node);
 
         if (next_context.processed()) {
           auto next_eps = next_context.get_next_eps();
@@ -142,9 +130,8 @@ public:
     // for (auto &ep : h.get_all()) {
     //   synapse::Graphviz::visualize(ep);
     // }
-
     // synapse::Graphviz::visualize(h.get(), search_space);
-    synapse::Graphviz::visualize(h.get());
+    // synapse::Graphviz::visualize(h.get());
 
     return h.get();
   }

@@ -20,27 +20,29 @@ public:
                Target::BMv2SimpleSwitchgRPC, "VectorReturn", node) {}
 
 private:
-  call_t get_previous_vector_borrow(const BDD::Node *node, klee::ref<klee::Expr> wanted_vector) const{
-    while (node->get_prev()){
+  call_t get_previous_vector_borrow(const BDD::Node *node,
+                                    klee::ref<klee::Expr> wanted_vector) const {
+    while (node->get_prev()) {
       node = node->get_prev();
-      if(node->get_type() != BDD::Node::NodeType::CALL){
+      if (node->get_type() != BDD::Node::NodeType::CALL) {
         continue;
-      } 
-      auto call_node = static_cast<const BDD::Call*> (node);
+      }
+      auto call_node = static_cast<const BDD::Call *>(node);
       auto call = call_node->get_call();
 
-      if(call.function_name != "vector_borrow"){
+      if (call.function_name != "vector_borrow") {
         continue;
       }
 
       auto vector = call.args["vector"].expr;
-      auto eq = BDD::solver_toolbox.are_exprs_always_equal(vector, wanted_vector);
+      auto eq =
+          BDD::solver_toolbox.are_exprs_always_equal(vector, wanted_vector);
 
-      if(eq){
+      if (eq) {
         return call;
       }
     }
-    assert(false);  
+    assert(false);
   }
 
   bool modifies_cell(const BDD::Call *node) const {
@@ -54,10 +56,11 @@ private:
 
     auto vector_borrow = get_previous_vector_borrow(node, vector);
     auto cell_before = vector_borrow.extra_vars["borrowed_cell"].second;
-    
+
     assert(cell_before->getWidth() == cell_after->getWidth());
-    auto eq = BDD::solver_toolbox.are_exprs_always_equal(cell_before, cell_after);
-    
+    auto eq =
+        BDD::solver_toolbox.are_exprs_always_equal(cell_before, cell_after);
+
     return !eq;
   }
 
@@ -67,19 +70,19 @@ private:
 
   BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
     auto call = node->get_call();
-    
+
     if (call.function_name != "vector_return") {
       return BDD::BDDVisitor::Action::STOP;
     }
 
-    if(modifies_cell(node)){
+    if (modifies_cell(node)) {
       return BDD::BDDVisitor::Action::STOP;
     }
 
-    //ignore
+    // ignore
     auto ep = context->get_current();
-    auto new_ep = ExecutionPlan(ep, node->get_next(),
-                                Target::BMv2SimpleSwitchgRPC, bdd);
+    auto new_ep =
+        ExecutionPlan(ep, node->get_next(), Target::BMv2SimpleSwitchgRPC);
 
     auto new_module = std::make_shared<VectorReturn>(node);
     context->add(new_ep, new_module);

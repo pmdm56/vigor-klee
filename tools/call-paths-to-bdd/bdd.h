@@ -8,10 +8,9 @@ namespace BDD {
 class BDD {
 public:
   friend class CallPathsGroup;
+  friend class Call;
 
 private:
-  SymbolFactory symbol_factory;
-
   uint64_t id;
 
   std::shared_ptr<Node> nf_init;
@@ -36,12 +35,6 @@ private:
   void add_node(call_t call);
   void dump(int lvl, const Node *node) const;
 
-  uint64_t get_and_inc_id() {
-    uint64_t _id = id;
-    id++;
-    return _id;
-  }
-
 public:
   BDD(std::vector<call_path_t *> _call_paths) : id(0), call_paths(_call_paths) {
     solver_toolbox.build();
@@ -56,8 +49,8 @@ public:
   }
 
   BDD(const BDD &bdd)
-      : symbol_factory(bdd.symbol_factory), id(bdd.id), nf_init(bdd.nf_init),
-        nf_process(bdd.nf_process), call_paths(bdd.call_paths) {}
+      : id(bdd.id), nf_init(bdd.nf_init), nf_process(bdd.nf_process),
+        call_paths(bdd.call_paths) {}
 
   const Node *get_init() const { return nf_init.get(); }
   Node *get_init() { return nf_init.get(); }
@@ -67,6 +60,12 @@ public:
 
   void replace_process(Node *_process) {
     nf_process = std::shared_ptr<Node>(_process);
+  }
+
+  uint64_t get_and_inc_id() {
+    uint64_t _id = id;
+    id++;
+    return _id;
   }
 
   const std::vector<call_path_t *> &get_call_paths() const {

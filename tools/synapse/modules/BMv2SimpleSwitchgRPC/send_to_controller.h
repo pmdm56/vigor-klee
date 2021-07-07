@@ -24,25 +24,25 @@ public:
   }
 
 private:
-  const BDD::Node *clone_calls(const BDD::Node *current,
-                               std::vector<uint64_t> &cloned_ids) const {
+  const BDD::Node *clone_calls(ExecutionPlan &ep,
+                               const BDD::Node *current) const {
     BDD::Node *root = nullptr;
     assert(current);
 
     auto node = current;
+    auto bdd = ep.get_bdd();
 
     while (node->get_prev()) {
       node = node->get_prev();
 
       if (node->get_type() == BDD::Node::NodeType::CALL) {
         auto cloned_current = current->clone();
+
         root = node->clone();
+        root->update_id(bdd->get_and_inc_id());
 
         root->replace_next(cloned_current);
         root->replace_prev(nullptr);
-
-        cloned_ids.push_back(cloned_current->get_id());
-        cloned_ids.push_back(root->get_id());
         break;
       }
     }
@@ -56,12 +56,12 @@ private:
 
       if (node->get_type() == BDD::Node::NodeType::CALL) {
         auto clone = node->clone();
+        clone->update_id(bdd->get_and_inc_id());
 
         clone->replace_next(root);
         clone->replace_prev(nullptr);
 
         root = clone;
-        cloned_ids.push_back(root->get_id());
       }
     }
 
@@ -69,23 +69,17 @@ private:
   }
 
   void process(const BDD::Node *node) {
-    std::vector<uint64_t> cloned_ids;
-    auto next = clone_calls(node, cloned_ids);
+    auto ep = context->get_current();
+    auto next = clone_calls(ep, node);
 
     if (!next) {
       next = node;
-      cloned_ids.push_back(node->get_id());
     }
 
     auto new_module = std::make_shared<SendToController>(node);
     auto ep_node = ExecutionPlanNode::build(new_module);
     auto new_leaf = ExecutionPlan::leaf_t(ep_node, next);
-    auto ep = context->get_current();
-    auto new_ep = ExecutionPlan(ep, new_leaf, bdd);
-
-    for (auto cloned_id : cloned_ids) {
-      new_ep.remove_from_processed_bdd_nodes(cloned_id);
-    }
+    auto new_ep = ExecutionPlan(ep, new_leaf, false);
 
     context->add(new_ep, new_module);
   }

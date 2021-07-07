@@ -19,17 +19,15 @@ private:
   Module_ptr module;
   Branches next;
   ExecutionPlanNode_ptr prev;
-  const BDD::Node *node;
   int id;
 
   static int counter;
 
 private:
-  ExecutionPlanNode(Module_ptr _module)
-      : module(_module), node(_module->get_node()), id(counter++) {}
+  ExecutionPlanNode(Module_ptr _module) : module(_module), id(counter++) {}
 
   ExecutionPlanNode(const ExecutionPlanNode *ep_node)
-      : module(ep_node->module), node(ep_node->node), id(counter++) {}
+      : module(ep_node->module), id(counter++) {}
 
 public:
   void set_next(Branches _next) {
@@ -66,6 +64,8 @@ public:
   }
 
   void replace_prev(ExecutionPlanNode_ptr _prev) { prev = _prev; }
+
+  void replace_node(const BDD::Node *node) { module->replace_node(node); }
 
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(this); }
 
