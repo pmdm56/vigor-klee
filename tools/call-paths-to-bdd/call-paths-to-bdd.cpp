@@ -283,7 +283,7 @@ void CallPathsGroup::group_call_paths() {
 
     discriminating_constraint = find_discriminating_constraint();
 
-    if (!discriminating_constraint.isNull()) {
+    if (!discriminating_constraint.expr.isNull()) {
       return;
     }
   }
@@ -333,30 +333,33 @@ bool CallPathsGroup::are_calls_equal(call_t c1, call_t c2) {
   return true;
 }
 
-klee::ref<klee::Expr> CallPathsGroup::find_discriminating_constraint() {
+discriminating_constraint_t CallPathsGroup::find_discriminating_constraint() {
   assert(on_true.size());
 
   auto possible_discriminating_constraints =
       get_possible_discriminating_constraints();
 
   for (auto constraint : possible_discriminating_constraints) {
-    if (check_discriminating_constraint(constraint)) {
+    if (check_discriminating_constraint(constraint.expr)) {
       return constraint;
     }
   }
 
-  return klee::ref<klee::Expr>();
+  return discriminating_constraint_t();
 }
 
-std::vector<klee::ref<klee::Expr>>
+std::vector<discriminating_constraint_t>
 CallPathsGroup::get_possible_discriminating_constraints() const {
-  std::vector<klee::ref<klee::Expr>> possible_discriminating_constraints;
+  std::vector<discriminating_constraint_t> possible_discriminating_constraints;
   assert(on_true.size());
 
+  int i = 0;
   for (auto constraint : on_true.cp[0]->constraints) {
     if (satisfies_constraint(on_true.cp, constraint)) {
-      possible_discriminating_constraints.push_back(constraint);
+      possible_discriminating_constraints.emplace_back(constraint,
+                                                       on_true.cp[0], i);
     }
+    i++;
   }
 
   return possible_discriminating_constraints;

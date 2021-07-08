@@ -108,7 +108,7 @@ private:
   void function_call(Target target, std::string target_name,
                      std::string label) {
     assert(node_colors.find(target) != node_colors.end());
-    ofs << "[label=\"" << target_name << "::" << label << "\", ";
+    ofs << "[label=\"" << /*target_name << "::" << */ label << "\", ";
     ofs << "color=" << node_colors[target] << "];";
     ofs << "\n";
   }

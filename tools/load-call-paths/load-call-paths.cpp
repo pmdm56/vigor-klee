@@ -9,9 +9,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Support/MemoryBuffer.h"
 #include "klee/ExprBuilder.h"
 #include "klee/perf-contracts.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include <klee/Constraints.h>
 #include <klee/Solver.h>
 
@@ -27,7 +27,7 @@
 
 call_path_t *load_call_path(std::string file_name,
                             std::vector<std::string> expressions_str,
-                            std::deque<klee::ref<klee::Expr> > &expressions) {
+                            std::deque<klee::ref<klee::Expr>> &expressions) {
   std::ifstream call_path_file(file_name);
   assert(call_path_file.is_open() && "Unable to open call path file.");
 
@@ -43,9 +43,10 @@ call_path_t *load_call_path(std::string file_name,
   } state = STATE_INIT;
 
   std::string kQuery;
-  std::vector<klee::ref<klee::Expr> > exprs;
+  std::vector<klee::ref<klee::Expr>> exprs;
   std::set<std::string> declared_arrays;
 
+  int call_id = 0;
   int parenthesis_level = 0;
 
   std::string current_extra_var;
@@ -149,7 +150,7 @@ call_path_t *load_call_path(std::string file_name,
           assert(delim != std::string::npos);
           line = line.substr(delim + 1);
         } else {
-          call_path->calls.emplace_back();
+          call_path->calls.emplace_back(call_id++);
 
           delim = line.find("(");
           assert(delim != std::string::npos);
@@ -178,11 +179,12 @@ call_path_t *load_call_path(std::string file_name,
           if (line.size() < last_store.size())
             last_store = last_store.substr(last_store.size() - line.size());
           auto remainder_delim = line.find(last_store);
-          auto remainder = line.substr(remainder_delim+last_store.size());
+          auto remainder = line.substr(remainder_delim + last_store.size());
           auto ret_symbol = std::string("-> ");
           auto ret_delim = remainder.find(ret_symbol);
-          if (ret_delim != std::string::npos && remainder.substr(ret_symbol.size()+1) != "[]") {
-            auto ret = remainder.substr(ret_symbol.size()+1);
+          if (ret_delim != std::string::npos &&
+              remainder.substr(ret_symbol.size() + 1) != "[]") {
+            auto ret = remainder.substr(ret_symbol.size() + 1);
             current_exprs_str.push_back(ret);
           }
         }
@@ -198,14 +200,16 @@ call_path_t *load_call_path(std::string file_name,
               call_path->calls.back().extra_vars[current_extra_var].first =
                   exprs[0];
               exprs.erase(exprs.begin());
-              current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
+              current_exprs_str.erase(current_exprs_str.begin(),
+                                      current_exprs_str.begin() + 2);
             }
             if (current_exprs_str[1] != "(...)") {
               assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
               call_path->calls.back().extra_vars[current_extra_var].second =
                   exprs[0];
               exprs.erase(exprs.begin());
-              current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
+              current_exprs_str.erase(current_exprs_str.begin(),
+                                      current_exprs_str.begin() + 2);
             }
           } else {
             bool parsed_last_arg = false;
@@ -236,7 +240,7 @@ call_path_t *load_call_path(std::string file_name,
                 exprs.erase(exprs.begin(), exprs.begin() + 1);
 
                 if (current_arg.substr(delim + 1) == "[...]") {
-                    continue;
+                  continue;
                 }
 
                 if (current_arg.substr(delim + 1)[0] != '[') {
@@ -273,7 +277,6 @@ call_path_t *load_call_path(std::string file_name,
             current_exprs_str.erase(current_exprs_str.begin());
           }
 
-
           if (current_exprs_str.size()) {
             call_path->calls.back().ret = exprs[0];
             exprs.erase(exprs.begin());
@@ -306,11 +309,12 @@ call_path_t *load_call_path(std::string file_name,
         if (line.size() < last_store.size())
           last_store = last_store.substr(last_store.size() - line.size());
         auto remainder_delim = line.find(last_store);
-        auto remainder = line.substr(remainder_delim+last_store.size());
+        auto remainder = line.substr(remainder_delim + last_store.size());
         auto ret_symbol = std::string("-> ");
         auto ret_delim = remainder.find(ret_symbol);
-        if (ret_delim != std::string::npos && remainder.substr(ret_symbol.size()+1) != "[]") {
-          auto ret = remainder.substr(ret_symbol.size()+1);
+        if (ret_delim != std::string::npos &&
+            remainder.substr(ret_symbol.size() + 1) != "[]") {
+          auto ret = remainder.substr(ret_symbol.size() + 1);
           current_exprs_str.push_back(ret);
         }
       }
@@ -324,14 +328,16 @@ call_path_t *load_call_path(std::string file_name,
             call_path->calls.back().extra_vars[current_extra_var].first =
                 exprs[0];
             exprs.erase(exprs.begin());
-            current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
+            current_exprs_str.erase(current_exprs_str.begin(),
+                                    current_exprs_str.begin() + 2);
           }
           if (current_exprs_str[1] != "(...)") {
             assert(exprs.size() >= 1 && "Not enough expression in kQuery.");
             call_path->calls.back().extra_vars[current_extra_var].second =
                 exprs[0];
             exprs.erase(exprs.begin());
-            current_exprs_str.erase(current_exprs_str.begin(), current_exprs_str.begin() + 2);
+            current_exprs_str.erase(current_exprs_str.begin(),
+                                    current_exprs_str.begin() + 2);
           }
         } else {
           bool parsed_last_arg = false;
@@ -364,7 +370,7 @@ call_path_t *load_call_path(std::string file_name,
               exprs.erase(exprs.begin(), exprs.begin() + 1);
 
               if (current_arg.substr(delim + 1) == "[...]") {
-                  continue;
+                continue;
               }
 
               if (current_arg.substr(delim + 1)[0] != '[') {
@@ -400,7 +406,6 @@ call_path_t *load_call_path(std::string file_name,
           current_exprs_str.erase(current_exprs_str.begin());
         }
 
-
         if (current_exprs_str.size()) {
           call_path->calls.back().ret = exprs[0];
           exprs.erase(exprs.begin());
@@ -424,4 +429,3 @@ call_path_t *load_call_path(std::string file_name,
 
   return call_path;
 }
-

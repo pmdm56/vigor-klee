@@ -1,4 +1,5 @@
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 #include "call-paths-to-bdd.h"
 
@@ -12,6 +13,14 @@ llvm::cl::OptionCategory BDDGeneratorCat("BDD generator specific options");
 llvm::cl::opt<std::string>
     Gv("gv", llvm::cl::desc("GraphViz file for BDD visualization."),
        llvm::cl::cat(BDDGeneratorCat));
+
+llvm::cl::opt<std::string>
+    InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
+                 llvm::cl::cat(BDDGeneratorCat));
+
+llvm::cl::opt<std::string>
+    OutputBDDFile("out", llvm::cl::desc("Output file for BDD serialization."),
+                  llvm::cl::cat(BDDGeneratorCat));
 } // namespace
 
 int main(int argc, char **argv) {
@@ -33,16 +42,20 @@ int main(int argc, char **argv) {
   BDD::PrinterDebug printer;
   bdd.visit(printer);
 
-  for (auto call_path : call_paths) {
-    delete call_path;
-  }
-
   if (Gv.size()) {
     auto file = std::ofstream(Gv);
     assert(file.is_open());
 
     BDD::GraphvizGenerator graphviz_generator(file);
     bdd.visit(graphviz_generator);
+  }
+
+  if (OutputBDDFile.size()) {
+    bdd.serialize(OutputBDDFile, InputCallPathFiles);
+  }
+
+  for (auto call_path : call_paths) {
+    delete call_path;
   }
 
   return 0;
