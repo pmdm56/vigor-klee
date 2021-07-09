@@ -8,6 +8,7 @@
 #===------------------------------------------------------------------------===#
 add_executable(call-paths-to-bdd
   call-paths-to-bdd.cpp
+  bdd-io.cpp
   main.cpp
   ../load-call-paths/load-call-paths.cpp
   ../printer/printer.cpp

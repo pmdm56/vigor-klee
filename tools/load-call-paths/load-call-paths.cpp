@@ -46,7 +46,6 @@ call_path_t *load_call_path(std::string file_name,
   std::vector<klee::ref<klee::Expr>> exprs;
   std::set<std::string> declared_arrays;
 
-  int call_id = 0;
   int parenthesis_level = 0;
 
   std::string current_extra_var;
@@ -150,7 +149,7 @@ call_path_t *load_call_path(std::string file_name,
           assert(delim != std::string::npos);
           line = line.substr(delim + 1);
         } else {
-          call_path->calls.emplace_back(call_id++);
+          call_path->calls.emplace_back();
 
           delim = line.find("(");
           assert(delim != std::string::npos);

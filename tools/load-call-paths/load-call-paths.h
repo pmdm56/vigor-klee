@@ -13,15 +13,12 @@ typedef struct {
 } arg_t;
 
 typedef struct call {
-  int id;
   std::string function_name;
   std::map<std::string, std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr>>>
   extra_vars;
   std::map<std::string, arg_t> args;
 
   klee::ref<klee::Expr> ret;
-
-  call(int _id) : id(_id) {}
 } call_t;
 
 typedef std::vector<call_t> calls_t;

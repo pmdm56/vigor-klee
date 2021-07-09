@@ -52,20 +52,9 @@ struct call_paths_t {
 
 class Call;
 
-struct discriminating_constraint_t {
-  klee::ref<klee::Expr> expr;
-  call_path_t *call_path;
-  unsigned constraint_id;
-
-  discriminating_constraint_t() {}
-  discriminating_constraint_t(klee::ref<klee::Expr> _expr,
-                              call_path_t *_call_path, unsigned _constraint_id)
-      : expr(_expr), call_path(_call_path), constraint_id(_constraint_id) {}
-};
-
 class CallPathsGroup {
 private:
-  discriminating_constraint_t discriminating_constraint;
+  klee::ref<klee::Expr> constraint;
   call_paths_t on_true;
   call_paths_t on_false;
 
@@ -74,8 +63,8 @@ private:
 private:
   void group_call_paths();
   bool check_discriminating_constraint(klee::ref<klee::Expr> constraint);
-  discriminating_constraint_t find_discriminating_constraint();
-  std::vector<discriminating_constraint_t>
+  klee::ref<klee::Expr> find_discriminating_constraint();
+  std::vector<klee::ref<klee::Expr>>
   get_possible_discriminating_constraints() const;
   bool satisfies_constraint(std::vector<call_path_t *> call_paths,
                             klee::ref<klee::Expr> constraint) const;
@@ -93,12 +82,11 @@ public:
     group_call_paths();
   }
 
-  discriminating_constraint_t get_discriminating_constraint() const {
-    return discriminating_constraint;
+  klee::ref<klee::Expr> get_discriminating_constraint() const {
+    return constraint;
   }
 
   call_paths_t get_on_true() const { return on_true; }
-
   call_paths_t get_on_false() const { return on_false; }
 };
 
@@ -367,18 +355,7 @@ private:
   klee::ref<klee::Expr> condition;
   Node *on_false;
 
-  // remember this for serializing and deserializing
-  discriminating_constraint_t discriminating_constraint;
-
 public:
-  Branch(uint64_t _id, discriminating_constraint_t _discriminating_constraint,
-         const std::vector<call_path_t *> &_call_paths)
-      : Node(_id, Node::NodeType::BRANCH, _call_paths),
-        condition(_discriminating_constraint.expr), on_false(nullptr),
-        discriminating_constraint(_discriminating_constraint) {
-    assert(!discriminating_constraint.expr.isNull());
-  }
-
   Branch(uint64_t _id, klee::ref<klee::Expr> _condition,
          const std::vector<call_path_t *> &_call_paths)
       : Node(_id, Node::NodeType::BRANCH, _call_paths), condition(_condition),
@@ -390,16 +367,13 @@ public:
       : Node(_id, Node::NodeType::BRANCH, _on_true, _prev, _call_paths),
         condition(_condition), on_false(_on_false) {}
 
-  Branch(uint64_t _id, discriminating_constraint_t _discriminating_constraint,
-         Node *_on_true, Node *_on_false, Node *_prev,
+  Branch(uint64_t _id, klee::ref<klee::Expr> _condition, Node *_on_true,
+         Node *_on_false, Node *_prev,
          const std::vector<std::string> &_call_paths_filenames,
          const std::vector<klee::ConstraintManager> &_constraints)
       : Node(_id, Node::NodeType::BRANCH, _on_true, _prev,
              _call_paths_filenames, _constraints),
-        condition(_discriminating_constraint.expr), on_false(_on_false),
-        discriminating_constraint(_discriminating_constraint) {
-    assert(!discriminating_constraint.expr.isNull());
-  }
+        condition(_condition), on_false(_on_false) {}
 
   klee::ref<klee::Expr> get_condition() const { return condition; }
 
@@ -457,8 +431,8 @@ public:
       clone_on_false = on_false;
     }
 
-    clone = new Branch(id, discriminating_constraint, clone_on_true,
-                       clone_on_false, prev, call_paths_filenames, constraints);
+    clone = new Branch(id, condition, clone_on_true, clone_on_false, prev,
+                       call_paths_filenames, constraints);
 
     if (recursive) {
       clone_on_true->prev = clone;
@@ -472,10 +446,6 @@ public:
     id = ++new_id;
     next->recursive_update_ids(new_id);
     on_false->recursive_update_ids(new_id);
-  }
-
-  const discriminating_constraint_t &get_discriminating_constraint() const {
-    return discriminating_constraint;
   }
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
@@ -567,6 +537,13 @@ public:
   ReturnInit(uint64_t _id, Node *_prev, ReturnType _value)
       : Node(_id, Node::NodeType::RETURN_INIT, nullptr, _prev,
              _prev->call_paths_filenames, _prev->constraints),
+        value(_value) {}
+
+  ReturnInit(uint64_t _id, Node *_prev, ReturnType _value,
+             const std::vector<std::string> &_call_paths_filenames,
+             std::vector<klee::ConstraintManager> _constraints)
+      : Node(_id, Node::NodeType::RETURN_INIT, nullptr, _prev,
+             _call_paths_filenames, _constraints),
         value(_value) {}
 
   ReturnType get_return_value() const { return value; }
@@ -689,6 +666,13 @@ public:
   ReturnProcess(uint64_t _id, Node *_prev, int _value, Operation _operation)
       : Node(_id, Node::NodeType::RETURN_PROCESS, nullptr, _prev,
              _prev->call_paths_filenames, _prev->constraints),
+        value(_value), operation(_operation) {}
+
+  ReturnProcess(uint64_t _id, Node *_prev, int _value, Operation _operation,
+                const std::vector<std::string> &_call_paths_filenames,
+                std::vector<klee::ConstraintManager> _constraints)
+      : Node(_id, Node::NodeType::RETURN_PROCESS, nullptr, _prev,
+             _call_paths_filenames, _constraints),
         value(_value), operation(_operation) {}
 
   int get_return_value() const { return value; }

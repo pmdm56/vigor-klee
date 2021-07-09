@@ -5,8 +5,7 @@
 
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
-                                               llvm::cl::Positional,
-                                               llvm::cl::OneOrMore);
+                                               llvm::cl::Positional);
 
 llvm::cl::OptionCategory BDDGeneratorCat("BDD generator specific options");
 
@@ -25,7 +24,27 @@ llvm::cl::opt<std::string>
 
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
+
+  if (InputBDDFile.size()) {
+    auto bdd = BDD::BDD::deserialize(InputBDDFile);
+
+    if (Gv.size()) {
+      auto file = std::ofstream(Gv);
+      assert(file.is_open());
+
+      BDD::GraphvizGenerator graphviz_generator(file);
+      bdd.visit(graphviz_generator);
+    }
+
+    return 0;
+  }
+
   std::vector<call_path_t *> call_paths;
+
+  if (InputCallPathFiles.size() == 0) {
+    assert(false &&
+           "Please provide either at least 1 call path file, or a bdd file");
+  }
 
   for (auto file : InputCallPathFiles) {
     std::cerr << "Loading: " << file << std::endl;
@@ -51,7 +70,7 @@ int main(int argc, char **argv) {
   }
 
   if (OutputBDDFile.size()) {
-    bdd.serialize(OutputBDDFile, InputCallPathFiles);
+    BDD::BDD::serialize(bdd, OutputBDDFile);
   }
 
   for (auto call_path : call_paths) {

@@ -19,7 +19,7 @@ private:
   const char *COLOR_NEXT = "cyan";
 
 public:
-  GraphvizGenerator(std::ostream &_os) : os(_os) {}
+  GraphvizGenerator(std::ostream &_os) : os(_os), next(nullptr) {}
   GraphvizGenerator(std::ostream &_os,
                     const std::unordered_set<uint64_t> &_processed,
                     const Node *_next)
@@ -64,6 +64,7 @@ public:
       assert(node->get_on_false()->get_prev());
       assert(node->get_on_false()->get_prev()->get_id() == node->get_id());
     }
+
     auto condition = node->get_condition();
 
     assert(node->get_on_true());

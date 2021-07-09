@@ -34,15 +34,41 @@
 
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
-                                               llvm::cl::Positional,
-                                               llvm::cl::OneOrMore);
+                                               llvm::cl::Positional);
 
 llvm::cl::OptionCategory SyNAPSE("SyNAPSE specific options");
+
+llvm::cl::opt<std::string>
+    InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
+                 llvm::cl::cat(SyNAPSE));
 
 llvm::cl::opt<std::string>
     Out("out", llvm::cl::desc("Output directory for every generated file."),
         llvm::cl::cat(SyNAPSE));
 } // namespace
+
+BDD::BDD build_bdd() {
+  assert((InputBDDFile.size() != 0 || InputCallPathFiles.size() != 0) &&
+         "Please provide either at least 1 call path file, or a bdd file");
+
+  if (InputBDDFile.size() > 0) {
+    return BDD::BDD::deserialize(InputBDDFile);
+  }
+
+  std::vector<call_path_t *> call_paths;
+
+  for (auto file : InputCallPathFiles) {
+    std::cerr << "Loading: " << file << std::endl;
+
+    std::vector<std::string> expressions_str;
+    std::deque<klee::ref<klee::Expr>> expressions;
+
+    call_path_t *call_path = load_call_path(file, expressions_str, expressions);
+    call_paths.push_back(call_path);
+  }
+
+  return BDD::BDD(call_paths);
+}
 
 int main(int argc, char **argv) {
   synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::DEBUG;
@@ -59,19 +85,7 @@ int main(int argc, char **argv) {
     os_ptr = &std::cerr;
   }
 
-  std::vector<call_path_t *> call_paths;
-
-  for (auto file : InputCallPathFiles) {
-    std::cerr << "Loading: " << file << std::endl;
-
-    std::vector<std::string> expressions_str;
-    std::deque<klee::ref<klee::Expr>> expressions;
-
-    call_path_t *call_path = load_call_path(file, expressions_str, expressions);
-    call_paths.push_back(call_path);
-  }
-
-  BDD::BDD bdd(call_paths);
+  BDD::BDD bdd = build_bdd();
   synapse::SearchEngine se(bdd);
 
   synapse::DFS dfs;
@@ -94,10 +108,6 @@ int main(int argc, char **argv) {
   synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
       *os_ptr);
   winner.visit(BMv2SimpleSwitchgRPC_generator);
-
-  for (auto call_path : call_paths) {
-    delete call_path;
-  }
 
   if (os_ptr != &std::cerr) {
     delete os_ptr;
