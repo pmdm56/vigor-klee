@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../execution_plan/context.h"
 #include "../../log.h"
 #include "../module.h"
 #include "call-paths-to-bdd.h"
@@ -20,7 +19,7 @@ public:
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Modify,
                Target::BMv2SimpleSwitchgRPC, "IPv4Modify") {}
 
-  IPv4Modify(const BDD::Node *node,
+  IPv4Modify(BDD::BDDNode_ptr node,
              const std::vector<modification_t> &_modifications)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Modify,
                Target::BMv2SimpleSwitchgRPC, "IPv4Modify", node),
@@ -39,29 +38,28 @@ private:
     return call.extra_vars["the_chunk"].second;
   }
 
-  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
-    auto call = node->get_call();
+  processing_result_t process_call(const ExecutionPlan &ep,
+                                   BDD::BDDNode_ptr node,
+                                   const BDD::Call *casted) override {
+    processing_result_t result;
+    auto call = casted->get_call();
 
     if (call.function_name != "packet_return_chunk") {
-      return BDD::BDDVisitor::Action::STOP;
+      return result;
     }
 
     auto all_prev_packet_return_chunk =
-        get_all_prev_functions(node, "packet_return_chunk");
+        get_all_prev_functions(casted, "packet_return_chunk");
 
     if (all_prev_packet_return_chunk.size() != 0) {
-      return BDD::BDDVisitor::Action::STOP;
+      return result;
     }
 
     auto all_prev_packet_borrow_next_chunk =
-        get_all_prev_functions(node, "packet_borrow_next_chunk");
+        get_all_prev_functions(casted, "packet_borrow_next_chunk");
 
     if (all_prev_packet_borrow_next_chunk.size() <= 1) {
-      return BDD::BDDVisitor::Action::STOP;
+      return result;
     }
 
     assert(!call.args["the_chunk"].in.isNull());
@@ -69,7 +67,7 @@ private:
     auto borrow_ipv4 = all_prev_packet_borrow_next_chunk.rbegin()[1];
 
     auto curr_ipv4_chunk = call.args["the_chunk"].in;
-    auto prev_ipv4_chunk = get_ipv4_chunk(borrow_ipv4);
+    auto prev_ipv4_chunk = get_ipv4_chunk(borrow_ipv4.get());
 
     assert(curr_ipv4_chunk->getWidth() == 20 * 8);
     assert(prev_ipv4_chunk->getWidth() == 20 * 8);
@@ -77,34 +75,23 @@ private:
     auto _modifications = build_modifications(prev_ipv4_chunk, curr_ipv4_chunk);
 
     if (_modifications.size() == 0) {
-      // ignore
-      auto ep = context->get_current();
-      auto new_ep =
-          ExecutionPlan(ep, node->get_next(), Target::BMv2SimpleSwitchgRPC);
-
       auto new_module = std::make_shared<Ignore>(node);
-      context->add(new_ep, new_module);
-    } else {
-      auto new_module = std::make_shared<IPv4Modify>(node, _modifications);
-      auto ep_node = ExecutionPlanNode::build(new_module);
-      auto ep = context->get_current();
-      auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-      auto new_ep = ExecutionPlan(ep, new_leaf);
+      auto new_ep =
+          ep.ignore_leaf(node->get_next(), Target::BMv2SimpleSwitchgRPC);
 
-      context->add(new_ep, new_module);
+      result.module = new_module;
+      result.next_eps.push_back(new_ep);
+
+      return result;
     }
 
-    return BDD::BDDVisitor::Action::STOP;
-  }
+    auto new_module = std::make_shared<IPv4Modify>(node, _modifications);
+    auto new_ep = ep.add_leaves(new_module, node->get_next());
 
-  BDD::BDDVisitor::Action
-  visitReturnInit(const BDD::ReturnInit *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
+    result.module = new_module;
+    result.next_eps.push_back(new_ep);
 
-  BDD::BDDVisitor::Action
-  visitReturnProcess(const BDD::ReturnProcess *node) override {
-    return BDD::BDDVisitor::Action::STOP;
+    return result;
   }
 
 public:

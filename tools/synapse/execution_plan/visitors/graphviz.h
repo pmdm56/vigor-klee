@@ -167,7 +167,7 @@ private:
     return rgb;
   }
 
-  void dump_bdd(const BDD::BDD *bdd,
+  void dump_bdd(const BDD::BDD &bdd,
                 const std::unordered_set<uint64_t> &processed,
                 const BDD::Node *next) {
     std::string leaf_fpath = get_rand_fname();
@@ -185,8 +185,8 @@ private:
 
     BDD::GraphvizGenerator bdd_graphviz(leaf_ofs, processed, next);
 
-    assert(bdd->get_process());
-    bdd->get_process()->visit(bdd_graphviz);
+    assert(bdd.get_process());
+    bdd.get_process()->visit(bdd_graphviz);
     leaf_ofs << "}\n";
 
     leaf_ofs.flush();
@@ -294,8 +294,8 @@ private:
       if (node->m) {
         assert(node->m->get_node());
         search_space_ofs << ", tooltip=\""
-                         << get_bdd_node_name(node->m->get_node()) << " -> "
-                         << node->m->get_target_name()
+                         << get_bdd_node_name(node->m->get_node().get())
+                         << " -> " << node->m->get_target_name()
                          << "::" << node->m->get_name() << "\"";
         // search_space_ofs << ", label=\"" << node->m->get_target_name()
         //                  << "::" << node->m->get_name() << "\"";
@@ -367,7 +367,7 @@ public:
     const BDD::Node *next_node = nullptr;
 
     if (ep.get_next_node()) {
-      next_node = ep.get_next_node();
+      next_node = ep.get_next_node().get();
     }
 
     bdd_fpaths.clear();
@@ -420,17 +420,10 @@ public:
 
   /********************************************
    *
-   *                  Tofino
-   *
-   ********************************************/
-  VISIT_PRINT_MODULE_NAME(targets::tofino::A)
-  VISIT_PRINT_MODULE_NAME(targets::tofino::B)
-
-  /********************************************
-   *
    *              BMv2SimpleSwitchgRPC
    *
    ********************************************/
+
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::SendToController)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Ignore)
   VISIT_PRINT_MODULE_NAME(

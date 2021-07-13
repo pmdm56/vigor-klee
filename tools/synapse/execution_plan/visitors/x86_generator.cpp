@@ -890,11 +890,11 @@ void x86_Generator::allocate(const ExecutionPlan &ep) {
   buffer << "\nbool nf_init() {\n";
   lvl++;
 
-  auto node = ep.get_bdd()->get_init();
+  auto node = ep.get_bdd().get_init();
   while (node) {
     switch (node->get_type()) {
     case BDD::Node::NodeType::CALL: {
-      auto call_node = static_cast<const BDD::Call *>(node);
+      auto call_node = static_cast<const BDD::Call *>(node.get());
       auto call = call_node->get_call();
 
       pad(buffer);

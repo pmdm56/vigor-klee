@@ -91,6 +91,9 @@ public:
 };
 
 class BDDVisitor;
+class Node;
+
+typedef std::shared_ptr<Node> BDDNode_ptr;
 
 class Node {
 public:
@@ -112,8 +115,8 @@ protected:
   uint64_t id;
   NodeType type;
 
-  Node *next;
-  Node *prev;
+  BDDNode_ptr next;
+  BDDNode_ptr prev;
 
   std::vector<std::string> call_paths_filenames;
   std::vector<klee::ConstraintManager> constraints;
@@ -134,55 +137,42 @@ public:
     process_call_paths(_call_paths);
   }
 
-  Node(uint64_t _id, NodeType _type, Node *_next, Node *_prev,
-       const std::vector<call_path_t *> &_call_paths)
+  Node(uint64_t _id, NodeType _type, const BDDNode_ptr &_next,
+       const BDDNode_ptr &_prev, const std::vector<call_path_t *> &_call_paths)
       : id(_id), type(_type), next(_next), prev(_prev) {
     process_call_paths(_call_paths);
   }
 
-  Node(uint64_t _id, NodeType _type, Node *_next, Node *_prev,
+  Node(uint64_t _id, NodeType _type, const BDDNode_ptr &_next,
+       const BDDNode_ptr &_prev,
        const std::vector<std::string> &_call_paths_filenames,
        const std::vector<klee::ConstraintManager> &_constraints)
       : id(_id), type(_type), next(_next), prev(_prev),
         call_paths_filenames(_call_paths_filenames), constraints(_constraints) {
   }
 
-  void replace_next(Node *_next) {
-    next = _next;
+  void replace_next(const BDDNode_ptr &_next) { next = _next; }
 
-    if (next) {
-      next->replace_prev(this);
-      assert(next->get_prev());
-      assert(next->get_prev()->get_id() == id);
-    }
-  }
-
-  void add_next(Node *_next) {
+  void add_next(const BDDNode_ptr &_next) {
     assert(next == nullptr);
     assert(_next);
 
     next = _next;
-    next->add_prev(this);
-
-    if (next) {
-      assert(next->get_prev());
-      assert(next->get_prev()->get_id() == id);
-    }
   }
 
-  void replace_prev(Node *_prev) { prev = _prev; }
+  void replace_prev(const BDDNode_ptr &_prev) { prev = _prev; }
 
-  void add_prev(Node *_prev) {
+  void add_prev(const BDDNode_ptr &_prev) {
     assert(prev == nullptr);
     assert(_prev);
     prev = _prev;
   }
 
-  const Node *get_next() const { return next; }
-  Node *get_next() { return next; }
+  const BDDNode_ptr &get_next() const { return next; }
+  const BDDNode_ptr &get_next() { return next; }
 
-  const Node *get_prev() const { return prev; }
-  Node *get_prev() { return prev; }
+  const BDDNode_ptr &get_prev() const { return prev; }
+  const BDDNode_ptr &get_prev() { return prev; }
 
   NodeType get_type() const { return type; }
   uint64_t get_id() const { return id; }
@@ -197,13 +187,7 @@ public:
 
   symbols_t get_all_generated_symbols() const;
 
-  virtual ~Node() {
-    if (next) {
-      delete next;
-    }
-  }
-
-  virtual Node *clone(bool recursive = false) const = 0;
+  virtual BDDNode_ptr clone(bool recursive = false) const = 0;
   virtual void recursive_update_ids(uint64_t &new_id) = 0;
   void update_id(uint64_t new_id) { id = new_id; }
 
@@ -239,6 +223,20 @@ public:
 
   virtual void visit(BDDVisitor &visitor) const = 0;
   virtual std::string dump(bool one_liner = false) const = 0;
+
+  virtual std::string dump_recursive(int lvl = 0) const {
+    std::stringstream result;
+
+    auto pad = std::string(lvl * 2, ' ');
+
+    result << pad << dump(true) << "\n";
+
+    if (next) {
+      result << next->dump_recursive(lvl + 1);
+    }
+
+    return result.str();
+  }
 };
 
 class Call : public Node {
@@ -250,12 +248,13 @@ public:
        const std::vector<call_path_t *> &_call_paths)
       : Node(_id, Node::NodeType::CALL, _call_paths), call(_call) {}
 
-  Call(uint64_t _id, call_t _call, Node *_next, Node *_prev,
-       const std::vector<call_path_t *> &_call_paths)
+  Call(uint64_t _id, call_t _call, const BDDNode_ptr &_next,
+       const BDDNode_ptr &_prev, const std::vector<call_path_t *> &_call_paths)
       : Node(_id, Node::NodeType::CALL, _next, _prev, _call_paths),
         call(_call) {}
 
-  Call(uint64_t _id, call_t _call, Node *_next, Node *_prev,
+  Call(uint64_t _id, call_t _call, const BDDNode_ptr &_next,
+       const BDDNode_ptr &_prev,
        const std::vector<std::string> &_call_paths_filenames,
        const std::vector<klee::ConstraintManager> &_constraints)
       : Node(_id, Node::NodeType::CALL, _next, _prev, _call_paths_filenames,
@@ -267,12 +266,13 @@ public:
   symbols_t get_generated_symbols(bool capture_all = false) const {
     SymbolFactory symbol_factory;
     symbols_t symbols;
+
     std::vector<const Node *> nodes;
 
     const Node *node = this;
     while (node) {
       nodes.insert(nodes.begin(), node);
-      node = node->get_prev();
+      node = node->get_prev().get();
     }
 
     for (auto node : nodes) {
@@ -291,9 +291,8 @@ public:
     return symbols;
   }
 
-  virtual Node *clone(bool recursive = false) const override {
-    Call *clone;
-    Node *clone_next;
+  virtual BDDNode_ptr clone(bool recursive = false) const override {
+    BDDNode_ptr clone_next;
 
     if (recursive && next) {
       clone_next = next->clone(true);
@@ -301,8 +300,8 @@ public:
       clone_next = next;
     }
 
-    clone =
-        new Call(id, call, clone_next, prev, call_paths_filenames, constraints);
+    auto clone = std::make_shared<Call>(id, call, clone_next, prev,
+                                        call_paths_filenames, constraints);
 
     if (recursive && clone_next) {
       clone_next->prev = clone;
@@ -312,8 +311,8 @@ public:
   }
 
   virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = ++new_id;
-    next->recursive_update_ids(new_id);
+    id = new_id;
+    next->recursive_update_ids(++new_id);
   }
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
@@ -353,7 +352,7 @@ public:
 class Branch : public Node {
 private:
   klee::ref<klee::Expr> condition;
-  Node *on_false;
+  BDDNode_ptr on_false;
 
 public:
   Branch(uint64_t _id, klee::ref<klee::Expr> _condition,
@@ -361,14 +360,16 @@ public:
       : Node(_id, Node::NodeType::BRANCH, _call_paths), condition(_condition),
         on_false(nullptr) {}
 
-  Branch(uint64_t _id, klee::ref<klee::Expr> _condition, Node *_on_true,
-         Node *_on_false, Node *_prev,
+  Branch(uint64_t _id, klee::ref<klee::Expr> _condition,
+         const BDDNode_ptr &_on_true, const BDDNode_ptr &_on_false,
+         const BDDNode_ptr &_prev,
          const std::vector<call_path_t *> &_call_paths)
       : Node(_id, Node::NodeType::BRANCH, _on_true, _prev, _call_paths),
         condition(_condition), on_false(_on_false) {}
 
-  Branch(uint64_t _id, klee::ref<klee::Expr> _condition, Node *_on_true,
-         Node *_on_false, Node *_prev,
+  Branch(uint64_t _id, klee::ref<klee::Expr> _condition,
+         const BDDNode_ptr &_on_true, const BDDNode_ptr &_on_false,
+         const BDDNode_ptr &_prev,
          const std::vector<std::string> &_call_paths_filenames,
          const std::vector<klee::ConstraintManager> &_constraints)
       : Node(_id, Node::NodeType::BRANCH, _on_true, _prev,
@@ -377,48 +378,22 @@ public:
 
   klee::ref<klee::Expr> get_condition() const { return condition; }
 
-  void replace_on_true(Node *_on_true) { replace_next(_on_true); }
+  void replace_on_true(const BDDNode_ptr &_on_true) { replace_next(_on_true); }
 
-  void add_on_true(Node *_on_true) { add_next(_on_true); }
+  void add_on_true(const BDDNode_ptr &_on_true) { add_next(_on_true); }
 
-  const Node *get_on_true() const { return next; }
-  Node *get_on_true() { return next; }
+  const BDDNode_ptr &get_on_true() const { return next; }
+  BDDNode_ptr get_on_true() { return next; }
 
-  void replace_on_false(Node *_on_false) {
-    on_false = _on_false;
+  void replace_on_false(const BDDNode_ptr &_on_false) { on_false = _on_false; }
 
-    if (on_false) {
-      on_false->replace_prev(this);
-    }
+  void add_on_false(const BDDNode_ptr &_on_false) { on_false = _on_false; }
 
-    if (on_false) {
-      assert(on_false->get_prev());
-      assert(on_false->get_prev()->get_id() == id);
-    }
-  }
+  const BDDNode_ptr &get_on_false() const { return on_false; }
+  BDDNode_ptr get_on_false() { return on_false; }
 
-  void add_on_false(Node *_on_false) {
-    on_false = _on_false;
-    on_false->add_prev(this);
-
-    if (on_false) {
-      assert(on_false->get_prev());
-      assert(on_false->get_prev()->get_id() == id);
-    }
-  }
-
-  const Node *get_on_false() const { return on_false; }
-  Node *get_on_false() { return on_false; }
-
-  ~Branch() {
-    if (on_false) {
-      delete on_false;
-    }
-  }
-
-  virtual Node *clone(bool recursive = false) const override {
-    Branch *clone;
-    Node *clone_on_true, *clone_on_false;
+  virtual BDDNode_ptr clone(bool recursive = false) const override {
+    BDDNode_ptr clone_on_true, clone_on_false;
 
     assert(next);
     assert(on_false);
@@ -431,8 +406,9 @@ public:
       clone_on_false = on_false;
     }
 
-    clone = new Branch(id, condition, clone_on_true, clone_on_false, prev,
-                       call_paths_filenames, constraints);
+    auto clone =
+        std::make_shared<Branch>(id, condition, clone_on_true, clone_on_false,
+                                 prev, call_paths_filenames, constraints);
 
     if (recursive) {
       clone_on_true->prev = clone;
@@ -443,20 +419,30 @@ public:
   }
 
   virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = ++new_id;
+    id = new_id;
+    new_id++;
     next->recursive_update_ids(new_id);
     on_false->recursive_update_ids(new_id);
   }
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
 
-  std::string dump(bool one_liner = false) const {
+  std::string dump(bool one_liner = false) const override {
     std::stringstream ss;
     ss << id << ":";
     ss << "if (";
     ss << expr_to_string(condition, one_liner);
     ss << ")";
     return ss.str();
+  }
+
+  std::string dump_recursive(int lvl = 0) const override {
+    std::stringstream result;
+
+    result << Node::dump_recursive(lvl);
+    result << on_false->dump_recursive(lvl + 1);
+
+    return result.str();
   }
 };
 
@@ -469,21 +455,23 @@ public:
       : Node(_id, Node::NodeType::RETURN_RAW, nullptr, nullptr, call_paths.cp),
         calls_list(call_paths.backup) {}
 
-  ReturnRaw(uint64_t _id, Node *_prev, std::vector<calls_t> _calls_list,
+  ReturnRaw(uint64_t _id, const BDDNode_ptr &_prev,
+            std::vector<calls_t> _calls_list,
             const std::vector<std::string> &_call_paths_filenames,
             const std::vector<klee::ConstraintManager> &_constraints)
       : Node(_id, Node::NodeType::RETURN_RAW, nullptr, _prev,
              _call_paths_filenames, _constraints),
         calls_list(_calls_list) {}
 
-  virtual Node *clone(bool recursive = false) const override {
-    ReturnRaw *clone =
-        new ReturnRaw(id, prev, calls_list, call_paths_filenames, constraints);
+  virtual BDDNode_ptr clone(bool recursive = false) const override {
+    auto clone = std::make_shared<ReturnRaw>(id, prev, calls_list,
+                                             call_paths_filenames, constraints);
     return clone;
   }
 
   virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = ++new_id;
+    id = new_id;
+    new_id++;
   }
 
   std::vector<calls_t> get_calls() const { return calls_list; }
@@ -534,12 +522,12 @@ public:
     fill_return_value(calls_list[0]);
   }
 
-  ReturnInit(uint64_t _id, Node *_prev, ReturnType _value)
+  ReturnInit(uint64_t _id, const BDDNode_ptr &_prev, ReturnType _value)
       : Node(_id, Node::NodeType::RETURN_INIT, nullptr, _prev,
              _prev->call_paths_filenames, _prev->constraints),
         value(_value) {}
 
-  ReturnInit(uint64_t _id, Node *_prev, ReturnType _value,
+  ReturnInit(uint64_t _id, const BDDNode_ptr &_prev, ReturnType _value,
              const std::vector<std::string> &_call_paths_filenames,
              std::vector<klee::ConstraintManager> _constraints)
       : Node(_id, Node::NodeType::RETURN_INIT, nullptr, _prev,
@@ -548,13 +536,14 @@ public:
 
   ReturnType get_return_value() const { return value; }
 
-  virtual Node *clone(bool recursive = false) const override {
-    ReturnInit *clone = new ReturnInit(id, prev, value);
+  virtual BDDNode_ptr clone(bool recursive = false) const override {
+    auto clone = std::make_shared<ReturnInit>(id, prev, value);
     return clone;
   }
 
   virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = ++new_id;
+    id = new_id;
+    new_id++;
   }
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
@@ -663,12 +652,14 @@ public:
     fill_return_value(calls_list[0]);
   }
 
-  ReturnProcess(uint64_t _id, Node *_prev, int _value, Operation _operation)
+  ReturnProcess(uint64_t _id, const BDDNode_ptr &_prev, int _value,
+                Operation _operation)
       : Node(_id, Node::NodeType::RETURN_PROCESS, nullptr, _prev,
              _prev->call_paths_filenames, _prev->constraints),
         value(_value), operation(_operation) {}
 
-  ReturnProcess(uint64_t _id, Node *_prev, int _value, Operation _operation,
+  ReturnProcess(uint64_t _id, const BDDNode_ptr &_prev, int _value,
+                Operation _operation,
                 const std::vector<std::string> &_call_paths_filenames,
                 std::vector<klee::ConstraintManager> _constraints)
       : Node(_id, Node::NodeType::RETURN_PROCESS, nullptr, _prev,
@@ -679,13 +670,14 @@ public:
 
   Operation get_return_operation() const { return operation; }
 
-  virtual Node *clone(bool recursive = false) const override {
-    ReturnProcess *clone = new ReturnProcess(id, prev, value, operation);
+  virtual BDDNode_ptr clone(bool recursive = false) const override {
+    auto clone = std::make_shared<ReturnProcess>(id, prev, value, operation);
     return clone;
   }
 
   virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = ++new_id;
+    id = new_id;
+    new_id++;
   }
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }

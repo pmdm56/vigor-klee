@@ -22,7 +22,6 @@
 #include "call-paths-to-bdd.h"
 #include "load-call-paths.h"
 
-#include "execution_plan/context.h"
 #include "execution_plan/execution_plan.h"
 #include "execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/BMv2SimpleSwitchgRPC_generator.h"
 #include "execution_plan/visitors/graphviz.h"
@@ -105,9 +104,9 @@ int main(int argc, char **argv) {
   // synapse::x86_Generator x86_generator(std::cerr);
   // winner.visit(x86_generator);
 
-  synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
-      *os_ptr);
-  winner.visit(BMv2SimpleSwitchgRPC_generator);
+  // synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
+  //    *os_ptr);
+  // winner.visit(BMv2SimpleSwitchgRPC_generator);
 
   if (os_ptr != &std::cerr) {
     delete os_ptr;

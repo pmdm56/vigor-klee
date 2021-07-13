@@ -7,10 +7,10 @@ namespace synapse {
 int ExecutionPlanNode::counter = 0;
 int ExecutionPlan::counter = 0;
 
-void ExecutionPlan::replace_node_in_bdd(BDD::Node *target) {
+void ExecutionPlan::replace_node_in_bdd(BDD::BDDNode_ptr target) {
   assert(target);
 
-  std::vector<BDD::Node *> nodes{bdd->get_process()};
+  std::vector<BDD::BDDNode_ptr> nodes{bdd.get_process()};
   auto target_id = target->get_id();
 
   while (nodes.size()) {
@@ -23,12 +23,12 @@ void ExecutionPlan::replace_node_in_bdd(BDD::Node *target) {
       auto prev = node->get_prev();
 
       if (!prev) {
-        bdd->replace_process(target);
+        bdd.replace_process(target);
         return;
       }
 
       if (prev->get_type() == BDD::Node::NodeType::BRANCH) {
-        auto branch = static_cast<BDD::Branch *>(prev);
+        auto branch = static_cast<BDD::Branch *>(prev.get());
 
         if (branch->get_on_true()->get_id() == target_id) {
           branch->replace_on_true(target);
@@ -43,7 +43,7 @@ void ExecutionPlan::replace_node_in_bdd(BDD::Node *target) {
     }
 
     if (node->get_type() == BDD::Node::NodeType::BRANCH) {
-      auto branch = static_cast<BDD::Branch *>(node);
+      auto branch = static_cast<BDD::Branch *>(node.get());
 
       nodes.push_back(branch->get_on_true());
       nodes.push_back(branch->get_on_false());

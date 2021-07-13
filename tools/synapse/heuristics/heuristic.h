@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../execution_plan/context.h"
 #include "../execution_plan/execution_plan.h"
 #include "score.h"
 
@@ -34,6 +33,7 @@ private:
 
   typename std::set<ExecutionPlan, T>::iterator get_next_it() const {
     assert(execution_plans.size());
+
     auto conf = static_cast<const HeuristicConfiguration *>(&configuration);
     auto it = std::prev(execution_plans.end());
 
@@ -68,10 +68,10 @@ public:
     return copy;
   }
 
-  void add(Context context) {
-    assert(context.get_next_eps().size());
+  void add(const std::vector<ExecutionPlan> &next_eps) {
+    assert(next_eps.size());
 
-    for (auto ep : context.get_next_eps()) {
+    for (auto ep : next_eps) {
       auto found = false;
 
       for (auto saved_ep : execution_plans) {

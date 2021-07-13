@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../execution_plan/context.h"
 #include "../../log.h"
 #include "../module.h"
 #include "call-paths-to-bdd.h"
@@ -15,7 +14,7 @@ public:
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Consume,
                Target::BMv2SimpleSwitchgRPC, "IPv4Consume") {}
 
-  IPv4Consume(const BDD::Node *node)
+  IPv4Consume(BDD::BDDNode_ptr node)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Consume,
                Target::BMv2SimpleSwitchgRPC, "IPv4Consume", node) {}
 
@@ -60,50 +59,37 @@ private:
     return true;
   }
 
-  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
-    auto call = node->get_call();
+  processing_result_t process_call(const ExecutionPlan &ep,
+                                   BDD::BDDNode_ptr node,
+                                   const BDD::Call *casted) override {
+    processing_result_t result;
+    auto call = casted->get_call();
 
     if (call.function_name != "packet_borrow_next_chunk") {
-      return BDD::BDDVisitor::Action::STOP;
+      return result;
     }
 
     // IPv4 should come after L2 Consume
     auto all_prev_packet_borrow_next_chunk =
-        get_all_prev_functions(node, "packet_borrow_next_chunk");
+        get_all_prev_functions(casted, "packet_borrow_next_chunk");
 
     if (all_prev_packet_borrow_next_chunk.size() != 1) {
-      return BDD::BDDVisitor::Action::STOP;
+      return result;
     }
 
     auto _length = call.args["length"].expr;
     auto _chunk = call.extra_vars["the_chunk"].second;
 
-    is_valid_ipv4(all_prev_packet_borrow_next_chunk[0], _length,
+    is_valid_ipv4(all_prev_packet_borrow_next_chunk[0].get(), _length,
                   node->get_constraints());
 
     auto new_module = std::make_shared<IPv4Consume>(node);
-    auto ep_node = ExecutionPlanNode::build(new_module);
-    auto ep = context->get_current();
-    auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-    auto new_ep = ExecutionPlan(ep, new_leaf);
+    auto new_ep = ep.add_leaves(new_module, node->get_next());
 
-    context->add(new_ep, new_module);
+    result.module = new_module;
+    result.next_eps.push_back(new_ep);
 
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnInit(const BDD::ReturnInit *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnProcess(const BDD::ReturnProcess *node) override {
-    return BDD::BDDVisitor::Action::STOP;
+    return result;
   }
 
 public:

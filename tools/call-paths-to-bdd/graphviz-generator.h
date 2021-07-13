@@ -91,12 +91,12 @@ public:
 
     os << "\t\t" << get_gv_name(node);
     os << " -> ";
-    os << get_gv_name(node->get_on_true());
+    os << get_gv_name(node->get_on_true().get());
     os << " [label=\"True\"];\n";
 
     os << "\t\t" << get_gv_name(node);
     os << " -> ";
-    os << get_gv_name(node->get_on_false());
+    os << get_gv_name(node->get_on_false().get());
     os << " [label=\"False\"];\n";
 
     return STOP;
@@ -178,7 +178,7 @@ public:
 
     os << "\t\t" << get_gv_name(node);
     os << " -> ";
-    os << get_gv_name(node->get_next());
+    os << get_gv_name(node->get_next().get());
     os << ";\n";
 
     return STOP;

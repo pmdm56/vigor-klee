@@ -19,11 +19,15 @@ enum Target {
 
 class ExecutionPlan;
 class Module;
-class Context;
 
 typedef std::shared_ptr<Module> Module_ptr;
 
-class Module : public BDD::BDDVisitor {
+struct processing_result_t {
+  std::vector<ExecutionPlan> next_eps;
+  Module_ptr module;
+};
+
+class Module {
 public:
   enum ModuleType {
     x86_CurrentTime,
@@ -82,19 +86,17 @@ protected:
   Target target;
   Target next_target;
   const char *name;
-  const BDD::Node *node;
-
-  Context *context; // intermediary data
+  BDD::BDDNode_ptr node;
 
 protected:
   Module(ModuleType _type, Target _target, const char *_name,
-         const BDD::Node *_node)
+         BDD::BDDNode_ptr _node)
       : type(_type), target(_target), next_target(_target), name(_name),
-        node(_node), context(nullptr) {}
+        node(_node) {}
 
   Module(ModuleType _type, Target _target, const char *_name)
       : type(_type), target(_target), next_target(_target), name(_name),
-        node(nullptr), context(nullptr) {}
+        node(nullptr) {}
 
 public:
   Module() {}
@@ -107,7 +109,7 @@ public:
   Target get_target() const { return target; }
   Target get_next_target() const { return next_target; }
 
-  const BDD::Node *get_node() const {
+  BDD::BDDNode_ptr get_node() const {
     if (!node) {
       std::cerr << "\n";
       std::cerr << get_target_name() << "::" << get_name() << "NO NODE\n";
@@ -116,7 +118,7 @@ public:
     return node;
   }
 
-  void replace_node(const BDD::Node *_node) {
+  void replace_node(BDD::BDDNode_ptr _node) {
     node = _node;
     assert(node);
   }
@@ -140,21 +142,38 @@ public:
 
   std::string get_target_name() const { return target_to_string(target); }
 
-  Context process_node(const ExecutionPlan &_ep, const BDD::Node *node);
+  processing_result_t process_node(const ExecutionPlan &_ep,
+                                   BDD::BDDNode_ptr node);
 
   virtual void visit(ExecutionPlanVisitor &visitor) const = 0;
   virtual Module_ptr clone() const = 0;
   virtual bool equals(const Module *other) const = 0;
 
-  ~Module();
+protected:
+  // Shared module functionality
+  virtual processing_result_t process_branch(const ExecutionPlan &ep,
+                                             BDD::BDDNode_ptr node,
+                                             const BDD::Branch *casted);
+
+  virtual processing_result_t process_call(const ExecutionPlan &ep,
+                                           BDD::BDDNode_ptr node,
+                                           const BDD::Call *casted);
+
+  virtual processing_result_t
+  process_return_init(const ExecutionPlan &ep, BDD::BDDNode_ptr node,
+                      const BDD::ReturnInit *casted);
+
+  virtual processing_result_t
+  process_return_process(const ExecutionPlan &ep, BDD::BDDNode_ptr node,
+                         const BDD::ReturnProcess *casted);
 
 protected:
   // General useful queries
   bool query_contains_map_has_key(const BDD::Branch *node) const;
-  const BDD::Node *
+  BDD::BDDNode_ptr
   get_past_node_that_generates_symbol(const BDD::Node *current_node,
                                       const std::string &symbol) const;
-  std::vector<const BDD::Node *>
+  std::vector<BDD::BDDNode_ptr>
   get_all_prev_functions(const BDD::Node *node,
                          const std::string &function_name);
   std::vector<modification_t>

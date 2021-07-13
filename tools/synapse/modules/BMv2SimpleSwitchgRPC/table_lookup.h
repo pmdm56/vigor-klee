@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../execution_plan/context.h"
 #include "../../log.h"
 #include "../module.h"
 #include "call-paths-to-bdd.h"
@@ -33,7 +32,7 @@ public:
       : Module(ModuleType::BMv2SimpleSwitchgRPC_TableLookup,
                Target::BMv2SimpleSwitchgRPC, "TableLookup") {}
 
-  TableLookup(const BDD::Node *node, uint64_t _table_id,
+  TableLookup(BDD::BDDNode_ptr node, uint64_t _table_id,
               std::vector<key_t> _keys,
               std::vector<klee::ref<klee::Expr>> _params,
               std::string _map_has_this_key_label,
@@ -44,7 +43,7 @@ public:
         map_has_this_key_label(_map_has_this_key_label),
         bdd_function(_bdd_function) {}
 
-  TableLookup(const BDD::Node *node, uint64_t _table_id,
+  TableLookup(BDD::BDDNode_ptr node, uint64_t _table_id,
               klee::ref<klee::Expr> _key,
               std::vector<klee::ref<klee::Expr>> _params,
               std::string _map_has_this_key_label,
@@ -52,7 +51,7 @@ public:
       : TableLookup(node, _table_id, std::vector<key_t>{ key_t(_key) }, _params,
                     _map_has_this_key_label, _bdd_function) {}
 
-  TableLookup(const BDD::Node *node, uint64_t _table_id,
+  TableLookup(BDD::BDDNode_ptr node, uint64_t _table_id,
               std::vector<key_t> _keys, klee::ref<klee::Expr> _value,
               std::string _map_has_this_key_label,
               const std::string &_bdd_function)
@@ -60,7 +59,7 @@ public:
                     std::vector<klee::ref<klee::Expr>>{ _value },
                     _map_has_this_key_label, _bdd_function) {}
 
-  TableLookup(const BDD::Node *node, uint64_t _table_id,
+  TableLookup(BDD::BDDNode_ptr node, uint64_t _table_id,
               klee::ref<klee::Expr> _key, klee::ref<klee::Expr> _value,
               std::string _map_has_this_key_label,
               const std::string &_bdd_function)

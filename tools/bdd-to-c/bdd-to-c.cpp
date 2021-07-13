@@ -113,11 +113,11 @@ Node_ptr build_ast(AST &ast, const BDD::Node *root, TargetOption target) {
       auto cond = branch_node->get_condition();
 
       ast.push();
-      auto then_node = build_ast(ast, on_true_bdd, target);
+      auto then_node = build_ast(ast, on_true_bdd.get(), target);
       ast.pop();
 
       ast.push();
-      auto else_node = build_ast(ast, on_false_bdd, target);
+      auto else_node = build_ast(ast, on_false_bdd.get(), target);
       ast.pop();
 
       auto cond_node = transpile(&ast, cond);
@@ -154,7 +154,7 @@ Node_ptr build_ast(AST &ast, const BDD::Node *root, TargetOption target) {
         nodes.push_back(call_node);
       }
 
-      root = root->get_next();
+      root = root->get_next().get();
       break;
     };
 
@@ -220,7 +220,7 @@ Node_ptr build_ast(AST &ast, const BDD::Node *root, TargetOption target) {
 }
 
 void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
-  auto init_root = build_ast(ast, bdd.get_init(), target);
+  auto init_root = build_ast(ast, bdd.get_init().get(), target);
   std::vector<Node_ptr> intro_nodes;
 
   switch (target) {
@@ -359,7 +359,7 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
   init_root = Block::build(intro_nodes_init);
   ast.commit(init_root);
 
-  auto process_root = build_ast(ast, bdd.get_process(), target);
+  auto process_root = build_ast(ast, bdd.get_process().get(), target);
 
   assert(process_root->get_kind() == Node::NodeKind::BLOCK);
   std::vector<Node_ptr> intro_nodes_process = intro_nodes;

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../execution_plan/context.h"
 #include "../../log.h"
 #include "../module.h"
 #include "call-paths-to-bdd.h"
@@ -15,7 +14,7 @@ public:
       : Module(ModuleType::BMv2SimpleSwitchgRPC_VectorReturn,
                Target::BMv2SimpleSwitchgRPC, "VectorReturn") {}
 
-  VectorReturn(const BDD::Node *node)
+  VectorReturn(BDD::BDDNode_ptr node)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_VectorReturn,
                Target::BMv2SimpleSwitchgRPC, "VectorReturn", node) {}
 
@@ -23,10 +22,12 @@ private:
   call_t get_previous_vector_borrow(const BDD::Node *node,
                                     klee::ref<klee::Expr> wanted_vector) const {
     while (node->get_prev()) {
-      node = node->get_prev();
+      node = node->get_prev().get();
+
       if (node->get_type() != BDD::Node::NodeType::CALL) {
         continue;
       }
+
       auto call_node = static_cast<const BDD::Call *>(node);
       auto call = call_node->get_call();
 
@@ -42,6 +43,7 @@ private:
         return call;
       }
     }
+
     assert(false);
   }
 
@@ -64,40 +66,28 @@ private:
     return !eq;
   }
 
-  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
-    auto call = node->get_call();
+  processing_result_t process_call(const ExecutionPlan &ep,
+                                   BDD::BDDNode_ptr node,
+                                   const BDD::Call *casted) override {
+    processing_result_t result;
+    auto call = casted->get_call();
 
     if (call.function_name != "vector_return") {
-      return BDD::BDDVisitor::Action::STOP;
+      return result;
     }
 
-    if (modifies_cell(node)) {
-      return BDD::BDDVisitor::Action::STOP;
+    if (modifies_cell(casted)) {
+      return result;
     }
-
-    // ignore
-    auto ep = context->get_current();
-    auto new_ep =
-        ExecutionPlan(ep, node->get_next(), Target::BMv2SimpleSwitchgRPC);
 
     auto new_module = std::make_shared<VectorReturn>(node);
-    context->add(new_ep, new_module);
+    auto new_ep =
+        ep.ignore_leaf(node->get_next(), Target::BMv2SimpleSwitchgRPC);
 
-    return BDD::BDDVisitor::Action::STOP;
-  }
+    result.module = new_module;
+    result.next_eps.push_back(new_ep);
 
-  BDD::BDDVisitor::Action
-  visitReturnInit(const BDD::ReturnInit *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnProcess(const BDD::ReturnProcess *node) override {
-    return BDD::BDDVisitor::Action::STOP;
+    return result;
   }
 
 public:

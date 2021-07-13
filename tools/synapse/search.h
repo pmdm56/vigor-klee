@@ -45,10 +45,11 @@ public:
   }
 
   template <class T> ExecutionPlan search(Heuristic<T> h) {
-    Context context(bdd);
-    SearchSpace search_space(h.get_cfg(), context.get_next_eps()[0]);
+    auto first_execution_plan = ExecutionPlan(bdd);
+    SearchSpace search_space(h.get_cfg(), first_execution_plan);
 
-    h.add(context);
+    h.add(std::vector<ExecutionPlan>{ first_execution_plan });
+
     while (!h.finished()) {
       auto available = h.size();
       auto next_ep = h.pop();
@@ -66,17 +67,15 @@ public:
       report_t report;
 
       for (auto module : modules) {
-        auto next_context = module->process_node(next_ep, next_node);
+        auto result = module->process_node(next_ep, next_node);
 
-        if (next_context.processed()) {
-          auto next_eps = next_context.get_next_eps();
-
+        if (result.next_eps.size()) {
           report.target_name.push_back(module->get_target_name());
           report.name.push_back(module->get_name());
-          report.generated_contexts.push_back(next_context.size());
+          report.generated_contexts.push_back(result.next_eps.size());
 
-          h.add(next_context);
-          search_space.add_leaves(next_context);
+          h.add(result.next_eps);
+          search_space.add_leaves(next_ep, result.module, result.next_eps);
         }
       }
 
@@ -126,10 +125,10 @@ public:
       }
     }
 
-    // std::cerr << h.get_all().size() << " solutions:\n";
-    // for (auto &ep : h.get_all()) {
-    //   synapse::Graphviz::visualize(ep);
-    // }
+    std::cerr << h.get_all().size() << " solutions:\n";
+    for (auto &ep : h.get_all()) {
+      synapse::Graphviz::visualize(ep);
+    }
     // synapse::Graphviz::visualize(h.get(), search_space);
     // synapse::Graphviz::visualize(h.get());
 

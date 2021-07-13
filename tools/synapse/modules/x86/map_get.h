@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../execution_plan/context.h"
 #include "../../log.h"
 #include "../module.h"
 #include "call-paths-to-bdd.h"
@@ -19,7 +18,7 @@ private:
 public:
   MapGet() : Module(ModuleType::x86_MapGet, Target::x86, "MapGet") {}
 
-  MapGet(const BDD::Node *node, klee::ref<klee::Expr> _map_addr,
+  MapGet(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _map_addr,
          klee::ref<klee::Expr> _key, klee::ref<klee::Expr> _map_has_this_key,
          klee::ref<klee::Expr> _value_out)
       : Module(ModuleType::x86_MapGet, Target::x86, "MapGet", node),
@@ -27,12 +26,12 @@ public:
         value_out(_value_out) {}
 
 private:
-  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
+  processing_result_t process_call(const ExecutionPlan &ep,
+                                   BDD::BDDNode_ptr node,
+                                   const BDD::Call *casted) override {
+    processing_result_t result;
 
-  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
-    auto call = node->get_call();
+    auto call = casted->get_call();
 
     if (call.function_name == "map_get") {
       assert(!call.args["map"].expr.isNull());
@@ -47,25 +46,13 @@ private:
 
       auto new_module = std::make_shared<MapGet>(node, _map_addr, _key,
                                                  _map_has_this_key, _value_out);
-      auto ep_node = ExecutionPlanNode::build(new_module);
-      auto ep = context->get_current();
-      auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-      auto new_ep = ExecutionPlan(ep, new_leaf);
+      auto new_ep = ep.add_leaves(new_module, node->get_next());
 
-      context->add(new_ep, new_module);
+      result.module = new_module;
+      result.next_eps.push_back(new_ep);
     }
 
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnInit(const BDD::ReturnInit *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnProcess(const BDD::ReturnProcess *node) override {
-    return BDD::BDDVisitor::Action::STOP;
+    return result;
   }
 
 public:

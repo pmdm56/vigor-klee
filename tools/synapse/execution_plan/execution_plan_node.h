@@ -65,7 +65,7 @@ public:
 
   void replace_prev(ExecutionPlanNode_ptr _prev) { prev = _prev; }
 
-  void replace_node(const BDD::Node *node) { module->replace_node(node); }
+  void replace_node(BDD::BDDNode_ptr node) { module->replace_node(node); }
 
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(this); }
 

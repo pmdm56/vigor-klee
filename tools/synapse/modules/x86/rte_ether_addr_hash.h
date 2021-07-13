@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../execution_plan/context.h"
 #include "../../log.h"
 #include "../module.h"
 #include "call-paths-to-bdd.h"
@@ -18,19 +17,18 @@ public:
   RteEtherAddrHash()
       : Module(ModuleType::x86_RteEtherAddrHash, Target::x86, "EtherHash") {}
 
-  RteEtherAddrHash(const BDD::Node *node, klee::ref<klee::Expr> _obj,
+  RteEtherAddrHash(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _obj,
                    klee::ref<klee::Expr> _hash)
       : Module(ModuleType::x86_RteEtherAddrHash, Target::x86, "EtherHash",
                node),
         obj(_obj), hash(_hash) {}
 
 private:
-  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
-    auto call = node->get_call();
+  processing_result_t process_call(const ExecutionPlan &ep,
+                                   BDD::BDDNode_ptr node,
+                                   const BDD::Call *casted) override {
+    processing_result_t result;
+    auto call = casted->get_call();
 
     if (call.function_name == "rte_ether_addr_hash") {
       assert(!call.args["obj"].in.isNull());
@@ -40,25 +38,13 @@ private:
       auto _hash = call.ret;
 
       auto new_module = std::make_shared<RteEtherAddrHash>(node, _obj, _hash);
-      auto ep_node = ExecutionPlanNode::build(new_module);
-      auto ep = context->get_current();
-      auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-      auto new_ep = ExecutionPlan(ep, new_leaf);
+      auto new_ep = ep.add_leaves(new_module, node->get_next());
 
-      context->add(new_ep, new_module);
+      result.module = new_module;
+      result.next_eps.push_back(new_ep);
     }
 
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnInit(const BDD::ReturnInit *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnProcess(const BDD::ReturnProcess *node) override {
-    return BDD::BDDVisitor::Action::STOP;
+    return result;
   }
 
 public:

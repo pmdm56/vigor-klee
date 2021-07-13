@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../execution_plan/context.h"
 #include "../../log.h"
 #include "../module.h"
 #include "call-paths-to-bdd.h"
@@ -22,40 +21,30 @@ public:
                                   "dchain_rejuvenate_index" };
   }
 
-  Ignore(const BDD::Node *node)
+  Ignore(BDD::BDDNode_ptr node)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_Ignore,
                Target::BMv2SimpleSwitchgRPC, "Ignore", node) {}
 
 private:
-  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
-    auto call = node->get_call();
+  processing_result_t process_call(const ExecutionPlan &ep,
+                                   BDD::BDDNode_ptr node,
+                                   const BDD::Call *casted) override {
+    processing_result_t result;
+    auto call = casted->get_call();
 
     auto found_it = std::find(functions_to_ignore.begin(),
                               functions_to_ignore.end(), call.function_name);
 
     if (found_it != functions_to_ignore.end()) {
-      auto ep = context->get_current();
-      auto new_ep =
-          ExecutionPlan(ep, node->get_next(), Target::BMv2SimpleSwitchgRPC);
       auto new_module = std::make_shared<Ignore>(node);
-      context->add(new_ep, new_module);
+      auto new_ep =
+          ep.ignore_leaf(node->get_next(), Target::BMv2SimpleSwitchgRPC);
+
+      result.module = new_module;
+      result.next_eps.push_back(new_ep);
     }
 
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnInit(const BDD::ReturnInit *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnProcess(const BDD::ReturnProcess *node) override {
-    return BDD::BDDVisitor::Action::STOP;
+    return result;
   }
 
 public:

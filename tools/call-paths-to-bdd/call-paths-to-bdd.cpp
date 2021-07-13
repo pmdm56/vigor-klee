@@ -246,7 +246,7 @@ symbols_t Node::get_all_generated_symbols() const {
       return symbols;
     }
 
-    node = node->get_prev();
+    node = node->get_prev().get();
   }
 
   return symbols;
@@ -505,11 +505,11 @@ call_t BDD::get_successful_call(std::vector<call_path_t *> call_paths) const {
   return call_paths[0]->calls[0];
 }
 
-Node *BDD::populate(call_paths_t call_paths) {
-  Node *local_root = nullptr;
-  Node *local_leaf = nullptr;
+BDDNode_ptr BDD::populate(call_paths_t call_paths) {
+  BDDNode_ptr local_root = nullptr;
+  BDDNode_ptr local_leaf = nullptr;
 
-  ReturnRaw *return_raw = new ReturnRaw(get_and_inc_id(), call_paths);
+  auto return_raw = std::make_shared<ReturnRaw>(get_and_inc_id(), call_paths);
 
   while (call_paths.cp.size()) {
     CallPathsGroup group(call_paths);
@@ -525,7 +525,7 @@ Node *BDD::populate(call_paths_t call_paths) {
       }
 
       auto call = get_successful_call(on_true.cp);
-      Call *node = new Call(get_and_inc_id(), call, on_true.cp);
+      auto node = std::make_shared<Call>(get_and_inc_id(), call, on_true.cp);
 
       // root node
       if (local_root == nullptr) {
@@ -533,8 +533,11 @@ Node *BDD::populate(call_paths_t call_paths) {
         local_leaf = node;
       } else {
         local_leaf->add_next(node);
+        node->add_prev(local_leaf);
+
         assert(node->get_prev());
         assert(node->get_prev()->get_id() == local_leaf->get_id());
+
         local_leaf = node;
       }
 
@@ -545,14 +548,17 @@ Node *BDD::populate(call_paths_t call_paths) {
     } else {
       auto discriminating_constraint = group.get_discriminating_constraint();
 
-      Branch *node = new Branch(get_and_inc_id(), discriminating_constraint,
+      auto node = std::make_shared<Branch>(get_and_inc_id(), discriminating_constraint,
                                 call_paths.cp);
 
-      Node *on_true_root = populate(on_true);
-      Node *on_false_root = populate(on_false);
+      auto on_true_root = populate(on_true);
+      auto on_false_root = populate(on_false);
 
       node->add_on_true(on_true_root);
       node->add_on_false(on_false_root);
+
+      on_true_root->replace_prev(node);
+      on_false_root->replace_prev(node);
 
       assert(on_true_root->get_prev());
       assert(on_true_root->get_prev()->get_id() == node->get_id());
@@ -565,6 +571,8 @@ Node *BDD::populate(call_paths_t call_paths) {
       }
 
       local_leaf->add_next(node);
+      node->add_prev(local_leaf);
+
       assert(node->get_prev());
       assert(node->get_prev()->get_id() == local_leaf->get_id());
 
@@ -576,6 +584,8 @@ Node *BDD::populate(call_paths_t call_paths) {
     local_root = return_raw;
   } else {
     local_leaf->add_next(return_raw);
+    return_raw->add_prev(local_leaf);
+
     assert(return_raw->get_prev());
     assert(return_raw->get_prev()->get_id() == local_leaf->get_id());
   }
@@ -583,40 +593,48 @@ Node *BDD::populate(call_paths_t call_paths) {
   return local_root;
 }
 
-Node *BDD::populate_init(const Node *root) {
-  Node *local_root = nullptr;
-  Node *local_leaf = nullptr;
-  Node *new_node;
+BDDNode_ptr BDD::populate_init(const BDDNode_ptr& root) {
+  Node* node = root.get();
 
-  while (root != nullptr) {
+  BDDNode_ptr local_root;
+  BDDNode_ptr local_leaf;
+  BDDNode_ptr new_node;
+
+  while (node) {
     new_node = nullptr;
 
-    switch (root->get_type()) {
+    switch (node->get_type()) {
     case Node::NodeType::CALL: {
-      if (get_fname(root) == BDD::INIT_CONTEXT_MARKER) {
-        root = nullptr;
+      if (get_fname(node) == BDD::INIT_CONTEXT_MARKER) {
+        node = nullptr;
         break;
       }
 
-      if (!is_skip_function(root)) {
-        new_node = root->clone();
-        new_node->replace_next(nullptr);
-        new_node->replace_prev(nullptr);
+      if (!is_skip_function(node)) {
+        BDDNode_ptr empty;
+
+        new_node = node->clone();
+        new_node->replace_next(empty);
+        new_node->replace_prev(empty);
       }
 
-      root = root->get_next();
+      node = node->get_next().get();
       break;
     };
     case Node::NodeType::BRANCH: {
-      const Branch *root_branch = static_cast<const Branch *>(root);
+      auto root_branch = static_cast<const Branch *>(node);
 
-      Node *on_true_node = populate_init(root_branch->get_on_true());
-      Node *on_false_node = populate_init(root_branch->get_on_false());
+      auto on_true_node = populate_init(root_branch->get_on_true());
+      auto on_false_node = populate_init(root_branch->get_on_false());
 
-      Branch *branch = static_cast<Branch *>(root->clone());
+      auto cloned = node->clone();
+      auto branch = static_cast<Branch *>(cloned.get());
 
       branch->replace_on_true(on_true_node);
       branch->replace_on_false(on_false_node);
+
+      on_true_node->replace_prev(cloned);
+      on_false_node->replace_prev(cloned);
 
       assert(on_true_node->get_prev());
       assert(on_true_node->get_prev()->get_id() == branch->get_id());
@@ -624,16 +642,16 @@ Node *BDD::populate_init(const Node *root) {
       assert(on_false_node->get_prev());
       assert(on_false_node->get_prev()->get_id() == branch->get_id());
 
-      new_node = branch;
-      root = nullptr;
+      new_node = cloned;
+      node = nullptr;
 
       break;
     };
     case Node::NodeType::RETURN_RAW: {
-      const ReturnRaw *root_return_raw = static_cast<const ReturnRaw *>(root);
-      new_node = new ReturnInit(get_and_inc_id(), root_return_raw);
+      auto root_return_raw = static_cast<const ReturnRaw *>(node);
+      new_node = std::make_shared<ReturnInit>(get_and_inc_id(), root_return_raw);
 
-      root = nullptr;
+      node = nullptr;
       break;
     };
     default: {
@@ -646,66 +664,73 @@ Node *BDD::populate_init(const Node *root) {
       local_leaf = local_root;
     } else if (new_node) {
       local_leaf->replace_next(new_node);
+      new_node->replace_prev(local_leaf);
+
       assert(new_node->get_prev());
       assert(new_node->get_prev()->get_id() == local_leaf->get_id());
+
       local_leaf = new_node;
     }
   }
 
   if (local_root == nullptr) {
-    local_root = new ReturnInit(get_and_inc_id());
+    local_root = std::make_shared<ReturnInit>(get_and_inc_id());
   }
 
   return local_root;
 }
 
-Node *BDD::populate_process(const Node *root, bool store) {
-  Node *local_root = nullptr;
-  Node *local_leaf = nullptr;
-  Node *new_node;
+BDDNode_ptr BDD::populate_process(const BDDNode_ptr& root, bool store) {
+  Node* node = root.get();
 
-  while (root != nullptr) {
+  BDDNode_ptr local_root;
+  BDDNode_ptr local_leaf;
+  BDDNode_ptr new_node;
+
+  while (node != nullptr) {
     new_node = nullptr;
 
-    switch (root->get_type()) {
+    switch (node->get_type()) {
     case Node::NodeType::CALL: {
-      if (get_fname(root) == BDD::INIT_CONTEXT_MARKER) {
+      if (get_fname(node) == BDD::INIT_CONTEXT_MARKER) {
         store = true;
-        root = root->get_next();
+        node = node->get_next().get();
         break;
       }
 
-      if (store && !is_skip_function(root)) {
-        new_node = root->clone();
-        new_node->replace_next(nullptr);
-        new_node->replace_prev(nullptr);
+      if (store && !is_skip_function(node)) {
+        BDDNode_ptr empty;
+
+        new_node = node->clone();
+        new_node->replace_next(empty);
+        new_node->replace_prev(empty);
       }
 
-      root = root->get_next();
+      node = node->get_next().get();
       break;
     };
     case Node::NodeType::BRANCH: {
-      const Branch *root_branch = static_cast<const Branch *>(root);
+      auto root_branch = static_cast<const Branch *>(node);
       assert(root_branch->get_on_true());
       assert(root_branch->get_on_false());
 
-      Node *on_true_node = populate_process(root_branch->get_on_true(), store);
-      Node *on_false_node =
+      auto on_true_node = populate_process(root_branch->get_on_true(), store);
+      auto on_false_node =
           populate_process(root_branch->get_on_false(), store);
 
       assert(on_true_node);
       assert(on_false_node);
 
-      auto skip = is_skip_condition(root);
+      auto skip = is_skip_condition(node);
       auto equal = false;
 
       if (on_true_node->get_type() == Node::NodeType::RETURN_PROCESS &&
           on_false_node->get_type() == Node::NodeType::RETURN_PROCESS) {
 
-        ReturnProcess *on_true_ret_process =
-            static_cast<ReturnProcess *>(on_true_node);
-        ReturnProcess *on_false_ret_process =
-            static_cast<ReturnProcess *>(on_false_node);
+        auto on_true_ret_process =
+            static_cast<ReturnProcess *>(on_true_node.get());
+        auto on_false_ret_process =
+            static_cast<ReturnProcess *>(on_false_node.get());
 
         equal |= (on_true_ret_process->get_return_operation() ==
                       on_false_ret_process->get_return_operation() &&
@@ -718,10 +743,14 @@ Node *BDD::populate_process(const Node *root, bool store) {
       }
 
       else if (store && !skip) {
-        Branch *branch = static_cast<Branch *>(root->clone());
+        auto clone = node->clone();
+        auto branch = static_cast<Branch *>(clone.get());
 
         branch->replace_on_true(on_true_node);
         branch->replace_on_false(on_false_node);
+
+        on_true_node->replace_prev(clone);
+        on_false_node->replace_prev(clone);
 
         assert(on_true_node->get_prev());
         assert(on_true_node->get_prev()->get_id() == branch->get_id());
@@ -729,7 +758,7 @@ Node *BDD::populate_process(const Node *root, bool store) {
         assert(on_false_node->get_prev());
         assert(on_false_node->get_prev()->get_id() == branch->get_id());
 
-        new_node = branch;
+        new_node = clone;
       }
 
       else {
@@ -742,15 +771,15 @@ Node *BDD::populate_process(const Node *root, bool store) {
             on_false_node->get_type() == Node::NodeType::RETURN_PROCESS;
 
         if (on_true_node->get_type() == Node::NodeType::RETURN_PROCESS) {
-          ReturnProcess *on_true_return_process =
-              static_cast<ReturnProcess *>(on_true_node);
+          auto on_true_return_process =
+              static_cast<ReturnProcess *>(on_true_node.get());
           on_true_empty |= (on_true_return_process->get_return_operation() ==
                             ReturnProcess::Operation::ERR);
         }
 
         if (on_false_node->get_type() == Node::NodeType::RETURN_PROCESS) {
-          ReturnProcess *on_false_return_process =
-              static_cast<ReturnProcess *>(on_false_node);
+          auto on_false_return_process =
+              static_cast<ReturnProcess *>(on_false_node.get());
           on_false_empty |= (on_false_return_process->get_return_operation() ==
                              ReturnProcess::Operation::ERR);
         }
@@ -759,14 +788,14 @@ Node *BDD::populate_process(const Node *root, bool store) {
         new_node = on_false_empty ? on_true_node : on_false_node;
       }
 
-      root = nullptr;
+      node = nullptr;
       break;
     };
     case Node::NodeType::RETURN_RAW: {
-      const ReturnRaw *root_return_raw = static_cast<const ReturnRaw *>(root);
-      new_node = new ReturnProcess(get_and_inc_id(), root_return_raw);
+      auto root_return_raw = static_cast<const ReturnRaw *>(node);
+      new_node = std::make_shared<ReturnProcess>(get_and_inc_id(), root_return_raw);
 
-      root = nullptr;
+      node = nullptr;
       break;
     };
     default: {
@@ -779,6 +808,8 @@ Node *BDD::populate_process(const Node *root, bool store) {
       local_leaf = new_node;
     } else if (new_node) {
       local_leaf->replace_next(new_node);
+      new_node->replace_prev(local_leaf);
+
       local_leaf = new_node;
     }
   }
@@ -836,10 +867,10 @@ void BDDVisitor::visit(const ReturnRaw *node) {
 
 void BDDVisitor::visit(const BDD &bdd) {
   assert(bdd.get_init());
-  visitInitRoot(bdd.get_init());
+  visitInitRoot(bdd.get_init().get());
 
   assert(bdd.get_process());
-  visitProcessRoot(bdd.get_process());
+  visitProcessRoot(bdd.get_process().get());
 }
 
 void BDDVisitor::visitInitRoot(const Node *root) {

@@ -4,7 +4,6 @@
 #include <assert.h>
 #include <vector>
 
-#include "execution_plan/context.h"
 #include "heuristics/heuristic.h"
 #include "heuristics/score.h"
 
@@ -63,21 +62,18 @@ public:
     leaves.push_back(root);
   }
 
-  void add_leaves(const Context &context) {
+  void add_leaves(const ExecutionPlan &ep, Module_ptr module,
+                  const std::vector<ExecutionPlan> &next_eps) {
     std::vector<search_space_node_t> nodes;
 
-    int execution_plan_id = context.has_current()
-                                ? context.get_current().get_id()
-                                : leaves[0]->execution_plan_id;
+    int execution_plan_id = ep.get_id();
 
     assert(pending_leaves.execution_plan_id == -1 ||
            pending_leaves.execution_plan_id == execution_plan_id);
 
     pending_leaves.execution_plan_id = execution_plan_id;
 
-    auto eps = context.get_next_eps();
-    for (auto ep : eps) {
-      auto module = context.get_processed_module();
+    for (auto ep : next_eps) {
       pending_leaves.add(ep, module);
     }
   }

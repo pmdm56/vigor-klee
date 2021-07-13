@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../execution_plan/context.h"
 #include "../../log.h"
 #include "../module.h"
 #include "call-paths-to-bdd.h"
@@ -14,37 +13,25 @@ public:
   Drop()
       : Module(ModuleType::BMv2SimpleSwitchgRPC_Drop,
                Target::BMv2SimpleSwitchgRPC, "Drop") {}
-  Drop(const BDD::Node *node)
+  Drop(BDD::BDDNode_ptr node)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_Drop,
                Target::BMv2SimpleSwitchgRPC, "Drop", node) {}
 
 private:
-  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
+  processing_result_t
+  process_return_process(const ExecutionPlan &ep, BDD::BDDNode_ptr node,
+                         const BDD::ReturnProcess *casted) override {
+    processing_result_t result;
 
-  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnInit(const BDD::ReturnInit *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnProcess(const BDD::ReturnProcess *node) override {
-    if (node->get_return_operation() == BDD::ReturnProcess::Operation::DROP) {
+    if (casted->get_return_operation() == BDD::ReturnProcess::Operation::DROP) {
       auto new_module = std::make_shared<Drop>(node);
-      auto ep_node = ExecutionPlanNode::build(new_module);
-      auto ep = context->get_current();
-      auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-      auto new_ep = ExecutionPlan(ep, new_leaf);
+      auto new_ep = ep.add_leaves(new_module, node->get_next(), true);
 
-      context->add(new_ep, new_module);
+      result.module = new_module;
+      result.next_eps.push_back(new_ep);
     }
 
-    return BDD::BDDVisitor::Action::STOP;
+    return result;
   }
 
 public:
