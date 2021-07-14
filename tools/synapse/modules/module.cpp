@@ -7,9 +7,49 @@ namespace synapse {
 struct candidate_t {
   BDD::BDDNode_ptr node;
   std::unordered_set<uint64_t> siblings;
+  klee::ref<klee::Expr> extra_condition;
   klee::ref<klee::Expr> condition;
 
   candidate_t(BDD::BDDNode_ptr _node) : node(_node) {}
+
+  candidate_t(BDD::BDDNode_ptr _node, klee::ref<klee::Expr> _condition)
+      : candidate_t(_node, _condition, false) {}
+
+  candidate_t(BDD::BDDNode_ptr _node, klee::ref<klee::Expr> _condition,
+              bool _negate)
+      : node(_node) {
+    if (_negate) {
+      condition = BDD::solver_toolbox.exprBuilder->Not(_condition);
+    } else {
+      condition = _condition;
+    }
+  }
+
+  candidate_t(const candidate_t &candidate, BDD::BDDNode_ptr _node)
+      : node(_node), condition(candidate.condition) {}
+
+  candidate_t(const candidate_t &candidate, BDD::BDDNode_ptr _node,
+              klee::ref<klee::Expr> _condition)
+      : candidate_t(candidate, _node, _condition, false) {}
+
+  candidate_t(const candidate_t &candidate, BDD::BDDNode_ptr _node,
+              klee::ref<klee::Expr> _condition, bool _negate)
+      : node(_node) {
+    klee::ref<klee::Expr> rhs;
+
+    if (_negate) {
+      rhs = BDD::solver_toolbox.exprBuilder->Not(_condition);
+    } else {
+      rhs = _condition;
+    }
+
+    if (!candidate.condition.isNull()) {
+      condition =
+          BDD::solver_toolbox.exprBuilder->And(candidate.condition, rhs);
+    } else {
+      condition = rhs;
+    }
+  }
 };
 
 std::map<std::string, bool> fn_has_side_effects_lookup{
@@ -443,8 +483,9 @@ std::vector<candidate_t> get_candidates(const BDD::Node *current_node) {
 
   if (next->get_type() == BDD::Node::BRANCH) {
     auto branch = static_cast<const BDD::Branch *>(next.get());
-    candidates.emplace_back(branch->get_on_true());
-    candidates.emplace_back(branch->get_on_false());
+    candidates.emplace_back(branch->get_on_true(), branch->get_condition());
+    candidates.emplace_back(branch->get_on_false(), branch->get_condition(),
+                            true);
     check_future_branches = true;
   } else {
     candidates.emplace_back(next->get_next());
@@ -458,10 +499,12 @@ std::vector<candidate_t> get_candidates(const BDD::Node *current_node) {
       auto branch = static_cast<const BDD::Branch *>(candidate.node.get());
       check_future_branches = true;
 
-      candidates.emplace_back(branch->get_on_true());
-      candidates.emplace_back(branch->get_on_false());
+      candidates.emplace_back(candidate, branch->get_on_true(),
+                              branch->get_condition());
+      candidates.emplace_back(candidate, branch->get_on_false(),
+                              branch->get_condition(), true);
     } else if (candidate.node->get_next()) {
-      candidates.emplace_back(candidate.node->get_next());
+      candidates.emplace_back(candidate, candidate.node->get_next());
     }
 
     auto found_it =
@@ -490,7 +533,7 @@ std::vector<candidate_t> get_candidates(const BDD::Node *current_node) {
       }
 
       if (!are_rw_dependencies_met(current_node, candidate.node.get(),
-                                   candidate.condition)) {
+                                   candidate.extra_condition)) {
         continue;
       }
     }
@@ -532,7 +575,7 @@ void reorder_bdd(ExecutionPlan &ep, BDD::BDDNode_ptr node,
   auto old_next = node->get_next();
   assert(old_next);
 
-  if (!candidate.condition.isNull()) {
+  if (!candidate.extra_condition.isNull()) {
     std::vector<call_path_t *> no_call_paths;
 
     auto old_next_cloned = old_next->clone(true);
@@ -541,7 +584,7 @@ void reorder_bdd(ExecutionPlan &ep, BDD::BDDNode_ptr node,
     bdd.set_id(id);
 
     auto branch = std::make_shared<BDD::Branch>(
-        bdd.get_and_inc_id(), candidate.condition, no_call_paths);
+        bdd.get_and_inc_id(), candidate.extra_condition, no_call_paths);
 
     branch->replace_on_true(candidate_clone);
     branch->replace_on_false(old_next_cloned);
@@ -679,12 +722,85 @@ void reorder_bdd(ExecutionPlan &ep, BDD::BDDNode_ptr node,
   }
 }
 
+void rename_generated_symbols(candidate_t &candidate) {
+  auto candidate_node = candidate.node;
+  assert(candidate_node->get_type() == BDD::Node::NodeType::CALL);
+
+  auto call_node = static_cast<BDD::Call *>(candidate_node.get());
+  auto symbols = call_node->get_generated_symbols();
+
+  BDD::RenameSymbols renamer;
+
+  for (auto symbol : symbols) {
+    std::stringstream new_label;
+    new_label << symbol.label << "_" << candidate_node->get_id();
+
+    renamer.add_translation(symbol.label, new_label.str());
+  }
+
+  if (!candidate.condition.isNull()) {
+    candidate.condition = renamer.rename(candidate.condition);
+  }
+
+  if (!candidate.extra_condition.isNull()) {
+    candidate.extra_condition = renamer.rename(candidate.extra_condition);
+  }
+
+  std::vector<BDD::BDDNode_ptr> nodes{candidate_node};
+
+  while (nodes.size()) {
+    auto node = nodes[0];
+    nodes.erase(nodes.begin());
+
+    if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto branch_node = static_cast<BDD::Branch *>(node.get());
+
+      auto condition = branch_node->get_condition();
+      auto renamed_condition = renamer.rename(condition);
+
+      branch_node->set_condition(renamed_condition);
+
+      nodes.push_back(branch_node->get_on_true());
+      nodes.push_back(branch_node->get_on_false());
+    }
+
+    else if (node->get_type() == BDD::Node::NodeType::CALL) {
+      auto call_node = static_cast<BDD::Call *>(node.get());
+      auto call = call_node->get_call();
+
+      for (auto &arg_pair : call.args) {
+        auto &arg = call.args[arg_pair.first];
+
+        arg.expr = renamer.rename(arg.expr);
+        arg.in = renamer.rename(arg.in);
+        arg.out = renamer.rename(arg.out);
+      }
+
+      call_node->set_call(call);
+
+      for (auto &extra_var_pair : call.extra_vars) {
+        auto &extra_var = call.extra_vars[extra_var_pair.first];
+
+        extra_var.first = renamer.rename(extra_var.first);
+        extra_var.second = renamer.rename(extra_var.second);
+      }
+
+      nodes.push_back(node->get_next());
+    }
+
+    auto constraints = node->get_constraints();
+    auto renamed_constraints = renamer.rename(constraints);
+
+    node->set_constraints(renamed_constraints);
+  }
+}
+
 std::vector<ExecutionPlan> get_reordered(const ExecutionPlan &ep) {
   std::vector<ExecutionPlan> reordered;
 
-  if (ep.get_reordered_nodes() >= 1) {
-    return reordered;
-  }
+  // if (ep.get_reordered_nodes() >= 0) {
+  //   return reordered;
+  // }
 
   auto next_node = ep.get_next_node();
 
@@ -702,18 +818,6 @@ std::vector<ExecutionPlan> get_reordered(const ExecutionPlan &ep) {
     return reordered;
   }
 
-  for (auto leaf : ep.get_leaves()) {
-    std::cerr << "leaf : ";
-    if (leaf.leaf) {
-      std::cerr << leaf.leaf->get_module()->get_name();
-    }
-    std::cerr << " => ";
-    if (leaf.next) {
-      std::cerr << leaf.next->dump(true);
-    }
-    std::cerr << "\n";
-  }
-
   auto candidates = get_candidates(current_node.get());
 
   if (candidates.size()) {
@@ -724,9 +828,30 @@ std::vector<ExecutionPlan> get_reordered(const ExecutionPlan &ep) {
     for (auto candidate : candidates) {
       Log::dbg() << "\n";
       Log::dbg() << "  candidate : " << candidate.node->dump(true) << "\n";
+
+      if (candidate.node->get_type() == BDD::Node::NodeType::CALL) {
+        auto call_node = static_cast<BDD::Call *>(candidate.node.get());
+        auto symbols = call_node->get_generated_symbols();
+
+        if (symbols.size()) {
+          std::stringstream buffer;
+          buffer << "  symbols    :";
+          for (auto symbol : symbols) {
+            buffer << " " << symbol.label;
+          }
+          buffer << "\n";
+          Log::dbg() << buffer.str();
+        }
+      }
+
       if (!candidate.condition.isNull()) {
         Log::dbg() << "  condition : "
                    << expr_to_string(candidate.condition, true) << "\n";
+      }
+
+      if (!candidate.extra_condition.isNull()) {
+        Log::dbg() << "  extra condition : "
+                   << expr_to_string(candidate.extra_condition, true) << "\n";
       }
       std::stringstream buffer;
       buffer << "  siblings :  ";
@@ -743,7 +868,15 @@ std::vector<ExecutionPlan> get_reordered(const ExecutionPlan &ep) {
   for (auto candidate : candidates) {
     auto ep_cloned = ep.clone(true);
     auto bdd = ep_cloned.get_bdd();
+
     auto current_node_clone = bdd.get_node_by_id(current_node->get_id());
+    auto candidate_node_clone = bdd.get_node_by_id(candidate.node->get_id());
+
+    candidate.node = candidate_node_clone;
+
+    if (!candidate.condition.isNull()) {
+      rename_generated_symbols(candidate);
+    }
 
     reorder_bdd(ep_cloned, current_node_clone, candidate);
 

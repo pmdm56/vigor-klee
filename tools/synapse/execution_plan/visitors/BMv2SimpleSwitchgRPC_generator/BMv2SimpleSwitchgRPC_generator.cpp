@@ -701,7 +701,6 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   // FIXME: assert(false && "TODO");
 }
 
-/*
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {
   auto keys = node->get_keys();
@@ -793,7 +792,6 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     ingress.apply_block << table.label << ".apply();\n";
   }
 }
-*/
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Then *node) {}

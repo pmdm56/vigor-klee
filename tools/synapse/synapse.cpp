@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
   synapse::MaximizeSwitchNodes maximize_switch_nodes;
 
   se.add_target(synapse::Target::x86);
-  se.add_target(synapse::Target::BMv2SimpleSwitchgRPC);
+  // se.add_target(synapse::Target::BMv2SimpleSwitchgRPC);
   // se.add_target(synapse::Target::Tofino);
 
   // auto winner = se.search(least_reordered);

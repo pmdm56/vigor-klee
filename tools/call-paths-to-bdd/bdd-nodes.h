@@ -185,6 +185,11 @@ public:
     return constraints;
   }
 
+  void
+  set_constraints(const std::vector<klee::ConstraintManager> &_constraints) {
+    constraints = _constraints;
+  }
+
   symbols_t get_all_generated_symbols() const;
 
   virtual BDDNode_ptr clone(bool recursive = false) const = 0;
@@ -262,6 +267,7 @@ public:
         call(_call) {}
 
   call_t get_call() const { return call; }
+  void set_call(call_t _call) { call = _call; }
 
   symbols_t get_generated_symbols(bool capture_all = false) const {
     SymbolFactory symbol_factory;
@@ -377,6 +383,9 @@ public:
         condition(_condition), on_false(_on_false) {}
 
   klee::ref<klee::Expr> get_condition() const { return condition; }
+  void set_condition(const klee::ref<klee::Expr> &_condition) {
+    condition = _condition;
+  }
 
   void replace_on_true(const BDDNode_ptr &_on_true) { replace_next(_on_true); }
 

@@ -22,6 +22,7 @@ public:
 
 private:
   uint64_t table_id;
+  klee::ref<klee::Expr> obj;
   std::vector<key_t> keys;
   std::vector<klee::ref<klee::Expr>> params;
   std::string map_has_this_key_label;
@@ -33,42 +34,42 @@ public:
                Target::BMv2SimpleSwitchgRPC, "TableLookup") {}
 
   TableLookup(BDD::BDDNode_ptr node, uint64_t _table_id,
-              std::vector<key_t> _keys,
+              klee::ref<klee::Expr> _obj, std::vector<key_t> _keys,
               std::vector<klee::ref<klee::Expr>> _params,
               std::string _map_has_this_key_label,
               const std::string &_bdd_function)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_TableLookup,
                Target::BMv2SimpleSwitchgRPC, "TableLookup", node),
-        table_id(_table_id), keys(_keys), params(_params),
+        table_id(_table_id), obj(_obj), keys(_keys), params(_params),
         map_has_this_key_label(_map_has_this_key_label),
         bdd_function(_bdd_function) {}
 
   TableLookup(BDD::BDDNode_ptr node, uint64_t _table_id,
-              klee::ref<klee::Expr> _key,
+              klee::ref<klee::Expr> _obj, klee::ref<klee::Expr> _key,
               std::vector<klee::ref<klee::Expr>> _params,
               std::string _map_has_this_key_label,
               const std::string &_bdd_function)
-      : TableLookup(node, _table_id, std::vector<key_t>{ key_t(_key) }, _params,
-                    _map_has_this_key_label, _bdd_function) {}
+      : TableLookup(node, _table_id, _obj, std::vector<key_t>{ key_t(_key) },
+                    _params, _map_has_this_key_label, _bdd_function) {}
 
   TableLookup(BDD::BDDNode_ptr node, uint64_t _table_id,
-              std::vector<key_t> _keys, klee::ref<klee::Expr> _value,
-              std::string _map_has_this_key_label,
+              klee::ref<klee::Expr> _obj, std::vector<key_t> _keys,
+              klee::ref<klee::Expr> _value, std::string _map_has_this_key_label,
               const std::string &_bdd_function)
-      : TableLookup(node, _table_id, _keys,
+      : TableLookup(node, _table_id, _obj, _keys,
                     std::vector<klee::ref<klee::Expr>>{ _value },
                     _map_has_this_key_label, _bdd_function) {}
 
   TableLookup(BDD::BDDNode_ptr node, uint64_t _table_id,
-              klee::ref<klee::Expr> _key, klee::ref<klee::Expr> _value,
-              std::string _map_has_this_key_label,
+              klee::ref<klee::Expr> _obj, klee::ref<klee::Expr> _key,
+              klee::ref<klee::Expr> _value, std::string _map_has_this_key_label,
               const std::string &_bdd_function)
-      : TableLookup(node, _table_id, std::vector<key_t>{ key_t(_key) },
+      : TableLookup(node, _table_id, _obj, std::vector<key_t>{ key_t(_key) },
                     std::vector<klee::ref<klee::Expr>>{ _value },
                     _map_has_this_key_label, _bdd_function) {}
 
 private:
-  bool multiple_queries_to_this_table(const BDD::Node *current_node,
+  bool multiple_queries_to_this_table(BDD::BDDNode_ptr current_node,
                                       uint64_t _table_id) const {
     assert(current_node);
     auto node = current_node->get_prev();
@@ -81,7 +82,7 @@ private:
         continue;
       }
 
-      auto call_node = static_cast<const BDD::Call *>(node);
+      auto call_node = static_cast<const BDD::Call *>(node.get());
       auto call = call_node->get_call();
 
       if (call.function_name != "map_get" && call.function_name != "map_put" &&
@@ -114,6 +115,8 @@ private:
 
     return false;
   }
+
+  /*
 
   struct candidate_t {
     const BDD::Node *node;
@@ -583,11 +586,36 @@ private:
     merged->replace_next(last_common_branch);
     return modified_ep;
   }
+  */
 
-  bool process_map_get(const BDD::Call *node) {
-    std::vector<ExecutionPlan> new_eps;
+  std::pair<bool, TableLookup *>
+  can_be_merged(const ExecutionPlan &ep, klee::ref<klee::Expr> _obj) const {
+    auto active_leaf = ep.get_active_leaf();
+    assert(active_leaf);
 
-    auto call = node->get_call();
+    auto module = active_leaf->get_module();
+    assert(module);
+
+    if (module->get_type() !=
+        Module::ModuleType::BMv2SimpleSwitchgRPC_TableLookup) {
+      return std::make_pair(false, nullptr);
+    }
+
+    auto prev_table_lookup = static_cast<TableLookup *>(module.get());
+    auto prev_obj = prev_table_lookup->obj;
+
+    auto eq = BDD::solver_toolbox.are_exprs_always_equal(obj, prev_obj);
+
+    if (eq) {
+      return std::make_pair(true, prev_table_lookup);
+    }
+
+    return std::make_pair(false, nullptr);
+  }
+
+  bool process_map_get(const ExecutionPlan &ep, BDD::BDDNode_ptr node,
+                       const BDD::Call *casted, processing_result_t &result) {
+    auto call = casted->get_call();
 
     if (call.function_name != "map_get") {
       return false;
@@ -609,6 +637,12 @@ private:
       return false;
     }
 
+    auto symbols = casted->get_generated_symbols();
+    assert(symbols.size() == 2);
+
+    auto _map_has_this_key_label = symbols[0].label;
+
+    /*
     auto ep = context->get_current();
     auto processed_bdd_nodes = ep.get_processed_bdd_nodes();
 
@@ -668,28 +702,47 @@ private:
 
       new_eps.push_back(new_ep);
     }
+    */
+
+    // auto merged_response = can_be_merged(ep, map);
+    // if (merged_response.first) {
+    //   auto _table_id = _map_value;
+
+    //   std::vector<key_t> _keys;
+    //   for (auto candidate : merge_candidates.candidates) {
+    //     assert(candidate.node->get_type() == BDD::Node::NodeType::CALL);
+
+    //     auto candidate_call_node =
+    //         static_cast<const BDD::Call *>(candidate.node);
+    //     auto candidate_call = candidate_call_node->get_call();
+
+    //     assert(!candidate_call.args["key"].in.isNull());
+    //     auto candidate_key = candidate_call.args["key"].in;
+
+    //     _keys.emplace_back(candidate_key, candidate.conjugate_conditions());
+    //   }
+
+    //   merged_response.second->table_id = _table_id;
+    //   merged_response.second->keys.emplace_back(_key, )
+    // }
 
     auto _table_id = node->get_id();
-    auto symbols = node->get_generated_symbols();
-    assert(symbols.size() == 2);
-    auto _map_has_this_key_label = symbols[0].label;
 
     auto new_module = std::make_shared<TableLookup>(
-        node, _table_id, _key, _value, _map_has_this_key_label,
+        node, _table_id, _map, _key, _value, _map_has_this_key_label,
         call.function_name);
-    auto ep_node = ExecutionPlanNode::build(new_module);
-    auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-    auto new_ep = ExecutionPlan(ep, new_leaf);
+    auto new_ep = ep.add_leaves(new_module, node->get_next());
 
-    new_eps.push_back(new_ep);
-    context->add(new_eps, new_module);
+    result.module = new_module;
+    result.next_eps.push_back(new_ep);
 
     return true;
   }
 
-  bool process_vector_borrow(const BDD::Call *node) {
-    std::vector<ExecutionPlan> new_eps;
-    auto call = node->get_call();
+  bool process_vector_borrow(const ExecutionPlan &ep, BDD::BDDNode_ptr node,
+                             const BDD::Call *casted,
+                             processing_result_t &result) {
+    auto call = casted->get_call();
 
     if (call.function_name != "vector_borrow") {
       return false;
@@ -711,6 +764,7 @@ private:
       return false;
     }
 
+    /*
     auto ep = context->get_current();
     auto processed_bdd_nodes = ep.get_processed_bdd_nodes();
 
@@ -766,43 +820,35 @@ private:
 
       new_eps.push_back(new_ep);
     }
+    */
 
     auto _table_id = node->get_id();
-    auto new_module = std::make_shared<TableLookup>(
-        node, _table_id, _index, _borrowed_cell, "", call.function_name);
+    auto new_module =
+        std::make_shared<TableLookup>(node, _table_id, _vector, _index,
+                                      _borrowed_cell, "", call.function_name);
 
-    auto ep_node = ExecutionPlanNode::build(new_module);
-    auto new_leaf = ExecutionPlan::leaf_t(ep_node, node->get_next());
-    auto new_ep = ExecutionPlan(ep, new_leaf);
+    auto new_ep = ep.add_leaves(new_module, node->get_next());
 
-    new_eps.push_back(new_ep);
-    context->add(new_eps, new_module);
+    result.module = new_module;
+    result.next_eps.push_back(new_ep);
 
     return true;
   }
 
-  BDD::BDDVisitor::Action visitBranch(const BDD::Branch *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
+  processing_result_t process_call(const ExecutionPlan &ep,
+                                   BDD::BDDNode_ptr node,
+                                   const BDD::Call *casted) override {
+    processing_result_t result;
 
-  BDD::BDDVisitor::Action visitCall(const BDD::Call *node) override {
-    if (process_map_get(node)) {
-      return BDD::BDDVisitor::Action::STOP;
+    if (process_map_get(ep, node, casted, result)) {
+      return result;
     }
-    if (process_vector_borrow(node)) {
-      return BDD::BDDVisitor::Action::STOP;
+
+    if (process_vector_borrow(ep, node, casted, result)) {
+      return result;
     }
-    return BDD::BDDVisitor::Action::STOP;
-  }
 
-  BDD::BDDVisitor::Action
-  visitReturnInit(const BDD::ReturnInit *node) override {
-    return BDD::BDDVisitor::Action::STOP;
-  }
-
-  BDD::BDDVisitor::Action
-  visitReturnProcess(const BDD::ReturnProcess *node) override {
-    return BDD::BDDVisitor::Action::STOP;
+    return result;
   }
 
 public:
@@ -811,7 +857,7 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new TableLookup(node, table_id, keys, params,
+    auto cloned = new TableLookup(node, table_id, obj, keys, params,
                                   map_has_this_key_label, bdd_function);
     return std::shared_ptr<Module>(cloned);
   }
@@ -824,6 +870,10 @@ public:
     auto other_cast = static_cast<const TableLookup *>(other);
 
     if (table_id != other_cast->get_table_id()) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(obj, other_cast->obj)) {
       return false;
     }
 
@@ -865,6 +915,7 @@ public:
   }
 
   uint64_t get_table_id() const { return table_id; }
+  const klee::ref<klee::Expr> &get_obj() const { return obj; }
   const std::vector<key_t> &get_keys() const { return keys; }
   const std::vector<klee::ref<klee::Expr>> &get_params() const {
     return params;

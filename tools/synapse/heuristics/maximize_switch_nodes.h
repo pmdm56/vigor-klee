@@ -45,16 +45,16 @@ struct MaximizeSwitchNodesComparator : public HeuristicConfiguration {
       auto node = nodes[0];
       nodes.erase(nodes.begin());
 
-      // auto module = node->get_module();
-      // if (module->get_type() ==
-      //     Module::ModuleType::BMv2SimpleSwitchgRPC_TableLookup) {
-      //   auto tableLookup =
-      //       static_cast<targets::BMv2SimpleSwitchgRPC::TableLookup *>(
-      //           module.get());
-      //   auto merged = tableLookup->get_keys().size() > 1;
+      auto module = node->get_module();
+      if (module->get_type() ==
+          Module::ModuleType::BMv2SimpleSwitchgRPC_TableLookup) {
+        auto tableLookup =
+            static_cast<targets::BMv2SimpleSwitchgRPC::TableLookup *>(
+                module.get());
+        auto merged = tableLookup->get_keys().size() > 1;
 
-      //   num_merged_tables += merged;
-      // }
+        num_merged_tables += merged;
+      }
 
       for (auto branch : node->get_next()) {
         nodes.push_back(branch);

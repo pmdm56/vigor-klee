@@ -97,8 +97,7 @@ public:
   visit(const targets::BMv2SimpleSwitchgRPC::EthernetConsume *node) {}
   virtual void
   visit(const targets::BMv2SimpleSwitchgRPC::EthernetModify *node) {}
-  // virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node)
-  // {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Drop *node) {}
