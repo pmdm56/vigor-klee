@@ -553,7 +553,7 @@ bool pending_packet_borrow_next_chunk(const ExecutionPlanNode *ep_node) {
     assert(bdd_node->get_id() < 1000);
 
     if (bdd_node->get_type() == BDD::Node::NodeType::CALL) {
-      auto call_node = static_cast<const BDD::Call *>(bdd_node);
+      auto call_node = static_cast<const BDD::Call *>(bdd_node.get());
       if (call_node->get_call().function_name == "packet_borrow_next_chunk") {
         return true;
       }
@@ -701,6 +701,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   // FIXME: assert(false && "TODO");
 }
 
+/*
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {
   auto keys = node->get_keys();
@@ -792,6 +793,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     ingress.apply_block << table.label << ".apply();\n";
   }
 }
+*/
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Then *node) {}

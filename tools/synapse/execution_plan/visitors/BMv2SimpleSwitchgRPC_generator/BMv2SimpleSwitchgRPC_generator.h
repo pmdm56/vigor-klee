@@ -364,7 +364,8 @@ public:
   void
   visit(const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications *node)
       override;
-  void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node) override;
+  // void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node)
+  // override;
   void visit(const targets::BMv2SimpleSwitchgRPC::Then *node) override;
 };
 } // namespace synapse

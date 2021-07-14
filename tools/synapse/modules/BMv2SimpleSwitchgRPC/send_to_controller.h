@@ -23,34 +23,43 @@ public:
   }
 
 private:
+  void replace_next(BDD::BDDNode_ptr prev, BDD::BDDNode_ptr old_next,
+                    BDD::BDDNode_ptr new_next) const {
+    assert(prev);
+    assert(old_next);
+    assert(new_next);
+
+    if (prev->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto branch_node = static_cast<BDD::Branch *>(prev.get());
+
+      if (branch_node->get_on_true()->get_id() == old_next->get_id()) {
+        branch_node->replace_on_true(new_next);
+      } else {
+        branch_node->replace_on_false(new_next);
+      }
+
+      new_next->replace_prev(prev);
+      return;
+    }
+
+    prev->replace_next(new_next);
+    new_next->replace_prev(prev);
+  }
+
   BDD::BDDNode_ptr clone_calls(ExecutionPlan &ep,
                                BDD::BDDNode_ptr current) const {
-    BDD::BDDNode_ptr root;
     assert(current);
 
+    if (!current->get_prev()) {
+      return current;
+    }
+
     auto node = current;
+    auto root = current;
+    auto next = current->get_next();
+    auto prev = current->get_prev();
+
     auto &bdd = ep.get_bdd();
-
-    while (node->get_prev()) {
-      node = node->get_prev();
-
-      if (node->get_type() == BDD::Node::NodeType::CALL) {
-        auto cloned_current = current->clone();
-
-        root = node->clone();
-        root->update_id(bdd.get_and_inc_id());
-
-        root->replace_next(cloned_current);
-        root->replace_prev(nullptr);
-
-        cloned_current->replace_prev(root);
-        break;
-      }
-    }
-
-    if (!root) {
-      return root;
-    }
 
     while (node->get_prev()) {
       node = node->get_prev();
@@ -68,6 +77,8 @@ private:
       }
     }
 
+    replace_next(prev, current, root);
+
     return root;
   }
 
@@ -80,15 +91,14 @@ private:
 
     auto next = clone_calls(ep_cloned, node_cloned);
 
-    if (!next) {
-      next = node_cloned;
-    }
-
-    auto new_module = std::make_shared<SendToController>(node);
-    auto next_ep = ep.add_leaves(new_module, next, false, false);
+    auto new_module = std::make_shared<SendToController>(node_cloned);
+    auto next_ep = ep_cloned.add_leaves(new_module, next, false, false);
+    next_ep.replace_active_leaf_node(next, false);
 
     result.module = new_module;
     result.next_eps.push_back(next_ep);
+
+    return result;
   }
 
   processing_result_t process_branch(const ExecutionPlan &ep,

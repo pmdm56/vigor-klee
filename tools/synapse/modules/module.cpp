@@ -13,6 +13,7 @@ struct candidate_t {
 };
 
 std::map<std::string, bool> fn_has_side_effects_lookup{
+    {"current_time", true},
     {"map_get", false},
     {"vector_borrow", false},
     {"vector_return", false},
@@ -29,7 +30,7 @@ std::map<std::string, bool> fn_has_side_effects_lookup{
 };
 
 std::vector<std::string> fn_cannot_reorder_lookup{
-    "packet_return_chunk", "nf_set_rte_ipv4_udptcp_checksum"};
+    "current_time", "packet_return_chunk", "nf_set_rte_ipv4_udptcp_checksum"};
 
 bool fn_has_side_effects(std::string fn) {
   auto found = fn_has_side_effects_lookup.find(fn);
@@ -453,9 +454,6 @@ std::vector<candidate_t> get_candidates(const BDD::Node *current_node) {
     candidate_t candidate(candidates[0]);
     candidates.erase(candidates.begin());
 
-    // std::cerr << "  *** current   : " << current_node->dump(true) << "\n";
-    // std::cerr << "  *** candidate : " << candidate->dump(true) << "\n";
-
     if (candidate.node->get_type() == BDD::Node::BRANCH) {
       auto branch = static_cast<const BDD::Branch *>(candidate.node.get());
       check_future_branches = true;
@@ -684,24 +682,36 @@ void reorder_bdd(ExecutionPlan &ep, BDD::BDDNode_ptr node,
 std::vector<ExecutionPlan> get_reordered(const ExecutionPlan &ep) {
   std::vector<ExecutionPlan> reordered;
 
-  // if (ep.get_reordered_nodes() >= 0) {
-  //   return reordered;
-  // }
-
-  auto active_leaf = ep.get_active_leaf();
-
-  if (!active_leaf) {
+  if (ep.get_reordered_nodes() >= 1) {
     return reordered;
   }
 
-  auto module = active_leaf->get_module();
-  assert(module);
+  auto next_node = ep.get_next_node();
 
-  auto current_node = module->get_node();
-  assert(current_node);
+  if (!next_node) {
+    return reordered;
+  }
+
+  auto current_node = next_node->get_prev();
+
+  if (!current_node) {
+    return reordered;
+  }
 
   if (current_node->get_type() == BDD::Node::BRANCH) {
     return reordered;
+  }
+
+  for (auto leaf : ep.get_leaves()) {
+    std::cerr << "leaf : ";
+    if (leaf.leaf) {
+      std::cerr << leaf.leaf->get_module()->get_name();
+    }
+    std::cerr << " => ";
+    if (leaf.next) {
+      std::cerr << leaf.next->dump(true);
+    }
+    std::cerr << "\n";
   }
 
   auto candidates = get_candidates(current_node.get());
