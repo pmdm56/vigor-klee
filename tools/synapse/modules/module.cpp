@@ -776,14 +776,14 @@ void rename_generated_symbols(candidate_t &candidate) {
         arg.out = renamer.rename(arg.out);
       }
 
-      call_node->set_call(call);
-
       for (auto &extra_var_pair : call.extra_vars) {
         auto &extra_var = call.extra_vars[extra_var_pair.first];
 
         extra_var.first = renamer.rename(extra_var.first);
         extra_var.second = renamer.rename(extra_var.second);
       }
+
+      call_node->set_call(call);
 
       nodes.push_back(node->get_next());
     }
