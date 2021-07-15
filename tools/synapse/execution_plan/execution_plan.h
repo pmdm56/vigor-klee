@@ -35,6 +35,8 @@ public:
     leaf_t(const leaf_t &_leaf)
         : leaf(_leaf.leaf), next(_leaf.next),
           current_platform(_leaf.current_platform) {}
+
+    leaf_t &operator=(const leaf_t &) = default;
   };
 
 private:
@@ -192,6 +194,44 @@ public:
     return current_platform;
   }
 
+  ExecutionPlan replace_leaf(Module_ptr new_module,
+                             const BDD::BDDNode_ptr &next,
+                             bool process_bdd_node = true) const {
+    auto new_ep = clone();
+
+    if (process_bdd_node) {
+      new_ep.update_processed_nodes();
+    }
+
+    auto new_leaf = ExecutionPlan::leaf_t(new_module, next);
+    auto old_leaf = new_ep.leaves[0];
+
+    if (!old_leaf.leaf->get_prev()) {
+      new_ep.root = new_leaf.leaf;
+    } else {
+      auto prev = old_leaf.leaf->get_prev();
+      prev->replace_next(old_leaf.leaf, new_leaf.leaf);
+    }
+
+    assert(new_ep.leaves.size());
+    new_ep.leaves[0] = new_leaf;
+
+    assert(old_leaf.leaf->get_module());
+    assert(new_leaf.leaf->get_module());
+
+    auto old_module = old_leaf.leaf->get_module();
+
+    if (old_module->get_target() != new_module->get_target()) {
+      new_ep.nodes_per_target[old_module->get_target()]--;
+      new_ep.nodes_per_target[new_module->get_target()]++;
+    }
+
+    new_ep.leaves[0].current_platform.first = true;
+    new_ep.leaves[0].current_platform.second = new_module->get_next_target();
+
+    return new_ep;
+  }
+
   ExecutionPlan ignore_leaf(const BDD::BDDNode_ptr &next, Target next_target,
                             bool process_bdd_node = true) const {
     auto new_ep = clone();
@@ -306,7 +346,19 @@ public:
     }
   }
 
-  template <typename T> int can_recall(const Module *module, int key) const {
+  template <typename T> bool can_recall(int key) const {
+    return memory_bank.contains<T>(key);
+  }
+
+  template <typename T> T recall(int key) const {
+    return memory_bank.read<T>(key);
+  }
+
+  template <typename T> void memorize(int key, T value) {
+    return memory_bank.write<T>(key, value);
+  }
+
+  template <typename T> bool can_recall(const Module *module, int key) const {
     return memory_bank.contains<T>(module->get_target(), key);
   }
 
@@ -314,7 +366,7 @@ public:
     return memory_bank.read<T>(module->get_target(), key);
   }
 
-  template <typename T> void remember(const Module *module, int key, T value) {
+  template <typename T> void memorize(const Module *module, int key, T value) {
     return memory_bank.write<T>(module->get_target(), key, value);
   }
 

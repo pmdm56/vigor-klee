@@ -1,5 +1,8 @@
 #include "BMv2SimpleSwitchgRPC_generator.h"
+
 #include "../../../log.h"
+#include "../../../modules/modules.h"
+
 #include "keys_from_klee_expr.h"
 #include "klee_expr_to_p4.h"
 

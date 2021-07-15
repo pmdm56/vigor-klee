@@ -13,9 +13,9 @@ add_executable(synapse
   execution_plan/memory_bank.cpp
   execution_plan/visitors/visitor.cpp
   execution_plan/visitors/x86_generator.cpp
-  #execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/BMv2SimpleSwitchgRPC_generator.cpp
-  #execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/klee_expr_to_p4.cpp
-  #execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/keys_from_klee_expr.cpp
+  execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/BMv2SimpleSwitchgRPC_generator.cpp
+  execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/klee_expr_to_p4.cpp
+  execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/keys_from_klee_expr.cpp
   log.cpp
   ../load-call-paths/load-call-paths.cpp
   ../call-paths-to-bdd/call-paths-to-bdd.cpp

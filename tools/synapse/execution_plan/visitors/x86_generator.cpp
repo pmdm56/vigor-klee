@@ -4,6 +4,18 @@
 
 namespace synapse {
 
+std::string get_label(BDD::symbols_t symbols, std::string substring) {
+  for (auto symbol : symbols) {
+    auto delim = symbol.label.find(substring);
+
+    if (delim != std::string::npos) {
+      return symbol.label;
+    }
+  }
+
+  assert(false && "Substring not found in expression");
+}
+
 std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack,
                       bool is_signed);
 std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack);
@@ -1002,6 +1014,8 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   auto map_has_this_key = node->get_map_has_this_key();
   auto value_out = node->get_value_out();
 
+  auto generated_symbols = node->get_generated_symbols();
+
   assert(!map_addr.isNull());
   assert(!key.isNull());
   assert(!map_has_this_key.isNull());
@@ -1013,25 +1027,10 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
     assert(false && "Not found in stack");
   }
 
-  static int map_has_this_key_counter = 0;
-  static int allocated_index_counter = 0;
+  auto map_has_this_key_label =
+      get_label(generated_symbols, "map_has_this_key");
 
-  std::stringstream map_has_this_key_label_stream;
-  map_has_this_key_label_stream << "map_has_this_key";
-
-  std::stringstream allocated_index_stream;
-  allocated_index_stream << "allocated_index";
-
-  if (map_has_this_key_counter > 0) {
-    map_has_this_key_label_stream << "_" << map_has_this_key_counter;
-  }
-
-  if (allocated_index_counter > 0) {
-    allocated_index_stream << "_" << allocated_index_counter;
-  }
-
-  auto map_has_this_key_label = map_has_this_key_label_stream.str();
-  auto allocated_index_label = allocated_index_stream.str();
+  auto allocated_index_label = get_label(generated_symbols, "allocated_index");
 
   stack.add(map_has_this_key_label, map_has_this_key);
   stack.add(allocated_index_label, value_out);
@@ -1055,9 +1054,6 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
   os << ", (void*)" << key_label;
   os << ", &" << allocated_index_label;
   os << ");\n";
-
-  map_has_this_key_counter++;
-  allocated_index_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::CurrentTime *node) {

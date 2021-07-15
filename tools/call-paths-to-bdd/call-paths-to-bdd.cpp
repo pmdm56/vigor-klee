@@ -3,11 +3,19 @@
 namespace BDD {
 
 std::vector<std::string> SymbolFactory::ignored_symbols{"VIGOR_DEVICE"};
+std::vector<std::string> SymbolFactory::symbols_without_translation{
+    "packet_chunks"};
 
 bool SymbolFactory::should_ignore(std::string symbol) {
   auto found_it =
       std::find(ignored_symbols.begin(), ignored_symbols.end(), symbol);
   return found_it != ignored_symbols.end();
+}
+
+bool SymbolFactory::should_not_translate(std::string symbol) {
+  auto found_it = std::find(symbols_without_translation.begin(),
+                            symbols_without_translation.end(), symbol);
+  return found_it != symbols_without_translation.end();
 }
 
 std::vector<std::string> call_paths_t::skip_functions{
@@ -236,12 +244,12 @@ symbols_t Node::get_all_generated_symbols() const {
 
   // hack: symbols always known
   klee::ref<klee::Expr> empty_expr;
-  symbols.emplace_back("VIGOR_DEVICE", empty_expr);
+  symbols.emplace_back("VIGOR_DEVICE", "VIGOR_DEVICE", empty_expr);
 
   while (node) {
     if (node->get_type() == Node::NodeType::CALL) {
       const Call *call = static_cast<const Call *>(node);
-      auto more_symbols = call->get_generated_symbols(true);
+      auto more_symbols = call->get_generated_symbols();
       symbols.insert(symbols.end(), more_symbols.begin(), more_symbols.end());
       return symbols;
     }
@@ -250,6 +258,11 @@ symbols_t Node::get_all_generated_symbols() const {
   }
 
   return symbols;
+}
+
+symbols_t Call::get_generated_symbols() const {
+  SymbolFactory symbol_factory;
+  return symbol_factory.get_symbols(this);
 }
 
 void CallPathsGroup::group_call_paths() {
@@ -548,8 +561,8 @@ BDDNode_ptr BDD::populate(call_paths_t call_paths) {
     } else {
       auto discriminating_constraint = group.get_discriminating_constraint();
 
-      auto node = std::make_shared<Branch>(get_and_inc_id(), discriminating_constraint,
-                                call_paths.cp);
+      auto node = std::make_shared<Branch>(
+          get_and_inc_id(), discriminating_constraint, call_paths.cp);
 
       auto on_true_root = populate(on_true);
       auto on_false_root = populate(on_false);
@@ -593,8 +606,8 @@ BDDNode_ptr BDD::populate(call_paths_t call_paths) {
   return local_root;
 }
 
-BDDNode_ptr BDD::populate_init(const BDDNode_ptr& root) {
-  Node* node = root.get();
+BDDNode_ptr BDD::populate_init(const BDDNode_ptr &root) {
+  Node *node = root.get();
 
   BDDNode_ptr local_root;
   BDDNode_ptr local_leaf;
@@ -649,7 +662,8 @@ BDDNode_ptr BDD::populate_init(const BDDNode_ptr& root) {
     };
     case Node::NodeType::RETURN_RAW: {
       auto root_return_raw = static_cast<const ReturnRaw *>(node);
-      new_node = std::make_shared<ReturnInit>(get_and_inc_id(), root_return_raw);
+      new_node =
+          std::make_shared<ReturnInit>(get_and_inc_id(), root_return_raw);
 
       node = nullptr;
       break;
@@ -680,8 +694,8 @@ BDDNode_ptr BDD::populate_init(const BDDNode_ptr& root) {
   return local_root;
 }
 
-BDDNode_ptr BDD::populate_process(const BDDNode_ptr& root, bool store) {
-  Node* node = root.get();
+BDDNode_ptr BDD::populate_process(const BDDNode_ptr &root, bool store) {
+  Node *node = root.get();
 
   BDDNode_ptr local_root;
   BDDNode_ptr local_leaf;
@@ -715,8 +729,7 @@ BDDNode_ptr BDD::populate_process(const BDDNode_ptr& root, bool store) {
       assert(root_branch->get_on_false());
 
       auto on_true_node = populate_process(root_branch->get_on_true(), store);
-      auto on_false_node =
-          populate_process(root_branch->get_on_false(), store);
+      auto on_false_node = populate_process(root_branch->get_on_false(), store);
 
       assert(on_true_node);
       assert(on_false_node);
@@ -793,7 +806,8 @@ BDDNode_ptr BDD::populate_process(const BDDNode_ptr& root, bool store) {
     };
     case Node::NodeType::RETURN_RAW: {
       auto root_return_raw = static_cast<const ReturnRaw *>(node);
-      new_node = std::make_shared<ReturnProcess>(get_and_inc_id(), root_return_raw);
+      new_node =
+          std::make_shared<ReturnProcess>(get_and_inc_id(), root_return_raw);
 
       node = nullptr;
       break;

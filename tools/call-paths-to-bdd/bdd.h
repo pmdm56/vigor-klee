@@ -47,6 +47,8 @@ public:
 
     nf_init = populate_init(root);
     nf_process = populate_process(root);
+
+    rename_symbols();
   }
 
   BDD(const BDD &bdd)
@@ -115,8 +117,47 @@ public:
     return bdd;
   }
 
+  void rename_symbols() {
+    SymbolFactory factory;
+
+    rename_symbols(nf_init, factory);
+    rename_symbols(nf_process, factory);
+  }
+
   static void serialize(const BDD &bdd, std::string file_path);
   static BDD deserialize(std::string file_path);
+
+private:
+  void rename_symbols(BDDNode_ptr node, SymbolFactory &factory) {
+    assert(node);
+
+    while (node) {
+      if (node->get_type() == Node::NodeType::BRANCH) {
+        auto branch_node = static_cast<Branch *>(node.get());
+
+        factory.push();
+        rename_symbols(branch_node->get_on_true(), factory);
+        factory.pop();
+
+        factory.push();
+        rename_symbols(branch_node->get_on_false(), factory);
+        factory.pop();
+
+        return;
+      }
+
+      if (node->get_type() == Node::NodeType::CALL) {
+        auto call_node = static_cast<Call *>(node.get());
+        auto call = call_node->get_call();
+
+        factory.translate(call, node);
+
+        node = node->get_next();
+      } else {
+        return;
+      }
+    }
+  }
 };
 
 } // namespace BDD

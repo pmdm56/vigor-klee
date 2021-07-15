@@ -51,9 +51,12 @@ struct MaximizeSwitchNodesComparator : public HeuristicConfiguration {
         auto tableLookup =
             static_cast<targets::BMv2SimpleSwitchgRPC::TableLookup *>(
                 module.get());
-        auto merged = tableLookup->get_keys().size() > 1;
 
-        num_merged_tables += merged;
+        auto merged = tableLookup->get_keys().size();
+
+        if (merged > 1) {
+          num_merged_tables += merged;
+        }
       }
 
       for (auto branch : node->get_next()) {
@@ -73,7 +76,7 @@ struct MaximizeSwitchNodesComparator : public HeuristicConfiguration {
     return s;
   }
 
-  bool terminate_on_first_solution() const override { return true; }
+  bool terminate_on_first_solution() const override { return false; }
 };
 
 using MaximizeSwitchNodes = Heuristic<MaximizeSwitchNodesComparator>;

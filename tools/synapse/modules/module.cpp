@@ -300,15 +300,6 @@ bool map_can_reorder(const BDD::Node *before, const BDD::Node *after,
     }
   }
 
-  // std::cerr << "\n";
-  // std::cerr << "before " << before->get_id() << ":" << before_call << "\n";
-  // std::cerr << "after  " << after->get_id() << ":" << after_call << "\n";
-  // std::cerr << "before key  " << expr_to_string(before_key, true) << "\n";
-  // std::cerr << "after  key  " << expr_to_string(after_key, true) << "\n";
-  // std::cerr << "always eq   " << always_eq.second << "\n";
-  // std::cerr << "always diff " << always_diff.second << "\n";
-  // std::cerr << "\n";
-
   if (always_eq.second) {
     return false;
   }
@@ -722,79 +713,6 @@ void reorder_bdd(ExecutionPlan &ep, BDD::BDDNode_ptr node,
   }
 }
 
-void rename_generated_symbols(candidate_t &candidate) {
-  auto candidate_node = candidate.node;
-  assert(candidate_node->get_type() == BDD::Node::NodeType::CALL);
-
-  auto call_node = static_cast<BDD::Call *>(candidate_node.get());
-  auto symbols = call_node->get_generated_symbols();
-
-  BDD::RenameSymbols renamer;
-
-  for (auto symbol : symbols) {
-    std::stringstream new_label;
-    new_label << symbol.label << "_" << candidate_node->get_id();
-
-    renamer.add_translation(symbol.label, new_label.str());
-  }
-
-  if (!candidate.condition.isNull()) {
-    candidate.condition = renamer.rename(candidate.condition);
-  }
-
-  if (!candidate.extra_condition.isNull()) {
-    candidate.extra_condition = renamer.rename(candidate.extra_condition);
-  }
-
-  std::vector<BDD::BDDNode_ptr> nodes{candidate_node};
-
-  while (nodes.size()) {
-    auto node = nodes[0];
-    nodes.erase(nodes.begin());
-
-    if (node->get_type() == BDD::Node::NodeType::BRANCH) {
-      auto branch_node = static_cast<BDD::Branch *>(node.get());
-
-      auto condition = branch_node->get_condition();
-      auto renamed_condition = renamer.rename(condition);
-
-      branch_node->set_condition(renamed_condition);
-
-      nodes.push_back(branch_node->get_on_true());
-      nodes.push_back(branch_node->get_on_false());
-    }
-
-    else if (node->get_type() == BDD::Node::NodeType::CALL) {
-      auto call_node = static_cast<BDD::Call *>(node.get());
-      auto call = call_node->get_call();
-
-      for (auto &arg_pair : call.args) {
-        auto &arg = call.args[arg_pair.first];
-
-        arg.expr = renamer.rename(arg.expr);
-        arg.in = renamer.rename(arg.in);
-        arg.out = renamer.rename(arg.out);
-      }
-
-      for (auto &extra_var_pair : call.extra_vars) {
-        auto &extra_var = call.extra_vars[extra_var_pair.first];
-
-        extra_var.first = renamer.rename(extra_var.first);
-        extra_var.second = renamer.rename(extra_var.second);
-      }
-
-      call_node->set_call(call);
-
-      nodes.push_back(node->get_next());
-    }
-
-    auto constraints = node->get_constraints();
-    auto renamed_constraints = renamer.rename(constraints);
-
-    node->set_constraints(renamed_constraints);
-  }
-}
-
 std::vector<ExecutionPlan> get_reordered(const ExecutionPlan &ep) {
   std::vector<ExecutionPlan> reordered;
 
@@ -875,7 +793,8 @@ std::vector<ExecutionPlan> get_reordered(const ExecutionPlan &ep) {
     candidate.node = candidate_node_clone;
 
     if (!candidate.condition.isNull()) {
-      rename_generated_symbols(candidate);
+      ep_cloned.memorize<klee::ref<klee::Expr>>(candidate.node->get_id(),
+                                                candidate.condition);
     }
 
     reorder_bdd(ep_cloned, current_node_clone, candidate);

@@ -288,7 +288,6 @@ private:
   int lvl;
   std::stack<bool> pending_ifs;
   stack_t stack;
-  BDD::SymbolFactory symbol_factory;
 
 private:
   void pad() { os << std::string(lvl * 2, ' '); }

@@ -7,10 +7,25 @@
 #include "solver_toolbox.h"
 
 #include "./visitor.h"
-#include "symbol-factory.h"
 
 namespace BDD {
 
+struct symbol_t {
+  std::string label;
+  std::string label_base;
+  klee::ref<klee::Expr> expr;
+  klee::ref<klee::Expr> addr;
+
+  symbol_t(std::string _label, std::string _label_base,
+           klee::ref<klee::Expr> _expr)
+      : label(_label), label_base(_label_base), expr(_expr) {}
+
+  symbol_t(std::string _label, std::string _label_base,
+           klee::ref<klee::Expr> _expr, klee::ref<klee::Expr> _addr)
+      : label(_label), label_base(_label_base), expr(_expr), addr(_addr) {}
+};
+
+typedef std::vector<symbol_t> symbols_t;
 typedef std::pair<call_path_t *, calls_t> call_path_pair_t;
 
 struct call_paths_t {
@@ -269,33 +284,7 @@ public:
   call_t get_call() const { return call; }
   void set_call(call_t _call) { call = _call; }
 
-  symbols_t get_generated_symbols(bool capture_all = false) const {
-    SymbolFactory symbol_factory;
-    symbols_t symbols;
-
-    std::vector<const Node *> nodes;
-
-    const Node *node = this;
-    while (node) {
-      nodes.insert(nodes.begin(), node);
-      node = node->get_prev().get();
-    }
-
-    for (auto node : nodes) {
-      if (node->get_type() == Node::NodeType::CALL) {
-        auto call_node = static_cast<const Call *>(node);
-        auto _symbols = symbol_factory.process(call_node->get_call());
-
-        if (capture_all) {
-          symbols.insert(symbols.end(), _symbols.begin(), _symbols.end());
-        } else {
-          symbols = _symbols;
-        }
-      }
-    }
-
-    return symbols;
-  }
+  symbols_t get_generated_symbols() const;
 
   virtual BDDNode_ptr clone(bool recursive = false) const override {
     BDDNode_ptr clone_next;

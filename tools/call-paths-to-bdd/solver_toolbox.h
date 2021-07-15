@@ -131,9 +131,24 @@ private:
 
 public:
   RenameSymbols() {}
+  RenameSymbols(const RenameSymbols &renamer)
+      : klee::ExprVisitor::ExprVisitor(true),
+        translations(renamer.translations), replacements(renamer.replacements) {
+  }
+
+  const std::map<std::string, std::string> &get_translations() const {
+    return translations;
+  }
 
   void add_translation(std::string before, std::string after) {
     translations[before] = after;
+  }
+
+  void remove_translation(std::string before) { translations.erase(before); }
+
+  bool has_translation(std::string before) const {
+    auto found_it = translations.find(before);
+    return found_it != translations.end();
   }
 
   void clear_replacements() { replacements.clear(); }
@@ -157,7 +172,9 @@ public:
 
       for (auto constraint : constraints) {
         clear_replacements();
-        renamed_constraints.addConstraint(rename(constraint));
+
+        auto renamed_constraint = rename(constraint);
+        renamed_constraints.addConstraint(renamed_constraint);
       }
 
       renamed_constraints_list.push_back(renamed_constraints);

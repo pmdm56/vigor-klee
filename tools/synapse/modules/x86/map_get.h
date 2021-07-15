@@ -15,15 +15,17 @@ private:
   klee::ref<klee::Expr> map_has_this_key;
   klee::ref<klee::Expr> value_out;
 
+  BDD::symbols_t generated_symbols;
+
 public:
   MapGet() : Module(ModuleType::x86_MapGet, Target::x86, "MapGet") {}
 
   MapGet(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _map_addr,
          klee::ref<klee::Expr> _key, klee::ref<klee::Expr> _map_has_this_key,
-         klee::ref<klee::Expr> _value_out)
+         klee::ref<klee::Expr> _value_out, BDD::symbols_t _generated_symbols)
       : Module(ModuleType::x86_MapGet, Target::x86, "MapGet", node),
         map_addr(_map_addr), key(_key), map_has_this_key(_map_has_this_key),
-        value_out(_value_out) {}
+        value_out(_value_out), generated_symbols(_generated_symbols) {}
 
 private:
   processing_result_t process_call(const ExecutionPlan &ep,
@@ -44,8 +46,11 @@ private:
       auto _map_has_this_key = call.ret;
       auto _value_out = call.args["value_out"].out;
 
-      auto new_module = std::make_shared<MapGet>(node, _map_addr, _key,
-                                                 _map_has_this_key, _value_out);
+      auto _generated_symbols = casted->get_generated_symbols();
+
+      auto new_module =
+          std::make_shared<MapGet>(node, _map_addr, _key, _map_has_this_key,
+                                   _value_out, _generated_symbols);
       auto new_ep = ep.add_leaves(new_module, node->get_next());
 
       result.module = new_module;
@@ -61,7 +66,8 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new MapGet(node, map_addr, key, map_has_this_key, value_out);
+    auto cloned = new MapGet(node, map_addr, key, map_has_this_key, value_out,
+                             generated_symbols);
     return std::shared_ptr<Module>(cloned);
   }
 
@@ -92,6 +98,23 @@ public:
       return false;
     }
 
+    if (generated_symbols.size() != other_cast->generated_symbols.size()) {
+      return false;
+    }
+
+    for (auto i = 0u; i < generated_symbols.size(); i++) {
+      if (generated_symbols[i].label !=
+          other_cast->generated_symbols[i].label) {
+        return false;
+      }
+
+      if (!BDD::solver_toolbox.are_exprs_always_equal(
+               generated_symbols[i].expr,
+               other_cast->generated_symbols[i].expr)) {
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -101,6 +124,9 @@ public:
     return map_has_this_key;
   }
   const klee::ref<klee::Expr> &get_value_out() const { return value_out; }
+  const BDD::symbols_t &get_generated_symbols() const {
+    return generated_symbols;
+  }
 };
 } // namespace x86
 } // namespace targets
