@@ -15,16 +15,19 @@ private:
   klee::ref<klee::Expr> value_out;
   klee::ref<klee::Expr> borrowed_cell;
 
+  BDD::symbols_t generated_symbols;
+
 public:
   VectorBorrow()
       : Module(ModuleType::x86_VectorBorrow, Target::x86, "VectorBorrow") {}
 
   VectorBorrow(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _vector_addr,
                klee::ref<klee::Expr> _index, klee::ref<klee::Expr> _value_out,
-               klee::ref<klee::Expr> _borrowed_cell)
+               klee::ref<klee::Expr> _borrowed_cell,
+               BDD::symbols_t _generated_symbols)
       : Module(ModuleType::x86_VectorBorrow, Target::x86, "VectorBorrow", node),
         vector_addr(_vector_addr), index(_index), value_out(_value_out),
-        borrowed_cell(_borrowed_cell) {}
+        borrowed_cell(_borrowed_cell), generated_symbols(_generated_symbols) {}
 
 private:
   processing_result_t process_call(const ExecutionPlan &ep,
@@ -44,8 +47,11 @@ private:
       auto _value_out = call.args["val_out"].out;
       auto _borrowed_cell = call.extra_vars["borrowed_cell"].second;
 
-      auto new_module = std::make_shared<VectorBorrow>(
-          node, _vector_addr, _index, _value_out, _borrowed_cell);
+      auto _generated_symbols = casted->get_generated_symbols();
+
+      auto new_module =
+          std::make_shared<VectorBorrow>(node, _vector_addr, _index, _value_out,
+                                         _borrowed_cell, _generated_symbols);
       auto new_ep = ep.add_leaves(new_module, node->get_next());
 
       result.module = new_module;
@@ -61,8 +67,8 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned =
-        new VectorBorrow(node, vector_addr, index, value_out, borrowed_cell);
+    auto cloned = new VectorBorrow(node, vector_addr, index, value_out,
+                                   borrowed_cell, generated_symbols);
     return std::shared_ptr<Module>(cloned);
   }
 
@@ -93,6 +99,23 @@ public:
       return false;
     }
 
+    if (generated_symbols.size() != other_cast->generated_symbols.size()) {
+      return false;
+    }
+
+    for (auto i = 0u; i < generated_symbols.size(); i++) {
+      if (generated_symbols[i].label !=
+          other_cast->generated_symbols[i].label) {
+        return false;
+      }
+
+      if (!BDD::solver_toolbox.are_exprs_always_equal(
+               generated_symbols[i].expr,
+               other_cast->generated_symbols[i].expr)) {
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -101,6 +124,10 @@ public:
   const klee::ref<klee::Expr> &get_value_out() const { return value_out; }
   const klee::ref<klee::Expr> &get_borrowed_cell() const {
     return borrowed_cell;
+  }
+
+  const BDD::symbols_t &get_generated_symbols() const {
+    return generated_symbols;
   }
 };
 } // namespace x86

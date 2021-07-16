@@ -23,12 +23,26 @@ public:
     key_t(klee::ref<klee::Expr> _expr) : expr(_expr) {}
   };
 
+  struct param_t {
+    std::vector<klee::ref<klee::Expr>> exprs;
+
+    param_t(klee::ref<klee::Expr> _expr) { exprs.push_back(_expr); }
+
+    void add_expr(klee::ref<klee::Expr> _expr) {
+      for (auto expr : exprs) {
+        assert(expr->getWidth() == _expr->getWidth());
+      }
+
+      exprs.push_back(_expr);
+    }
+  };
+
 private:
   uint64_t table_id;
   klee::ref<klee::Expr> obj;
   std::vector<key_t> keys;
-  std::vector<klee::ref<klee::Expr>> params;
-  std::string map_has_this_key_label;
+  std::vector<param_t> params;
+  std::vector<std::string> map_has_this_key_labels;
   std::string bdd_function;
 
 public:
@@ -37,14 +51,14 @@ public:
                Target::BMv2SimpleSwitchgRPC, "TableLookup") {}
 
   TableLookup(BDD::BDDNode_ptr node, uint64_t _table_id,
-              klee::ref<klee::Expr> _obj, std::vector<key_t> _keys,
-              std::vector<klee::ref<klee::Expr>> _params,
-              std::string _map_has_this_key_label,
+              klee::ref<klee::Expr> _obj, const std::vector<key_t> &_keys,
+              const std::vector<param_t> &_params,
+              const std::vector<std::string> &_map_has_this_key_labels,
               const std::string &_bdd_function)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_TableLookup,
                Target::BMv2SimpleSwitchgRPC, "TableLookup", node),
         table_id(_table_id), obj(_obj), keys(_keys), params(_params),
-        map_has_this_key_label(_map_has_this_key_label),
+        map_has_this_key_labels(_map_has_this_key_labels),
         bdd_function(_bdd_function) {}
 
 private:
@@ -165,9 +179,15 @@ private:
       _keys.emplace_back(_key, _key_condition);
 
       auto _params = merged_response.second->params;
+      // TODO: maybe it's not the last one? look for the right one
+      _params.back().add_expr(_value);
+
+      auto _map_has_this_key_labels =
+          merged_response.second->map_has_this_key_labels;
+      _map_has_this_key_labels.push_back(_map_has_this_key_label);
 
       auto new_module = std::make_shared<TableLookup>(
-          node, _table_id, _map, _keys, _params, _map_has_this_key_label,
+          node, _table_id, _map, _keys, _params, _map_has_this_key_labels,
           call.function_name);
 
       auto new_ep = ep.replace_leaf(new_module, node->get_next());
@@ -186,10 +206,13 @@ private:
       _keys.emplace_back(_key);
     }
 
-    std::vector<klee::ref<klee::Expr>> _params{ _value };
+    std::vector<param_t> _params{ _value };
+    std::vector<std::string> _map_has_this_key_labels{
+      _map_has_this_key_label
+    };
 
     auto new_module = std::make_shared<TableLookup>(
-        node, _table_id, _map, _keys, _params, _map_has_this_key_label,
+        node, _table_id, _map, _keys, _params, _map_has_this_key_labels,
         call.function_name);
 
     auto new_ep = ep.add_leaves(new_module, node->get_next());
@@ -225,63 +248,30 @@ private:
       return false;
     }
 
-    /*
-    auto ep = context->get_current();
-    auto processed_bdd_nodes = ep.get_processed_bdd_nodes();
-
-    auto merge_candidates =
-        get_merge_candidates(node, _vector, processed_bdd_nodes);
-
-    if (merge_candidates.success) {
+    auto merged_response = can_be_merged(ep, node, _vector);
+    if (merged_response.first) {
       auto _table_id = _vector_value;
+      auto _key_condition = ep.recall<klee::ref<klee::Expr>>(node->get_id());
 
-      std::vector<key_t> _keys;
-      for (auto candidate : merge_candidates.candidates) {
-        assert(candidate.node->get_type() == BDD::Node::NodeType::CALL);
+      auto _keys = merged_response.second->keys;
+      _keys.emplace_back(_index, _key_condition);
 
-        auto candidate_call_node =
-            static_cast<const BDD::Call *>(candidate.node);
-        auto candidate_call = candidate_call_node->get_call();
+      auto _params = merged_response.second->params;
+      assert(_params.size());
+      // TODO: maybe it's not the last one? look for the right one
+      _params.back().add_expr(_borrowed_cell);
 
-        assert(!candidate_call.args["index"].expr.isNull());
-        auto candidate_key = candidate_call.args["index"].expr;
-
-        _keys.emplace_back(candidate_key, candidate.conjugate_conditions());
-      }
-
-      auto merged_ep = merge_bdd_nodes(merge_candidates);
+      auto _map_has_this_key_labels =
+          merged_response.second->map_has_this_key_labels;
 
       auto new_module = std::make_shared<TableLookup>(
-          merged_ep.get_next_node(), _table_id, _keys, _borrowed_cell, "",
+          node, _table_id, _vector, _keys, _params, _map_has_this_key_labels,
           call.function_name);
-      auto new_ep = ExecutionPlan(merged_ep, merged_ep.get_next_node(),
-                                  Target::BMv2SimpleSwitchgRPC);
-      auto ep_node = ExecutionPlanNode::build(new_module);
 
-      auto active_leaf = new_ep.get_active_leaf();
-      auto ep_node_last_common_branch = get_ep_node_last_common_branch(
-          active_leaf, merge_candidates.last_common_branch);
-      assert(ep_node_last_common_branch);
+      auto new_ep = ep.replace_leaf(new_module, node->get_next());
 
-      auto prev_ep_node_last_common_branch =
-          ep_node_last_common_branch->get_prev();
-      assert(prev_ep_node_last_common_branch);
-
-      prev_ep_node_last_common_branch->replace_next(ep_node_last_common_branch,
-                                                    ep_node);
-
-      ep_node->set_prev(prev_ep_node_last_common_branch);
-      ep_node->set_next(ep_node_last_common_branch);
-
-      ep_node_last_common_branch->replace_prev(ep_node);
-
-      for (auto candidate : merge_candidates.candidates) {
-        new_ep.add_processed_bdd_node(candidate.node->get_id());
-      }
-
-      new_eps.push_back(new_ep);
+      result.next_eps.push_back(new_ep);
     }
-    */
 
     auto _table_id = node->get_id();
 
@@ -294,10 +284,14 @@ private:
       _keys.emplace_back(_index);
     }
 
-    std::vector<klee::ref<klee::Expr>> _params{ _borrowed_cell };
+    std::vector<param_t> _params;
+    _params.emplace_back(_borrowed_cell);
+
+    std::vector<std::string> _map_has_this_key_labels;
 
     auto new_module = std::make_shared<TableLookup>(
-        node, _table_id, _vector, _keys, _params, "", call.function_name);
+        node, _table_id, _vector, _keys, _params, _map_has_this_key_labels,
+        call.function_name);
 
     auto new_ep = ep.add_leaves(new_module, node->get_next());
 
@@ -330,7 +324,7 @@ public:
 
   virtual Module_ptr clone() const override {
     auto cloned = new TableLookup(node, table_id, obj, keys, params,
-                                  map_has_this_key_label, bdd_function);
+                                  map_has_this_key_labels, bdd_function);
     return std::shared_ptr<Module>(cloned);
   }
 
@@ -369,14 +363,30 @@ public:
     }
 
     for (auto i = 0u; i < params.size(); i++) {
-      if (!BDD::solver_toolbox.are_exprs_always_equal(params[i],
-                                                      other_params[i])) {
+      if (params[i].exprs.size() != other_params[i].exprs.size()) {
         return false;
+      }
+
+      for (auto j = 0u; j < params[i].exprs.size(); j++) {
+        if (!BDD::solver_toolbox.are_exprs_always_equal(
+                 params[i].exprs[j], other_params[i].exprs[j])) {
+          return false;
+        }
       }
     }
 
-    if (map_has_this_key_label != other_cast->get_map_has_this_key_label()) {
+    auto other_map_has_this_key_labels =
+        other_cast->get_map_has_this_key_labels();
+
+    if (map_has_this_key_labels.size() !=
+        other_map_has_this_key_labels.size()) {
       return false;
+    }
+
+    for (auto i = 0u; i < map_has_this_key_labels.size(); i++) {
+      if (map_has_this_key_labels[i] != other_map_has_this_key_labels[i]) {
+        return false;
+      }
     }
 
     if (bdd_function != other_cast->get_bdd_function()) {
@@ -389,11 +399,9 @@ public:
   uint64_t get_table_id() const { return table_id; }
   const klee::ref<klee::Expr> &get_obj() const { return obj; }
   const std::vector<key_t> &get_keys() const { return keys; }
-  const std::vector<klee::ref<klee::Expr>> &get_params() const {
-    return params;
-  }
-  const std::string &get_map_has_this_key_label() const {
-    return map_has_this_key_label;
+  const std::vector<param_t> &get_params() const { return params; }
+  const std::vector<std::string> &get_map_has_this_key_labels() const {
+    return map_has_this_key_labels;
   }
   const std::string &get_bdd_function() const { return bdd_function; }
 };

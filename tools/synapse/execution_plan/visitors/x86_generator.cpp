@@ -4,16 +4,13 @@
 
 namespace synapse {
 
-std::string get_label(BDD::symbols_t symbols, std::string substring) {
-  for (auto symbol : symbols) {
-    auto delim = symbol.label.find(substring);
+std::string get_label(BDD::symbols_t symbols, std::string base) {
+  auto found_it = std::find_if(
+      symbols.begin(), symbols.end(),
+      [&](const BDD::symbol_t &symbol) { return symbol.label_base == base; });
 
-    if (delim != std::string::npos) {
-      return symbol.label;
-    }
-  }
-
-  assert(false && "Substring not found in expression");
+  assert(found_it != symbols.end());
+  return found_it->label;
 }
 
 std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack,
@@ -976,18 +973,18 @@ void x86_Generator::visit(ExecutionPlan ep) {
   std::string vigor_device_label = "VIGOR_DEVICE";
   std::string packet_label = "p";
   std::string pkt_len_label = "pkt_len";
-  std::string next_time_label = "next_time";
+  std::string now_label = "now";
 
   stack.add(vigor_device_label);
   stack.add(packet_label);
   stack.add(pkt_len_label);
-  stack.add(next_time_label);
+  stack.add(now_label);
 
   os << "int nf_process(";
   os << "uint16_t " << vigor_device_label;
   os << ", uint8_t* " << packet_label;
   os << ", uint16_t " << pkt_len_label;
-  os << ", int64_t " << next_time_label;
+  os << ", int64_t " << now_label;
   os << ") {\n";
   lvl++;
 
@@ -1027,6 +1024,8 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
     assert(false && "Not found in stack");
   }
 
+  assert(generated_symbols.size() == 2);
+
   auto map_has_this_key_label =
       get_label(generated_symbols, "map_has_this_key");
 
@@ -1057,7 +1056,13 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
 }
 
 void x86_Generator::visit(const targets::x86::CurrentTime *node) {
-  stack.set_value("next_time", node->get_time());
+  auto generated_symbols = node->get_generated_symbols();
+  assert(generated_symbols.size() == 1);
+
+  auto next_time_label = get_label(generated_symbols, "next_time");
+
+  stack.cp_var_to_code_translation.insert({next_time_label, "now"});
+  stack.set_value(next_time_label, node->get_time());
 }
 
 void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
@@ -1183,6 +1188,7 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   auto map_addr = node->get_map_addr();
   auto time = node->get_time();
   auto number_of_freed_flows = node->get_number_of_freed_flows();
+  auto generated_symbols = node->get_generated_symbols();
 
   assert(!dchain_addr.isNull());
   assert(!vector_addr.isNull());
@@ -1208,16 +1214,11 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
     assert(false && "Not found in stack");
   }
 
-  static int number_of_freed_flows_counter = 0;
+  assert(generated_symbols.size() == 1);
 
-  std::stringstream number_of_freed_flows_stream;
-  number_of_freed_flows_stream << "number_of_freed_flows";
+  auto number_of_freed_flows_label =
+      get_label(generated_symbols, "number_of_freed_flows");
 
-  if (number_of_freed_flows_counter > 0) {
-    number_of_freed_flows_stream << "_" << number_of_freed_flows_counter;
-  }
-
-  auto number_of_freed_flows_label = number_of_freed_flows_stream.str();
   stack.add(number_of_freed_flows_label, number_of_freed_flows);
 
   pad();
@@ -1229,27 +1230,19 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   os << ", " << map;
   os << ", " << transpile(time, stack);
   os << ");\n";
-
-  number_of_freed_flows_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::RteEtherAddrHash *node) {
   auto obj = node->get_obj();
   auto hash = node->get_hash();
+  auto generated_symbols = node->get_generated_symbols();
 
   assert(!obj.isNull());
   assert(!hash.isNull());
 
-  static int hash_counter = 0;
+  assert(generated_symbols.size() == 1);
 
-  std::stringstream hash_stream;
-  hash_stream << "hash";
-
-  if (hash_counter > 0) {
-    hash_stream << "_" << hash_counter;
-  }
-
-  auto hash_label = hash_stream.str();
+  auto hash_label = get_label(generated_symbols, "hash");
   stack.add(hash_label, hash);
 
   std::vector<std::string> obj_assignments;
@@ -1296,6 +1289,7 @@ void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
   auto index = node->get_index();
   auto value_out = node->get_value_out();
   auto borrowed_cell = node->get_borrowed_cell();
+  auto generated_symbols = node->get_generated_symbols();
 
   assert(!vector_addr.isNull());
   assert(!index.isNull());
@@ -1311,21 +1305,13 @@ void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
   auto borrowed_cell_sz = borrowed_cell->getWidth();
   assert(borrowed_cell_sz % 8 == 0);
 
-  std::stringstream value_out_stream;
-  value_out_stream << "vector_data_reset";
+  assert(generated_symbols.size() == 1);
 
-  static int value_out_counter;
-
-  if (value_out_counter > 0) {
-    value_out_stream << "_" << value_out_counter;
-  }
-
-  auto value_out_label = value_out_stream.str();
+  auto value_out_label = get_label(generated_symbols, "vector_data_reset");
   stack.add(value_out_label, borrowed_cell, value_out);
 
   pad();
-  os << "uint8_t " << value_out_stream.str() << "[" << borrowed_cell_sz / 8
-     << "];\n";
+  os << "uint8_t " << value_out_label << "[" << borrowed_cell_sz / 8 << "];\n";
 
   pad();
   os << "vector_borrow(";
@@ -1333,8 +1319,6 @@ void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
   os << ", " << transpile(index, stack);
   os << ", (void **)&" << value_out_label;
   os << ");\n";
-
-  value_out_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::VectorReturn *node) {
@@ -1356,6 +1340,11 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
   auto value_label = stack.get_label(value_addr);
   if (!value_label.size()) {
     stack.err_dump();
+    assert(node->get_node());
+
+    Log::err() << "Node:  " << node->get_node()->dump(true) << "\n";
+    Log::err() << "Expr: " << expr_to_string(value_addr, true) << "\n";
+    Log::err() << "Label:  " << value_label << "\n";
     assert(false && "Not found in stack");
   }
 
@@ -1383,6 +1372,7 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
   auto time = node->get_time();
   auto index_out = node->get_index_out();
   auto success = node->get_success();
+  auto generated_symbols = node->get_generated_symbols();
 
   assert(!dchain_addr.isNull());
   assert(!time.isNull());
@@ -1395,26 +1385,10 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
     assert(false && "Not found in stack");
   }
 
-  static int out_of_space_counter =
-      1; // I don't know why, but vigor start this at 1
-  static int new_index_counter = 0;
+  assert(generated_symbols.size() == 2);
 
-  std::stringstream out_of_space_stream;
-  out_of_space_stream << "out_of_space";
-
-  std::stringstream new_index_stream;
-  new_index_stream << "new_index";
-
-  if (out_of_space_counter > 0) {
-    out_of_space_stream << "_" << out_of_space_counter;
-  }
-
-  if (new_index_counter > 0) {
-    new_index_stream << "_" << new_index_counter;
-  }
-
-  auto out_of_space_label = out_of_space_stream.str();
-  auto new_index_label = new_index_stream.str();
+  auto out_of_space_label = get_label(generated_symbols, "out_of_space");
+  auto new_index_label = get_label(generated_symbols, "new_index");
 
   stack.add(out_of_space_label, success);
   stack.add(new_index_label, index_out);
@@ -1430,9 +1404,6 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
   os << ", &" << new_index_label;
   os << ", " << transpile(time, stack);
   os << ");\n";
-
-  out_of_space_counter++;
-  new_index_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::MapPut *node) {
@@ -1471,29 +1442,22 @@ void x86_Generator::visit(const targets::x86::MapPut *node) {
 void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {
   auto p_addr = node->get_p_addr();
   auto unread_length = node->get_unread_length();
+  auto generated_symbols = node->get_generated_symbols();
 
   assert(!p_addr.isNull());
   assert(!unread_length.isNull());
 
   auto p_label = stack.get_label(p_addr);
 
-  std::stringstream unread_len_stream;
-  unread_len_stream << "unread_len";
-
-  static int unread_len_stream_counter = 0;
-
-  if (unread_len_stream_counter > 0) {
-    unread_len_stream << "_" << unread_len_stream_counter;
-  }
+  assert(generated_symbols.size() == 1);
+  auto unread_len_label = get_label(generated_symbols, "unread_len");
 
   pad();
-  os << "uint32_t " << unread_len_stream.str();
+  os << "uint32_t " << unread_len_label;
   os << " = ";
   os << "packet_get_unread_length(";
   os << p_label;
   os << ");\n";
-
-  unread_len_stream_counter++;
 }
 
 void x86_Generator::visit(const targets::x86::SetIpv4UdpTcpChecksum *node) {

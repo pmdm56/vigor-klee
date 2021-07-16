@@ -124,6 +124,7 @@ public:
     return map_has_this_key;
   }
   const klee::ref<klee::Expr> &get_value_out() const { return value_out; }
+
   const BDD::symbols_t &get_generated_symbols() const {
     return generated_symbols;
   }

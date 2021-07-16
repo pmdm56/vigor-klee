@@ -296,7 +296,12 @@ public:
     stack.emplace_back();
   }
 
+public:
   std::string translate_label(std::string base, const Node *node) {
+    if (should_not_translate(base)) {
+      return base;
+    }
+
     std::stringstream new_label;
     new_label << base << "__" << node->get_id();
     return new_label.str();
@@ -306,27 +311,26 @@ public:
     return translate_label(base, node.get());
   }
 
-public:
-  void translate(BDDNode_ptr current, BDDNode_ptr translation_source,
+  void translate(Node *current, Node *translation_source,
                  RenameSymbols renamer) {
-    std::vector<BDDNode_ptr> nodes{ current };
+    std::vector<Node *> nodes{ current };
 
     while (nodes.size()) {
       auto node = nodes[0];
       nodes.erase(nodes.begin());
 
       if (node->get_type() == Node::NodeType::BRANCH) {
-        auto branch_node = static_cast<Branch *>(node.get());
+        auto branch_node = static_cast<Branch *>(node);
 
         auto condition = branch_node->get_condition();
         auto renamed_condition = renamer.rename(condition);
 
         branch_node->set_condition(renamed_condition);
 
-        nodes.push_back(branch_node->get_on_true());
-        nodes.push_back(branch_node->get_on_false());
+        nodes.push_back(branch_node->get_on_true().get());
+        nodes.push_back(branch_node->get_on_false().get());
       } else if (node->get_type() == Node::NodeType::CALL) {
-        auto call_node = static_cast<Call *>(node.get());
+        auto call_node = static_cast<Call *>(node);
         auto call = call_node->get_call();
 
         auto found_it = call_processor_lookup_table.find(call.function_name);
@@ -373,7 +377,7 @@ public:
 
         call_node->set_call(call);
 
-        nodes.push_back(node->get_next());
+        nodes.push_back(node->get_next().get());
       }
 
       auto constraints = node->get_constraints();
@@ -398,15 +402,11 @@ public:
     RenameSymbols renamer;
 
     for (auto symbol : symbols) {
-      if (should_not_translate(symbol.label)) {
-        continue;
-      }
-
       auto new_label = translate_label(symbol.label_base, node);
       renamer.add_translation(symbol.label, new_label);
     }
 
-    translate(node, node, renamer);
+    translate(node.get(), node.get(), renamer);
 
     assert(node->get_type() == Node::NodeType::CALL);
     auto call_node = static_cast<Call *>(node.get());
@@ -416,8 +416,6 @@ public:
 
     for (auto symbol : generated_symbols) {
       if (renamer.has_translation(symbol.label)) {
-        std::cerr << "node " << node->dump(true) << "\n";
-        std::cerr << "generated symbol " << symbol.label << "\n";
         assert(false);
       }
     }

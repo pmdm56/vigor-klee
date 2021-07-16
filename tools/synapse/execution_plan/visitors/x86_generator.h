@@ -39,33 +39,17 @@ struct stack_t {
     push();
 
     cp_var_to_code_translation = { { "rte_ether_addr_hash", "hash" },
-                                   { "VIGOR_DEVICE", "device" },
-                                   { "next_time", "now" } };
+                                   { "VIGOR_DEVICE", "device" } };
   }
 
   void push() { frames.emplace_back(); }
   void pop() { frames.pop_back(); }
 
   void translate(std::string &var) const {
-    std::string name = var;
-    std::string suffix;
-
-    std::smatch sm;
-    std::regex_match(var, sm, pattern);
-
-    if (sm.size() > 0) {
-      assert(sm.size() == 3);
-      name = sm[1];
-      suffix = sm[2];
-    }
-
-    auto it = cp_var_to_code_translation.find(name);
+    auto it = cp_var_to_code_translation.find(var);
     if (it != cp_var_to_code_translation.end()) {
-      name = it->second;
+      var = it->second;
     }
-
-    var.resize(name.size() + suffix.size());
-    var = name + suffix;
   }
 
   void add(std::string &label) {

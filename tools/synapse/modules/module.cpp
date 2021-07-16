@@ -56,7 +56,7 @@ std::map<std::string, bool> fn_has_side_effects_lookup{
     {"current_time", true},
     {"map_get", false},
     {"vector_borrow", false},
-    {"vector_return", false},
+    {"vector_return", true},
     {"rte_ether_addr_hash", false},
     {"packet_borrow_next_chunk", true},
     {"expire_items_single_map", true},
@@ -183,19 +183,15 @@ bool are_all_symbols_known(klee::ref<klee::Expr> expr,
   return true;
 }
 
-bool are_io_dependencies_met(const BDD::Node *current_node,
-                             const BDD::Node *next_node) {
-  assert(current_node);
-  BDD::symbols_t symbols = current_node->get_all_generated_symbols();
-
-  if (next_node->get_type() == BDD::Node::NodeType::BRANCH) {
-    auto branch_node = static_cast<const BDD::Branch *>(next_node);
+bool are_io_dependencies_met(const BDD::Node *node, BDD::symbols_t symbols) {
+  if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+    auto branch_node = static_cast<const BDD::Branch *>(node);
     auto condition = branch_node->get_condition();
     return are_all_symbols_known(condition, symbols);
   }
 
-  if (next_node->get_type() == BDD::Node::NodeType::CALL) {
-    auto call_node = static_cast<const BDD::Call *>(next_node);
+  if (node->get_type() == BDD::Node::NodeType::CALL) {
+    auto call_node = static_cast<const BDD::Call *>(node);
     auto call = call_node->get_call();
 
     for (auto arg_pair : call.args) {
@@ -220,8 +216,22 @@ bool are_io_dependencies_met(const BDD::Node *current_node,
   return false;
 }
 
-bool map_can_reorder(const BDD::Node *before, const BDD::Node *after,
-                     klee::ref<klee::Expr> &condition) {
+bool are_io_dependencies_met(const BDD::Node *current_node,
+                             const BDD::Node *next_node) {
+  assert(current_node);
+  BDD::symbols_t symbols = current_node->get_all_generated_symbols();
+  return are_io_dependencies_met(next_node, symbols);
+}
+
+bool are_io_dependencies_met(const BDD::Node *current_node,
+                             klee::ref<klee::Expr> expr) {
+  assert(current_node);
+  BDD::symbols_t symbols = current_node->get_all_generated_symbols();
+  return are_all_symbols_known(expr, symbols);
+}
+
+bool map_can_reorder(const BDD::Node *current, const BDD::Node *before,
+                     const BDD::Node *after, klee::ref<klee::Expr> &condition) {
   if (before->get_type() != after->get_type() ||
       before->get_type() != BDD::Node::NodeType::CALL) {
     return true;
@@ -235,11 +245,6 @@ bool map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
   auto before_call = before_call_node->get_call();
   auto after_call = after_call_node->get_call();
-
-  if (!fn_has_side_effects(before_call.function_name) &&
-      !fn_has_side_effects(after_call.function_name)) {
-    return true;
-  }
 
   auto before_map_it = before_call.args.find("map");
   auto after_map_it = after_call.args.find("map");
@@ -256,6 +261,11 @@ bool map_can_reorder(const BDD::Node *before, const BDD::Node *after,
   assert(!after_map.isNull());
 
   if (!BDD::solver_toolbox.are_exprs_always_equal(before_map, after_map)) {
+    return true;
+  }
+
+  if (!fn_has_side_effects(before_call.function_name) &&
+      !fn_has_side_effects(after_call.function_name)) {
     return true;
   }
 
@@ -310,10 +320,12 @@ bool map_can_reorder(const BDD::Node *before, const BDD::Node *after,
 
   condition = BDD::solver_toolbox.exprBuilder->Not(
       BDD::solver_toolbox.exprBuilder->Eq(before_key, after_key));
-  return true;
+
+  return are_io_dependencies_met(before, condition);
 }
 
-bool dchain_can_reorder(const BDD::Node *before, const BDD::Node *after,
+bool dchain_can_reorder(const BDD::Node *current, const BDD::Node *before,
+                        const BDD::Node *after,
                         klee::ref<klee::Expr> &condition) {
   if (before->get_type() != after->get_type() ||
       before->get_type() != BDD::Node::NodeType::CALL) {
@@ -356,6 +368,97 @@ bool dchain_can_reorder(const BDD::Node *before, const BDD::Node *after,
   return false;
 }
 
+bool vector_can_reorder(const BDD::Node *current, const BDD::Node *before,
+                        const BDD::Node *after,
+                        klee::ref<klee::Expr> &condition) {
+  if (before->get_type() != after->get_type() ||
+      before->get_type() != BDD::Node::NodeType::CALL) {
+    return true;
+  }
+
+  auto before_constraints = before->get_constraints();
+  auto after_constraints = after->get_constraints();
+
+  auto before_call_node = static_cast<const BDD::Call *>(before);
+  auto after_call_node = static_cast<const BDD::Call *>(after);
+
+  auto before_call = before_call_node->get_call();
+  auto after_call = after_call_node->get_call();
+
+  if (!fn_has_side_effects(before_call.function_name) &&
+      !fn_has_side_effects(after_call.function_name)) {
+    return true;
+  }
+
+  auto before_vector_it = before_call.args.find("vector");
+  auto after_vector_it = after_call.args.find("vector");
+
+  if (before_vector_it == before_call.args.end() ||
+      after_vector_it == after_call.args.end()) {
+    return true;
+  }
+
+  auto before_vector = before_vector_it->second.expr;
+  auto after_vector = after_vector_it->second.expr;
+
+  assert(!before_vector.isNull());
+  assert(!after_vector.isNull());
+
+  if (!BDD::solver_toolbox.are_exprs_always_equal(before_vector,
+                                                  after_vector)) {
+    return true;
+  }
+
+  auto before_index_it = before_call.args.find("index");
+  auto after_index_it = after_call.args.find("index");
+
+  auto before_index = before_index_it->second.expr;
+  auto after_index = after_index_it->second.expr;
+
+  assert(!before_index.isNull());
+  assert(!after_index.isNull());
+
+  auto always_eq = std::make_pair<bool, bool>(false, false);
+  auto always_diff = std::make_pair<bool, bool>(false, false);
+
+  for (auto c1 : before_constraints) {
+    for (auto c2 : after_constraints) {
+      auto always_eq_local = BDD::solver_toolbox.are_exprs_always_equal(
+          before_index, after_index, c1, c2);
+
+      if (!always_eq.first) {
+        always_eq.first = true;
+        always_eq.second = always_eq_local;
+      }
+
+      assert(always_eq.second == always_eq_local);
+
+      auto always_diff_local = BDD::solver_toolbox.are_exprs_always_not_equal(
+          before_index, after_index, c1, c2);
+
+      if (!always_diff.first) {
+        always_diff.first = true;
+        always_diff.second = always_diff_local;
+      }
+
+      assert(always_diff.second == always_diff_local);
+    }
+  }
+
+  if (always_eq.second) {
+    return false;
+  }
+
+  if (always_diff.second) {
+    return true;
+  }
+
+  condition = BDD::solver_toolbox.exprBuilder->Not(
+      BDD::solver_toolbox.exprBuilder->Eq(before_index, after_index));
+
+  return are_io_dependencies_met(current, condition);
+}
+
 bool are_rw_dependencies_met(const BDD::Node *current_node,
                              const BDD::Node *next_node,
                              klee::ref<klee::Expr> &condition) {
@@ -368,11 +471,18 @@ bool are_rw_dependencies_met(const BDD::Node *current_node,
   while (node->get_id() != current_node->get_id()) {
     klee::ref<klee::Expr> local_condition;
 
-    if (!map_can_reorder(node.get(), next_node, local_condition)) {
+    if (!map_can_reorder(current_node, node.get(), next_node,
+                         local_condition)) {
       return false;
     }
 
-    if (!dchain_can_reorder(node.get(), next_node, local_condition)) {
+    if (!dchain_can_reorder(current_node, node.get(), next_node,
+                            local_condition)) {
+      return false;
+    }
+
+    if (!vector_can_reorder(current_node, node.get(), next_node,
+                            local_condition)) {
       return false;
     }
 
@@ -707,7 +817,6 @@ void reorder_bdd(ExecutionPlan &ep, BDD::BDDNode_ptr node,
 
   if (candidate_clone->get_type() == BDD::Node::NodeType::BRANCH) {
     auto branch = static_cast<BDD::Branch *>(candidate_clone.get());
-
     branch->get_on_false()->recursive_update_ids(id);
     bdd.set_id(id);
   }

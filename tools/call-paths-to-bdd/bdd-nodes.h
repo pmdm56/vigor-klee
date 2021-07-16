@@ -111,6 +111,8 @@ class Node;
 typedef std::shared_ptr<Node> BDDNode_ptr;
 
 class Node {
+  friend class SymbolFactory;
+
 public:
   enum NodeType {
     BRANCH,
@@ -208,8 +210,9 @@ public:
   symbols_t get_all_generated_symbols() const;
 
   virtual BDDNode_ptr clone(bool recursive = false) const = 0;
+
   virtual void recursive_update_ids(uint64_t &new_id) = 0;
-  void update_id(uint64_t new_id) { id = new_id; }
+  void update_id(uint64_t new_id);
 
   static std::string
   process_call_path_filename(std::string call_path_filename) {
@@ -305,10 +308,7 @@ public:
     return clone;
   }
 
-  virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = new_id;
-    next->recursive_update_ids(++new_id);
-  }
+  virtual void recursive_update_ids(uint64_t &new_id) override;
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
 
@@ -416,12 +416,7 @@ public:
     return clone;
   }
 
-  virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = new_id;
-    new_id++;
-    next->recursive_update_ids(new_id);
-    on_false->recursive_update_ids(new_id);
-  }
+  virtual void recursive_update_ids(uint64_t &new_id) override;
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
 
@@ -467,10 +462,7 @@ public:
     return clone;
   }
 
-  virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = new_id;
-    new_id++;
-  }
+  virtual void recursive_update_ids(uint64_t &new_id) override;
 
   std::vector<calls_t> get_calls() const { return calls_list; }
 
@@ -539,10 +531,7 @@ public:
     return clone;
   }
 
-  virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = new_id;
-    new_id++;
-  }
+  virtual void recursive_update_ids(uint64_t &new_id) override;
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
 
@@ -673,10 +662,7 @@ public:
     return clone;
   }
 
-  virtual void recursive_update_ids(uint64_t &new_id) override {
-    id = new_id;
-    new_id++;
-  }
+  virtual void recursive_update_ids(uint64_t &new_id) override;
 
   void visit(BDDVisitor &visitor) const override { visitor.visit(this); }
 

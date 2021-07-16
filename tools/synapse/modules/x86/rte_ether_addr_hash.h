@@ -13,15 +13,18 @@ private:
   klee::ref<klee::Expr> obj;
   klee::ref<klee::Expr> hash;
 
+  BDD::symbols_t generated_symbols;
+
 public:
   RteEtherAddrHash()
       : Module(ModuleType::x86_RteEtherAddrHash, Target::x86, "EtherHash") {}
 
   RteEtherAddrHash(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _obj,
-                   klee::ref<klee::Expr> _hash)
+                   klee::ref<klee::Expr> _hash,
+                   BDD::symbols_t _generated_symbols)
       : Module(ModuleType::x86_RteEtherAddrHash, Target::x86, "EtherHash",
                node),
-        obj(_obj), hash(_hash) {}
+        obj(_obj), hash(_hash), generated_symbols(_generated_symbols) {}
 
 private:
   processing_result_t process_call(const ExecutionPlan &ep,
@@ -37,7 +40,10 @@ private:
       auto _obj = call.args["obj"].in;
       auto _hash = call.ret;
 
-      auto new_module = std::make_shared<RteEtherAddrHash>(node, _obj, _hash);
+      auto _generated_symbols = casted->get_generated_symbols();
+
+      auto new_module = std::make_shared<RteEtherAddrHash>(node, _obj, _hash,
+                                                           _generated_symbols);
       auto new_ep = ep.add_leaves(new_module, node->get_next());
 
       result.module = new_module;
@@ -53,7 +59,7 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new RteEtherAddrHash(node, obj, hash);
+    auto cloned = new RteEtherAddrHash(node, obj, hash, generated_symbols);
     return std::shared_ptr<Module>(cloned);
   }
 
@@ -74,11 +80,32 @@ public:
       return false;
     }
 
+    if (generated_symbols.size() != other_cast->generated_symbols.size()) {
+      return false;
+    }
+
+    for (auto i = 0u; i < generated_symbols.size(); i++) {
+      if (generated_symbols[i].label !=
+          other_cast->generated_symbols[i].label) {
+        return false;
+      }
+
+      if (!BDD::solver_toolbox.are_exprs_always_equal(
+               generated_symbols[i].expr,
+               other_cast->generated_symbols[i].expr)) {
+        return false;
+      }
+    }
+
     return true;
   }
 
   const klee::ref<klee::Expr> &get_obj() const { return obj; }
   const klee::ref<klee::Expr> &get_hash() const { return hash; }
+
+  const BDD::symbols_t &get_generated_symbols() const {
+    return generated_symbols;
+  }
 };
 } // namespace x86
 } // namespace targets

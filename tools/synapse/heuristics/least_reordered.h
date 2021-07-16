@@ -37,8 +37,9 @@ struct LeastReorderedComparator : public HeuristicConfiguration {
 
   Score get_score(const ExecutionPlan &e) const override {
     Score s;
-    // s.set(Score::Category::NumberOfReorderedNodes, -e.get_reordered_nodes());
-    s.set(Score::Category::NumberOfReorderedNodes, sequential_map_get(e));
+    s.set(Score::Category::NumberOfReorderedNodes, -e.get_reordered_nodes());
+    // s.set(Score::Category::NumberOfReorderedNodes, sequential_map_get(e));
+    // s.set(Score::Category::NumberOfReorderedNodes, e.get_reordered_nodes());
     s.set(Score::Category::NumberOfNodes, e.get_nodes());
     return s;
   }

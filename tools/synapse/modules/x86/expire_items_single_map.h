@@ -16,6 +16,8 @@ private:
   klee::ref<klee::Expr> time;
   klee::ref<klee::Expr> number_of_freed_flows;
 
+  BDD::symbols_t generated_symbols;
+
 public:
   ExpireItemsSingleMap()
       : Module(ModuleType::x86_ExpireItemsSingleMap, Target::x86, "Expire") {}
@@ -25,12 +27,14 @@ public:
                        klee::ref<klee::Expr> _vector_addr,
                        klee::ref<klee::Expr> _map_addr,
                        klee::ref<klee::Expr> _time,
-                       klee::ref<klee::Expr> _number_of_freed_flows)
+                       klee::ref<klee::Expr> _number_of_freed_flows,
+                       BDD::symbols_t _generated_symbols)
       : Module(ModuleType::x86_ExpireItemsSingleMap, Target::x86, "Expire",
                node),
         dchain_addr(_dchain_addr), vector_addr(_vector_addr),
         map_addr(_map_addr), time(_time),
-        number_of_freed_flows(_number_of_freed_flows) {}
+        number_of_freed_flows(_number_of_freed_flows),
+        generated_symbols(_generated_symbols) {}
 
 private:
   processing_result_t process_call(const ExecutionPlan &ep,
@@ -51,10 +55,11 @@ private:
       auto _map_addr = call.args["map"].expr;
       auto _time = call.args["time"].expr;
       auto _number_of_freed_flows = call.ret;
+      auto _generated_symbols = casted->get_generated_symbols();
 
       auto new_module = std::make_shared<ExpireItemsSingleMap>(
           node, _dchain_addr, _vector_addr, _map_addr, _time,
-          _number_of_freed_flows);
+          _number_of_freed_flows, _generated_symbols);
       auto new_ep = ep.add_leaves(new_module, node->get_next());
 
       result.module = new_module;
@@ -70,8 +75,9 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new ExpireItemsSingleMap(
-        node, dchain_addr, map_addr, vector_addr, time, number_of_freed_flows);
+    auto cloned =
+        new ExpireItemsSingleMap(node, dchain_addr, map_addr, vector_addr, time,
+                                 number_of_freed_flows, generated_symbols);
     return std::shared_ptr<Module>(cloned);
   }
 
@@ -107,6 +113,23 @@ public:
       return false;
     }
 
+    if (generated_symbols.size() != other_cast->generated_symbols.size()) {
+      return false;
+    }
+
+    for (auto i = 0u; i < generated_symbols.size(); i++) {
+      if (generated_symbols[i].label !=
+          other_cast->generated_symbols[i].label) {
+        return false;
+      }
+
+      if (!BDD::solver_toolbox.are_exprs_always_equal(
+               generated_symbols[i].expr,
+               other_cast->generated_symbols[i].expr)) {
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -116,6 +139,10 @@ public:
   const klee::ref<klee::Expr> &get_time() const { return time; }
   const klee::ref<klee::Expr> &get_number_of_freed_flows() const {
     return number_of_freed_flows;
+  }
+
+  const BDD::symbols_t &get_generated_symbols() const {
+    return generated_symbols;
   }
 };
 } // namespace x86

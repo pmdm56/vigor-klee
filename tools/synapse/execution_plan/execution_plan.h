@@ -325,6 +325,11 @@ public:
     return processed_bdd_nodes;
   }
 
+  float get_percentage_of_processed_bdd_nodes() const {
+    auto total_nodes = bdd.get_number_of_process_nodes();
+    return (float)processed_bdd_nodes.size() / (float)total_nodes;
+  }
+
   void remove_from_processed_bdd_nodes(uint64_t id) {
     auto found_it = processed_bdd_nodes.find(id);
     processed_bdd_nodes.erase(found_it);

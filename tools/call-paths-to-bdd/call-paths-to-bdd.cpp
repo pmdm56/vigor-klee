@@ -251,7 +251,6 @@ symbols_t Node::get_all_generated_symbols() const {
       const Call *call = static_cast<const Call *>(node);
       auto more_symbols = call->get_generated_symbols();
       symbols.insert(symbols.end(), more_symbols.begin(), more_symbols.end());
-      return symbols;
     }
 
     node = node->get_prev().get();
@@ -263,6 +262,62 @@ symbols_t Node::get_all_generated_symbols() const {
 symbols_t Call::get_generated_symbols() const {
   SymbolFactory symbol_factory;
   return symbol_factory.get_symbols(this);
+}
+
+void Call::recursive_update_ids(uint64_t &new_id) {
+  update_id(new_id);
+  new_id++;
+  next->recursive_update_ids(new_id);
+}
+
+void Branch::recursive_update_ids(uint64_t &new_id) {
+  update_id(new_id);
+  new_id++;
+  next->recursive_update_ids(new_id);
+  on_false->recursive_update_ids(new_id);
+}
+
+void ReturnRaw::recursive_update_ids(uint64_t &new_id) {
+  update_id(new_id);
+  new_id++;
+}
+
+void ReturnInit::recursive_update_ids(uint64_t &new_id) {
+  update_id(new_id);
+  new_id++;
+}
+
+void ReturnProcess::recursive_update_ids(uint64_t &new_id) {
+  update_id(new_id);
+  new_id++;
+}
+
+void Node::update_id(uint64_t new_id) {
+  SymbolFactory factory;
+  auto symbols = factory.get_symbols(this);
+
+  id = new_id;
+
+  if (symbols.size() == 0) {
+    return;
+  }
+
+  RenameSymbols renamer;
+  for (auto symbol : symbols) {
+    auto new_label = factory.translate_label(symbol.label_base, this);
+
+    if (new_label == symbol.label) {
+      continue;
+    }
+
+    renamer.add_translation(symbol.label, new_label);
+  }
+
+  if (renamer.get_translations().size() == 0) {
+    return;
+  }
+
+  factory.translate(this, this, renamer);
 }
 
 void CallPathsGroup::group_call_paths() {

@@ -86,6 +86,10 @@ public:
         Log::dbg()
             << "=======================================================\n";
         Log::dbg() << "Available      " << available << "\n";
+        Log::dbg() << "BDD progress   " << std::fixed << std::setprecision(2)
+                   << 100 * next_ep.get_percentage_of_processed_bdd_nodes()
+                   << " %"
+                   << "\n";
         Log::dbg() << "Node           " << next_node->dump(true) << "\n";
 
         if (next_ep.get_current_platform().first) {

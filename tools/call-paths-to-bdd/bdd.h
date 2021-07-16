@@ -22,7 +22,7 @@ private:
   static constexpr char INIT_CONTEXT_MARKER[] = "start_time";
 
   // For deserialization
-  BDD() { solver_toolbox.build(); }
+  BDD() : id(0) { solver_toolbox.build(); }
 
 private:
   call_t get_successful_call(std::vector<call_path_t *> call_paths) const;
@@ -37,6 +37,30 @@ private:
 
   void add_node(call_t call);
   void dump(int lvl, BDDNode_ptr node) const;
+
+  unsigned get_number_of_nodes(BDDNode_ptr root) const {
+    unsigned num_nodes = 0;
+
+    std::vector<BDDNode_ptr> nodes{ root };
+    BDDNode_ptr node;
+
+    while (nodes.size()) {
+      node = nodes[0];
+      num_nodes++;
+      nodes.erase(nodes.begin());
+
+      if (node->get_type() == Node::NodeType::BRANCH) {
+        auto branch_node = static_cast<Branch *>(node.get());
+
+        nodes.push_back(branch_node->get_on_true());
+        nodes.push_back(branch_node->get_on_false());
+      } else if (node->get_next()) {
+        nodes.push_back(node->get_next());
+      }
+    }
+
+    return num_nodes;
+  }
 
 public:
   BDD(std::vector<call_path_t *> _call_paths) : id(0), call_paths(_call_paths) {
@@ -62,6 +86,14 @@ public:
 
   const BDDNode_ptr &get_process() const { return nf_process; }
   BDDNode_ptr get_process() { return nf_process; }
+
+  unsigned get_number_of_init_nodes() const {
+    return get_number_of_nodes(nf_init);
+  }
+
+  unsigned get_number_of_process_nodes() const {
+    return get_number_of_nodes(nf_process);
+  }
 
   void replace_process(const BDDNode_ptr &_process) { nf_process = _process; }
 

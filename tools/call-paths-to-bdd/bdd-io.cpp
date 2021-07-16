@@ -1003,6 +1003,7 @@ BDD BDD::deserialize(std::string file_path) {
         assert(nodes.find(node->get_id()) == nodes.end());
 
         bdd.id = std::max(bdd.id, node->get_id()) + 1;
+
         nodes[node->get_id()] = node;
         current_node.clear();
       }

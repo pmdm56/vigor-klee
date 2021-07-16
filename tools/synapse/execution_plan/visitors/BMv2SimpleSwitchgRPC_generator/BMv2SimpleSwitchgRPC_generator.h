@@ -91,10 +91,10 @@ private:
 
   struct metadata_t {
     std::string label;
-    klee::ref<klee::Expr> expr;
+    std::vector<klee::ref<klee::Expr>> exprs;
 
-    metadata_t(std::string _label, klee::ref<klee::Expr> _expr)
-        : label(_label), expr(_expr) {}
+    metadata_t(std::string _label, std::vector<klee::ref<klee::Expr>> _exprs)
+        : label(_label), exprs(_exprs) {}
   };
 
   struct metadata_stack_t {

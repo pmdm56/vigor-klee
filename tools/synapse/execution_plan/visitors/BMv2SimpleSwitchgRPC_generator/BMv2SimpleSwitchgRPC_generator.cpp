@@ -27,8 +27,13 @@ void BMv2SimpleSwitchgRPC_Generator::err_label_from_vars(
   Log::err() << "expr   " << expr_to_string(expr, true) << "\n";
 
   for (auto meta : metadata.get()) {
-    Log::err() << "meta   " << meta.label << " "
-               << expr_to_string(meta.expr, true) << "\n";
+    std::stringstream meta_stream;
+    meta_stream << "meta   " << meta.label << " ";
+    for (auto expr : meta.exprs) {
+      meta_stream << expr_to_string(expr, true) << " ";
+    }
+    meta_stream << "\n";
+    Log::err() << meta_stream.str();
   }
 
   Log::err() << "\n";
@@ -132,21 +137,22 @@ std::string BMv2SimpleSwitchgRPC_Generator::label_from_vars(
   auto sz = expr->getWidth();
 
   for (auto meta : metadata.get()) {
-    auto meta_expr = meta.expr;
-    auto meta_sz = meta_expr->getWidth();
+    for (auto meta_expr : meta.exprs) {
+      auto meta_sz = meta_expr->getWidth();
 
-    for (auto byte = 0u; byte * 8 + sz <= meta_sz; byte++) {
-      auto extracted =
-          BDD::solver_toolbox.exprBuilder->Extract(meta_expr, byte * 8, sz);
+      for (auto byte = 0u; byte * 8 + sz <= meta_sz; byte++) {
+        auto extracted =
+            BDD::solver_toolbox.exprBuilder->Extract(meta_expr, byte * 8, sz);
 
-      if (BDD::solver_toolbox.are_exprs_always_equal(expr, extracted)) {
-        auto label = "meta." + meta.label;
+        if (BDD::solver_toolbox.are_exprs_always_equal(expr, extracted)) {
+          auto label = "meta." + meta.label;
 
-        if (meta_sz == sz) {
-          return label;
+          if (meta_sz == sz) {
+            return label;
+          }
+
+          return get_bytes_of_label(label, sz, byte * 8);
         }
-
-        return get_bytes_of_label(label, sz, byte * 8);
       }
     }
   }
@@ -457,7 +463,8 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
 
   for (auto meta : metadata.get_all()) {
     pad(os, lvl);
-    os << p4_type_from_expr(meta.expr) << " " << meta.label << ";\n";
+    assert(meta.exprs.size());
+    os << p4_type_from_expr(meta.exprs[0]) << " " << meta.label << ";\n";
   }
 
   lvl--;
@@ -709,7 +716,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   auto keys = node->get_keys();
   auto params = node->get_params();
   auto bdd_function = node->get_bdd_function();
-  auto has_this_key = node->get_map_has_this_key_label();
+  auto has_this_key_labels = node->get_map_has_this_key_labels();
   auto table_id = node->get_table_id();
 
   assert(keys.size());
@@ -721,7 +728,8 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   std::vector<std::string> params_type;
   for (auto param : params) {
-    auto param_type = p4_type_from_expr(param);
+    assert(param.exprs.size());
+    auto param_type = p4_type_from_expr(param.exprs[0]);
     params_type.push_back(param_type);
   }
 
@@ -746,7 +754,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     meta_label << code_table_id.str();
     meta_label << "_" << i;
 
-    metadata_t meta_param(meta_label.str(), params[i]);
+    metadata_t meta_param(meta_label.str(), params[i].exprs);
     metadata.append(meta_param);
     new_metadata.push_back(meta_param);
   }
@@ -782,12 +790,17 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     }
   }
 
-  if (has_this_key.size()) {
-    var_t hit_var(table.label + "_hit", has_this_key, 1);
-    local_vars.append(hit_var);
+  if (has_this_key_labels.size()) {
+    std::string hit_var_label;
+
+    for (auto has_this_key_label : has_this_key_labels) {
+      var_t hit_var(table.label + "_hit", has_this_key_label, 1);
+      hit_var_label = hit_var.label;
+      local_vars.append(hit_var);
+    }
 
     pad(ingress.apply_block, ingress.lvl);
-    ingress.apply_block << "bool " << hit_var.label;
+    ingress.apply_block << "bool " << hit_var_label;
     ingress.apply_block << " = ";
     ingress.apply_block << table.label << ".apply().hit;\n";
   } else {

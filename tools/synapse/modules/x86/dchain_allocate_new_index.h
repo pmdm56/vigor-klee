@@ -15,6 +15,8 @@ private:
   klee::ref<klee::Expr> index_out;
   klee::ref<klee::Expr> success;
 
+  BDD::symbols_t generated_symbols;
+
 public:
   DchainAllocateNewIndex()
       : Module(ModuleType::x86_DchainAllocateNewIndex, Target::x86,
@@ -24,11 +26,12 @@ public:
                          klee::ref<klee::Expr> _dchain_addr,
                          klee::ref<klee::Expr> _time,
                          klee::ref<klee::Expr> _index_out,
-                         klee::ref<klee::Expr> _success)
+                         klee::ref<klee::Expr> _success,
+                         BDD::symbols_t _generated_symbols)
       : Module(ModuleType::x86_DchainAllocateNewIndex, Target::x86,
                "DchainAllocate", node),
         dchain_addr(_dchain_addr), time(_time), index_out(_index_out),
-        success(_success) {}
+        success(_success), generated_symbols(_generated_symbols) {}
 
 private:
   processing_result_t process_call(const ExecutionPlan &ep,
@@ -48,8 +51,10 @@ private:
       auto _index_out = call.args["index_out"].out;
       auto _success = call.ret;
 
+      auto _generated_symbols = casted->get_generated_symbols();
+
       auto new_module = std::make_shared<DchainAllocateNewIndex>(
-          node, _dchain_addr, _time, _index_out, _success);
+          node, _dchain_addr, _time, _index_out, _success, _generated_symbols);
       auto new_ep = ep.add_leaves(new_module, node->get_next());
 
       result.module = new_module;
@@ -65,8 +70,8 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned =
-        new DchainAllocateNewIndex(node, dchain_addr, time, index_out, success);
+    auto cloned = new DchainAllocateNewIndex(node, dchain_addr, time, index_out,
+                                             success, generated_symbols);
     return std::shared_ptr<Module>(cloned);
   }
 
@@ -97,6 +102,23 @@ public:
       return false;
     }
 
+    if (generated_symbols.size() != other_cast->generated_symbols.size()) {
+      return false;
+    }
+
+    for (auto i = 0u; i < generated_symbols.size(); i++) {
+      if (generated_symbols[i].label !=
+          other_cast->generated_symbols[i].label) {
+        return false;
+      }
+
+      if (!BDD::solver_toolbox.are_exprs_always_equal(
+               generated_symbols[i].expr,
+               other_cast->generated_symbols[i].expr)) {
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -104,6 +126,10 @@ public:
   const klee::ref<klee::Expr> &get_time() const { return time; }
   const klee::ref<klee::Expr> &get_index_out() const { return index_out; }
   const klee::ref<klee::Expr> &get_success() const { return success; }
+
+  const BDD::symbols_t &get_generated_symbols() const {
+    return generated_symbols;
+  }
 };
 } // namespace x86
 } // namespace targets
