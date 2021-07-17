@@ -73,6 +73,7 @@ public:
     nf_process = populate_process(root);
 
     rename_symbols();
+    trim_constraints();
   }
 
   BDD(const BDD &bdd)
@@ -156,6 +157,11 @@ public:
     rename_symbols(nf_process, factory);
   }
 
+  void trim_constraints() {
+    trim_constraints(nf_init);
+    trim_constraints(nf_process);
+  }
+
   static void serialize(const BDD &bdd, std::string file_path);
   static BDD deserialize(std::string file_path);
 
@@ -187,6 +193,62 @@ private:
         node = node->get_next();
       } else {
         return;
+      }
+    }
+  }
+
+  void trim_constraints(BDDNode_ptr node) {
+    std::vector<BDDNode_ptr> nodes{ node };
+
+    while (nodes.size()) {
+      auto node = nodes[0];
+      nodes.erase(nodes.begin());
+
+      auto available_symbols = node->get_all_generated_symbols();
+      auto managers = node->get_constraints();
+
+      std::vector<klee::ConstraintManager> new_managers;
+
+      for (auto manager : managers) {
+        klee::ConstraintManager new_manager;
+
+        for (auto constraint : manager) {
+          RetrieveSymbols retriever;
+          retriever.visit(constraint);
+
+          auto used_symbols = retriever.get_retrieved_strings();
+
+          auto used_not_available_it =
+              std::find_if(used_symbols.begin(), used_symbols.end(),
+                           [&](const std::string &used_symbol) {
+                auto available_symbol_it = std::find_if(
+                    available_symbols.begin(), available_symbols.end(),
+                    [&](const symbol_t &available_symbol) {
+                      return available_symbol.label == used_symbol;
+                    });
+
+                return available_symbol_it == available_symbols.end();
+              });
+
+          if (used_not_available_it != used_symbols.end()) {
+            continue;
+          }
+
+          new_manager.addConstraint(constraint);
+        }
+
+        new_managers.push_back(new_manager);
+      }
+
+      node->set_constraints(new_managers);
+
+      if (node->get_type() == Node::NodeType::BRANCH) {
+        auto branch_node = static_cast<Branch *>(node.get());
+
+        nodes.push_back(branch_node->get_on_true());
+        nodes.push_back(branch_node->get_on_false());
+      } else if (node->get_next()) {
+        nodes.push_back(node->get_next());
       }
     }
   }

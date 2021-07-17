@@ -101,6 +101,51 @@ private:
     return symbols;
   }
 
+  symbols_t cht_fill_cht(call_t call, bool save) {
+    symbols_t symbols;
+
+    assert(!call.ret.isNull());
+
+    auto cht_fill_cht_successful = call.ret;
+
+    symbols.emplace_back(
+        build_label(cht_fill_cht_successful, "cht_fill_cht_successful", save),
+        "cht_fill_cht_successful", cht_fill_cht_successful);
+
+    return symbols;
+  }
+
+  symbols_t LoadBalancedFlow_hash(call_t call, bool save) {
+    symbols_t symbols;
+
+    assert(!call.ret.isNull());
+
+    auto hash = call.ret;
+
+    symbols.emplace_back(build_label(hash, "LoadBalancedFlow_hash", save),
+                         "LoadBalancedFlow_hash", hash);
+
+    return symbols;
+  }
+
+  symbols_t cht_find_preferred_available_backend(call_t call, bool save) {
+    symbols_t symbols;
+
+    assert(!call.ret.isNull());
+    assert(!call.args["chosen_backend"].out.isNull());
+
+    auto prefered_backend_found = call.ret;
+    auto chosen_backend = call.args["chosen_backend"].out;
+
+    symbols.emplace_back(
+        build_label(prefered_backend_found, "prefered_backend_found", save),
+        "prefered_backend_found", prefered_backend_found);
+    symbols.emplace_back(build_label(chosen_backend, "chosen_backend", save),
+                         "chosen_backend", chosen_backend);
+
+    return symbols;
+  }
+
   symbols_t map_get(call_t call, bool save) {
     symbols_t symbols;
 
@@ -290,7 +335,11 @@ public:
         &SymbolFactory::dchain_is_index_allocated },
       { "vector_borrow", &SymbolFactory::vector_borrow },
       { "nf_set_rte_ipv4_udptcp_checksum",
-        &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum }
+        &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum },
+      { "cht_fill_cht", &SymbolFactory::cht_fill_cht },
+      { "LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash },
+      { "cht_find_preferred_available_backend",
+        &SymbolFactory::cht_find_preferred_available_backend },
     };
 
     stack.emplace_back();
@@ -403,6 +452,11 @@ public:
 
     for (auto symbol : symbols) {
       auto new_label = translate_label(symbol.label_base, node);
+
+      if (new_label == symbol.label) {
+        continue;
+      }
+
       renamer.add_translation(symbol.label, new_label);
     }
 

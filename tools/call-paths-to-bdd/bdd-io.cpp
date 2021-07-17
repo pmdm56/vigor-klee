@@ -239,38 +239,13 @@ std::string serialize_call(const call_t &call, kQuery_t &kQuery) {
   return call_stream.str();
 }
 
-void serialize_call_path_constraints(
-    const std::vector<std::string> &call_path_filenames,
-    const std::vector<klee::ConstraintManager> &managers,
-    std::map<std::string, kQuery_t> &constraints_per_call_paths) {
-  assert(call_path_filenames.size() == managers.size());
-
-  for (auto i = 0u; i < call_path_filenames.size(); i++) {
-    auto call_path_filename = call_path_filenames[i];
-    auto found_it = constraints_per_call_paths.find(call_path_filename);
-
-    if (found_it != constraints_per_call_paths.end()) {
-      continue;
-    }
-
-    auto manager = managers[i];
-    auto &kQuery = constraints_per_call_paths[call_path_filename];
-
-    for (auto constraint : manager) {
-      serialize_expr(constraint, kQuery);
-    }
-  }
-}
-
 void BDD::serialize(const BDD &bdd, std::string out_file) {
   std::ofstream out(out_file);
 
   assert(out);
   assert(out.is_open());
 
-  kQuery_t bdd_kQuery;
-
-  std::map<std::string, kQuery_t> constraints_per_call_path;
+  kQuery_t kQuery;
 
   std::stringstream kQuery_stream;
   std::stringstream kQuery_cp_constraints_stream;
@@ -291,6 +266,10 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
     nodes_stream << "[";
 
     auto filenames = node->get_call_paths_filenames();
+    auto managers = node->get_constraints();
+
+    assert(filenames.size() == managers.size());
+
     for (auto i = 0u; i < filenames.size(); i++) {
       auto filename = filenames[i];
 
@@ -299,12 +278,15 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
       }
 
       nodes_stream << filename;
-    }
-    nodes_stream << "] ";
+      nodes_stream << ":";
+      nodes_stream << managers[i].size();
 
-    auto constraint_managers = node->get_constraints();
-    serialize_call_path_constraints(filenames, constraint_managers,
-                                    constraints_per_call_path);
+      for (auto constraint : managers[i]) {
+        serialize_expr(constraint, kQuery);
+      }
+    }
+
+    nodes_stream << "] ";
 
     switch (node->get_type()) {
     case Node::NodeType::CALL: {
@@ -312,7 +294,7 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
 
       nodes_stream << "CALL";
       nodes_stream << " ";
-      nodes_stream << serialize_call(call_node->get_call(), bdd_kQuery);
+      nodes_stream << serialize_call(call_node->get_call(), kQuery);
 
       assert(node->get_next());
 
@@ -334,7 +316,7 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
 
       nodes_stream << "BRANCH";
       nodes_stream << " ";
-      nodes_stream << serialize_expr(condition, bdd_kQuery);
+      nodes_stream << serialize_expr(condition, kQuery);
 
       assert(branch_node->get_on_true());
       assert(branch_node->get_on_false());
@@ -407,17 +389,8 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
   nodes_stream << "\n";
   edges_stream << "\n";
 
-  for (auto kQuery_constraint_pair : constraints_per_call_path) {
-    auto call_path_filename = kQuery_constraint_pair.first;
-    auto kQuery = kQuery_constraint_pair.second;
-
-    out << ";;-- Call path kQuery --\n";
-    out << "filename:" << call_path_filename << "\n";
-    out << kQuery.serialize();
-  }
-
   out << ";;-- kQuery --\n";
-  out << bdd_kQuery.serialize();
+  out << kQuery.serialize();
 
   out << ";; -- Nodes --";
   out << nodes_stream.str();
@@ -732,9 +705,7 @@ BDDNode_ptr parse_node_return_process(
 }
 
 BDDNode_ptr parse_node(std::string serialized_node,
-                       std::vector<klee::ref<klee::Expr>> &exprs,
-                       const std::map<std::string, klee::ConstraintManager>
-                           &managers_per_call_path) {
+                       std::vector<klee::ref<klee::Expr>> &exprs) {
   BDDNode_ptr node;
 
   auto delim = serialized_node.find(":");
@@ -752,33 +723,52 @@ BDDNode_ptr parse_node(std::string serialized_node,
   delim = serialized_node.find("] ");
   assert(delim != std::string::npos);
 
-  auto call_paths = serialized_node.substr(0, delim);
+  auto call_paths_and_constraints_num = serialized_node.substr(0, delim);
   serialized_node = serialized_node.substr(delim + 2);
 
   std::vector<std::string> call_paths_filenames;
-
-  while (call_paths.size()) {
-    delim = call_paths.find(" ");
-
-    if (delim != std::string::npos) {
-      auto call_path_filename = call_paths.substr(0, delim);
-      call_paths_filenames.push_back(call_path_filename);
-
-      call_paths = call_paths.substr(delim + 1);
-    } else {
-      call_paths_filenames.push_back(call_paths);
-      call_paths.clear();
-    }
-  }
-
   std::vector<klee::ConstraintManager> constraint_managers;
 
-  for (auto call_path_filename : call_paths_filenames) {
-    assert(managers_per_call_path.find(call_path_filename) !=
-           managers_per_call_path.end());
+  while (call_paths_and_constraints_num.size()) {
+    delim = call_paths_and_constraints_num.find(" ");
 
-    constraint_managers.push_back(
-        managers_per_call_path.at(call_path_filename));
+    std::string call_path_filename;
+    int constraints_num = -1;
+
+    if (delim != std::string::npos) {
+      auto filename_and_num = call_paths_and_constraints_num.substr(0, delim);
+      call_paths_and_constraints_num =
+          call_paths_and_constraints_num.substr(delim + 1);
+
+      delim = filename_and_num.find(":");
+      assert(delim != std::string::npos);
+
+      call_path_filename = filename_and_num.substr(0, delim);
+      constraints_num = std::atoi(filename_and_num.substr(delim + 1).c_str());
+    } else {
+      delim = call_paths_and_constraints_num.find(":");
+      assert(delim != std::string::npos);
+
+      call_path_filename = call_paths_and_constraints_num.substr(0, delim);
+      constraints_num =
+          std::atoi(call_paths_and_constraints_num.substr(delim + 1).c_str());
+
+      call_paths_and_constraints_num.clear();
+    }
+
+    assert(call_path_filename.size());
+    assert(constraints_num >= 0);
+
+    call_paths_filenames.push_back(call_path_filename);
+
+    klee::ConstraintManager manager;
+
+    for (auto i = 0; i < constraints_num; i++) {
+      auto constraint = pop_expr(exprs);
+      manager.addConstraint(constraint);
+    }
+
+    constraint_managers.push_back(manager);
   }
 
   delim = serialized_node.find(" ");
@@ -817,8 +807,8 @@ BDDNode_ptr parse_node(std::string serialized_node,
   return node;
 }
 
-void parse_kQuery(std::string kQuery, std::vector<klee::ref<klee::Expr>> &exprs,
-                  klee::ConstraintManager &manager) {
+void parse_kQuery(std::string kQuery,
+                  std::vector<klee::ref<klee::Expr>> &exprs) {
   llvm::MemoryBuffer *MB = llvm::MemoryBuffer::getMemBuffer(kQuery);
   klee::ExprBuilder *Builder = klee::createDefaultExprBuilder();
   klee::expr::Parser *P = klee::expr::Parser::Create("", MB, Builder, false);
@@ -828,7 +818,6 @@ void parse_kQuery(std::string kQuery, std::vector<klee::ref<klee::Expr>> &exprs,
 
     if (auto *QC = dyn_cast<klee::expr::QueryCommand>(D)) {
       exprs = QC->Values;
-      manager = klee::ConstraintManager(QC->Constraints);
       break;
     }
   }
@@ -905,7 +894,6 @@ BDD BDD::deserialize(std::string file_path) {
 
   enum {
     STATE_INIT,
-    STATE_CALL_PATH_KQUERY,
     STATE_KQUERY,
     STATE_NODES,
     STATE_EDGES,
@@ -915,7 +903,6 @@ BDD BDD::deserialize(std::string file_path) {
 
   std::string kQuery;
 
-  std::map<std::string, klee::ConstraintManager> managers_per_call_path;
   std::vector<klee::ref<klee::Expr>> exprs;
   std::map<uint64_t, BDDNode_ptr> nodes;
 
@@ -929,49 +916,14 @@ BDD BDD::deserialize(std::string file_path) {
 
     switch (state) {
     case STATE_INIT: {
-      if (line == ";;-- Call path kQuery --") {
-        state = STATE_CALL_PATH_KQUERY;
+      if (line == ";;-- kQuery --") {
+        state = STATE_KQUERY;
       }
-    } break;
-
-    case STATE_CALL_PATH_KQUERY: {
-      if (line == ";;-- Call path kQuery --" && kQuery.size() == 0) {
-        break;
-      }
-
-      if (line == ";;-- Call path kQuery --" || line == ";;-- kQuery --") {
-        std::vector<klee::ref<klee::Expr>> _exprs;
-        klee::ConstraintManager _manager;
-
-        parse_kQuery(kQuery, _exprs, _manager);
-        managers_per_call_path[current_call_path] = _manager;
-
-        current_call_path.clear();
-        kQuery.clear();
-
-        if (line == ";;-- kQuery --") {
-          state = STATE_KQUERY;
-        }
-
-        break;
-      }
-
-      if (current_call_path.size() == 0) {
-        auto delim = line.find(":");
-        assert(delim != std::string::npos);
-
-        assert(line.substr(0, delim) == "filename");
-        current_call_path = line.substr(delim + 1);
-      } else {
-        kQuery += line + "\n";
-      }
-
     } break;
 
     case STATE_KQUERY: {
       if (line == ";; -- Nodes --") {
-        klee::ConstraintManager manager;
-        parse_kQuery(kQuery, exprs, manager);
+        parse_kQuery(kQuery, exprs);
 
         state = STATE_NODES;
         break;
@@ -997,7 +949,7 @@ BDD BDD::deserialize(std::string file_path) {
       }
 
       if (parenthesis_level == 0) {
-        auto node = parse_node(current_node, exprs, managers_per_call_path);
+        auto node = parse_node(current_node, exprs);
 
         assert(node);
         assert(nodes.find(node->get_id()) == nodes.end());
