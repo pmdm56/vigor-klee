@@ -168,7 +168,9 @@ private:
     auto symbols = casted->get_generated_symbols();
     assert(symbols.size() == 2);
 
-    auto _map_has_this_key_label = symbols[0].label;
+    auto symbols_it = symbols.begin();
+    assert(symbols_it->label_base == "map_has_this_key");
+    auto _map_has_this_key_label = symbols_it->label;
 
     auto merged_response = can_be_merged(ep, node, _map);
     if (merged_response.first) {

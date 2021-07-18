@@ -67,21 +67,8 @@ public:
       return false;
     }
 
-    if (generated_symbols.size() != other_cast->generated_symbols.size()) {
+    if (generated_symbols != other_cast->generated_symbols) {
       return false;
-    }
-
-    for (auto i = 0u; i < generated_symbols.size(); i++) {
-      if (generated_symbols[i].label !=
-          other_cast->generated_symbols[i].label) {
-        return false;
-      }
-
-      if (!BDD::solver_toolbox.are_exprs_always_equal(
-               generated_symbols[i].expr,
-               other_cast->generated_symbols[i].expr)) {
-        return false;
-      }
     }
 
     return true;

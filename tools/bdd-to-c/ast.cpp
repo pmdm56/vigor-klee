@@ -10,10 +10,11 @@ Variable_ptr AST::generate_new_symbol(klee::ref<klee::Expr> expr) {
 
   RetrieveSymbols retriever;
   retriever.visit(expr);
+
   auto symbols = retriever.get_retrieved_strings();
   assert(symbols.size() == 1);
 
-  std::string symbol = from_cp_symbol(symbols[0]);
+  std::string symbol = from_cp_symbol(*symbols.begin());
 
   auto state_partial_name_finder = [&](Variable_ptr v) -> bool {
     std::string local_symbol = v->get_symbol();

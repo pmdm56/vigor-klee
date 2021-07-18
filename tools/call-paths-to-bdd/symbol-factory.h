@@ -108,7 +108,7 @@ private:
 
     auto cht_fill_cht_successful = call.ret;
 
-    symbols.emplace_back(
+    symbols.emplace(
         build_label(cht_fill_cht_successful, "cht_fill_cht_successful", save),
         "cht_fill_cht_successful", cht_fill_cht_successful);
 
@@ -122,8 +122,8 @@ private:
 
     auto hash = call.ret;
 
-    symbols.emplace_back(build_label(hash, "LoadBalancedFlow_hash", save),
-                         "LoadBalancedFlow_hash", hash);
+    symbols.emplace(build_label(hash, "LoadBalancedFlow_hash", save),
+                    "LoadBalancedFlow_hash", hash);
 
     return symbols;
   }
@@ -137,10 +137,10 @@ private:
     auto prefered_backend_found = call.ret;
     auto chosen_backend = call.args["chosen_backend"].out;
 
-    symbols.emplace_back(build_label("prefered_backend_found", save),
-                         "prefered_backend_found", prefered_backend_found);
-    symbols.emplace_back(build_label(chosen_backend, "chosen_backend", save),
-                         "chosen_backend", chosen_backend);
+    symbols.emplace(build_label("prefered_backend_found", save),
+                    "prefered_backend_found", prefered_backend_found);
+    symbols.emplace(build_label(chosen_backend, "chosen_backend", save),
+                    "chosen_backend", chosen_backend);
 
     return symbols;
   }
@@ -156,14 +156,14 @@ private:
     auto map_has_this_key = call.ret;
     auto value_out = call.args["value_out"].out;
 
-    symbols.emplace_back(build_label("map_has_this_key", save),
-                         "map_has_this_key", map_has_this_key);
+    symbols.emplace(build_label("map_has_this_key", save), "map_has_this_key",
+                    map_has_this_key);
 
     auto has_this_key =
         solver_toolbox.exprBuilder->Constant(1, map_has_this_key->getWidth());
     if (solver_toolbox.are_exprs_always_equal(map_has_this_key, has_this_key)) {
-      symbols.emplace_back(build_label(value_out, "allocated_index", save),
-                           "allocated_index", value_out);
+      symbols.emplace(build_label(value_out, "allocated_index", save),
+                      "allocated_index", value_out);
     }
 
     return symbols;
@@ -175,8 +175,8 @@ private:
     assert(!call.ret.isNull());
     auto is_index_allocated = call.ret;
 
-    symbols.emplace_back(build_label("dchain_is_index_allocated", save),
-                         "dchain_is_index_allocated", is_index_allocated);
+    symbols.emplace(build_label("dchain_is_index_allocated", save),
+                    "dchain_is_index_allocated", is_index_allocated);
 
     return symbols;
   }
@@ -192,10 +192,10 @@ private:
     auto index_out = call.args["index_out"].out;
     auto success = call.ret;
 
-    symbols.emplace_back(build_label("out_of_space", save, 1), "out_of_space",
-                         success);
-    symbols.emplace_back(build_label(index_out, "new_index", save), "new_index",
-                         index_out);
+    symbols.emplace(build_label("out_of_space", save, 1), "out_of_space",
+                    success);
+    symbols.emplace(build_label(index_out, "new_index", save), "new_index",
+                    index_out);
 
     return symbols;
   }
@@ -212,7 +212,7 @@ private:
     auto chunk = call.extra_vars["the_chunk"].second;
     auto chunk_addr = call.args["chunk"].out;
 
-    symbols.emplace_back("packet_chunks", "packet_chunks", chunk, chunk_addr);
+    symbols.emplace("packet_chunks", "packet_chunks", chunk, chunk_addr);
 
     return symbols;
   }
@@ -223,8 +223,8 @@ private:
     assert(!call.ret.isNull());
     auto number_of_freed_flows = call.ret;
 
-    symbols.emplace_back(build_label("number_of_freed_flows", save),
-                         "number_of_freed_flows", number_of_freed_flows);
+    symbols.emplace(build_label("number_of_freed_flows", save),
+                    "number_of_freed_flows", number_of_freed_flows);
 
     return symbols;
   }
@@ -234,7 +234,7 @@ private:
 
     assert(!call.ret.isNull());
     auto hash = call.ret;
-    symbols.emplace_back(build_label("hash", save), "hash", hash);
+    symbols.emplace(build_label("hash", save), "hash", hash);
 
     return symbols;
   }
@@ -251,8 +251,8 @@ private:
     auto value_out = call.args["val_out"].out;
     auto borrowed_cell = call.extra_vars["borrowed_cell"].second;
 
-    symbols.emplace_back(build_label(borrowed_cell, "vector_data_reset", save),
-                         "vector_data_reset", borrowed_cell, value_out);
+    symbols.emplace(build_label(borrowed_cell, "vector_data_reset", save),
+                    "vector_data_reset", borrowed_cell, value_out);
 
     return symbols;
   }
@@ -262,8 +262,8 @@ private:
 
     assert(!call.ret.isNull());
     auto map_allocation_succeeded = call.ret;
-    symbols.emplace_back(build_label("map_allocation_succeeded", save),
-                         "map_allocation_succeeded", map_allocation_succeeded);
+    symbols.emplace(build_label("map_allocation_succeeded", save),
+                    "map_allocation_succeeded", map_allocation_succeeded);
 
     return symbols;
   }
@@ -273,8 +273,8 @@ private:
 
     assert(!call.ret.isNull());
     auto vector_alloc_success = call.ret;
-    symbols.emplace_back(build_label("vector_alloc_success", save),
-                         "vector_alloc_success", vector_alloc_success);
+    symbols.emplace(build_label("vector_alloc_success", save),
+                    "vector_alloc_success", vector_alloc_success);
 
     return symbols;
   }
@@ -284,8 +284,7 @@ private:
 
     assert(!call.ret.isNull());
     auto next_time = call.ret;
-    symbols.emplace_back(build_label("next_time", save), "next_time",
-                         next_time);
+    symbols.emplace(build_label("next_time", save), "next_time", next_time);
 
     return symbols;
   }
@@ -294,7 +293,7 @@ private:
     symbols_t symbols;
 
     klee::ref<klee::Expr> none;
-    symbols.emplace_back(build_label("checksum", save), "checksum", none);
+    symbols.emplace(build_label("checksum", save), "checksum", none);
 
     return symbols;
   }
@@ -304,8 +303,8 @@ private:
 
     assert(!call.ret.isNull());
     auto is_dchain_allocated = call.ret;
-    symbols.emplace_back(build_label("is_dchain_allocated", save),
-                         "is_dchain_allocated", is_dchain_allocated);
+    symbols.emplace(build_label("is_dchain_allocated", save),
+                    "is_dchain_allocated", is_dchain_allocated);
 
     return symbols;
   }
@@ -487,10 +486,8 @@ public:
   void pop() { stack.pop_back(); }
 
   symbols_t get_symbols(const Node *node) {
-    symbols_t symbols;
-
     if (node->get_type() != Node::NodeType::CALL) {
-      return symbols;
+      return symbols_t();
     }
 
     auto call_node = static_cast<const Call *>(node);
@@ -505,13 +502,17 @@ public:
     }
 
     auto call_processor = found_it->second;
-    symbols = (this->*call_processor)(call, false);
+    auto symbols = (this->*call_processor)(call, false);
+
+    auto translated_symbols = symbols_t();
 
     for (auto &symbol : symbols) {
-      symbol.label = translate_label(symbol.label_base, node);
+      auto translated_label = translate_label(symbol.label_base, node);
+      translated_symbols.emplace(translated_label, symbol.label_base,
+                                 symbol.expr, symbol.addr);
     }
 
-    return symbols;
+    return translated_symbols;
   }
 };
 } // namespace BDD

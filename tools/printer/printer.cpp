@@ -180,8 +180,11 @@ public:
     retriever.visit(eref);
     auto retrieved_strs = retriever.get_retrieved_strings();
 
+    assert(retrieved_strs.size());
+    auto symbol = *retrieved_strs.begin();
+
     if (is_readLSB_complete(eref)) {
-      result = retrieved_strs[0];
+      result = symbol;
       return klee::ExprVisitor::Action::skipChildren();
     }
 
@@ -207,7 +210,7 @@ public:
           ss << "|||";
         }
 
-        ss << retrieved_strs[0];
+        ss << symbol;
 
         if (lower == higher) {
           ss << "[" << lower << "]";
@@ -226,7 +229,7 @@ public:
           ss << "|||";
         }
 
-        ss << retrieved_strs[0];
+        ss << symbol;
 
         if (lower == higher) {
           ss << "[" << lower << "]";

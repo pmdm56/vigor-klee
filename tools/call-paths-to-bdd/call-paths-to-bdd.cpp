@@ -253,16 +253,19 @@ symbols_t Node::get_all_generated_symbols() const {
 
   // hack: symbols always known
   klee::ref<klee::Expr> empty_expr;
-  symbols.emplace_back("VIGOR_DEVICE", "VIGOR_DEVICE", empty_expr);
-  symbols.emplace_back("pkt_len", "pkt_len", empty_expr);
-  symbols.emplace_back("data_len", "data_len", empty_expr);
-  symbols.emplace_back("received_a_packet", "received_a_packet", empty_expr);
+  symbols.emplace("VIGOR_DEVICE", "VIGOR_DEVICE", empty_expr);
+  symbols.emplace("pkt_len", "pkt_len", empty_expr);
+  symbols.emplace("data_len", "data_len", empty_expr);
+  symbols.emplace("received_a_packet", "received_a_packet", empty_expr);
 
   while (node) {
     if (node->get_type() == Node::NodeType::CALL) {
       const Call *call = static_cast<const Call *>(node);
       auto more_symbols = call->get_generated_symbols();
-      symbols.insert(symbols.end(), more_symbols.begin(), more_symbols.end());
+
+      for (auto symbol : more_symbols) {
+        symbols.insert(symbol);
+      }
     }
 
     node = node->get_prev().get();

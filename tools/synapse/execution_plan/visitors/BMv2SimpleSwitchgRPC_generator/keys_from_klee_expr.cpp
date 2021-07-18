@@ -64,7 +64,10 @@ klee::ExprVisitor::Action KeysFromKleeExpr::visitRead(const klee::ReadExpr &e) {
 
   RetrieveSymbols retriever;
   retriever.visit(eref);
-  auto symbol = retriever.get_retrieved_strings()[0];
+
+  auto symbols = retriever.get_retrieved_strings();
+  assert(symbols.size());
+  auto symbol = *symbols.begin();
 
   if (symbol == "packet_chunks") {
     auto label = generator.label_from_packet_chunk(eref);
@@ -93,8 +96,9 @@ KeysFromKleeExpr::visitConcat(const klee::ConcatExpr &e) {
     RetrieveSymbols retriever;
     retriever.visit(eref);
 
-    assert(retriever.get_retrieved_strings().size() == 1);
-    auto symbol = retriever.get_retrieved_strings()[0];
+    auto symbols = retriever.get_retrieved_strings();
+    assert(symbols.size() == 1);
+    auto symbol = *symbols.begin();
 
     if (symbol == "VIGOR_DEVICE") {
       keys.push_back("standard_metadata.ingress_port");

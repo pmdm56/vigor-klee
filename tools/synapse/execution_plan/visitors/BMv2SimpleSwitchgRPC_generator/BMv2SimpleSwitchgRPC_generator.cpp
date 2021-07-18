@@ -89,12 +89,9 @@ std::string BMv2SimpleSwitchgRPC_Generator::label_from_packet_chunk(
 
   auto symbols = retriever.get_retrieved_strings();
 
-  if (symbols.size() != 1 || symbols[0] != "packet_chunks") {
+  if (symbols.size() != 1 || (*symbols.begin()) != "packet_chunks") {
     return "";
   }
-
-  assert(symbols.size() == 1);
-  assert(symbols[0] == "packet_chunks");
 
   auto sz = expr->getWidth();
 
@@ -159,8 +156,9 @@ std::string BMv2SimpleSwitchgRPC_Generator::label_from_vars(
 
   for (auto local_var : local_vars.get()) {
     auto local_var_vigor_symbol = local_var.symbol;
+    auto symbol = *symbols.begin();
 
-    if (symbols[0] == local_var_vigor_symbol) {
+    if (symbol == local_var_vigor_symbol) {
       return local_var.label;
     }
   }

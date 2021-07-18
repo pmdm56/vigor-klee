@@ -105,8 +105,10 @@ public:
     if (is_read_lsb(eref)) {
       RetrieveSymbols retriever;
       retriever.visit(eref);
-      assert(retriever.get_retrieved_strings().size() == 1);
-      auto symbol = retriever.get_retrieved_strings()[0];
+
+      auto symbols = retriever.get_retrieved_strings();
+      assert(symbols.size() == 1);
+      auto symbol = *symbols.begin();
 
       if (stack.has_label(symbol)) {
         code << symbol;

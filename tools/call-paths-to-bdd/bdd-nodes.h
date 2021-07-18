@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_set>
 #include <vector>
 
 #include "load-call-paths.h"
@@ -25,7 +26,33 @@ struct symbol_t {
       : label(_label), label_base(_label_base), expr(_expr), addr(_addr) {}
 };
 
-typedef std::vector<symbol_t> symbols_t;
+inline bool operator==(const symbol_t &lhs, const symbol_t &rhs) {
+  if (lhs.label != rhs.label) {
+    return false;
+  }
+
+  if (lhs.label_base != rhs.label_base) {
+    return false;
+  }
+
+  if (!solver_toolbox.are_exprs_always_equal(lhs.expr, rhs.expr)) {
+    return false;
+  }
+
+  if (!solver_toolbox.are_exprs_always_equal(lhs.addr, rhs.addr)) {
+    return false;
+  }
+
+  return true;
+}
+
+struct symbol_t_hash {
+  std::size_t operator()(const symbol_t &_node) const {
+    return std::hash<std::string>()(_node.label);
+  }
+};
+
+typedef std::unordered_set<symbol_t, symbol_t_hash> symbols_t;
 typedef std::pair<call_path_t *, calls_t> call_path_pair_t;
 
 struct call_paths_t {

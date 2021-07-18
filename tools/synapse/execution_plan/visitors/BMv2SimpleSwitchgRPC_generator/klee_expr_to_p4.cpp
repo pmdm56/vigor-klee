@@ -64,7 +64,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitRead(const klee::ReadExpr &e) {
 
   RetrieveSymbols retriever;
   retriever.visit(eref);
-  auto symbol = retriever.get_retrieved_strings()[0];
+
+  auto symbols = retriever.get_retrieved_strings();
+  assert(symbols.size());
+  auto symbol = *symbols.begin();
 
   if (symbol == "packet_chunks") {
     auto label = generator.label_from_packet_chunk(eref);
@@ -101,8 +104,9 @@ klee::ExprVisitor::Action KleeExprToP4::visitConcat(const klee::ConcatExpr &e) {
     RetrieveSymbols retriever;
     retriever.visit(eref);
 
-    assert(retriever.get_retrieved_strings().size() == 1);
-    auto symbol = retriever.get_retrieved_strings()[0];
+    auto symbols = retriever.get_retrieved_strings();
+    assert(symbols.size() == 1);
+    auto symbol = *symbols.begin();
 
     if (symbol == "VIGOR_DEVICE") {
       code << "standard_metadata.ingress_port";
@@ -548,7 +552,7 @@ klee::ExprVisitor::Action KleeExprToP4::visitEq(const klee::EqExpr &e) {
 
     auto symbols = retriever.get_retrieved_strings();
     assert(symbols.size() == 1);
-    auto symbol = symbols[0];
+    auto symbol = *symbols.begin();
 
     for (auto local_var : generator.local_vars.get()) {
       auto local_var_vigor_symbol = local_var.symbol;

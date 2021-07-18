@@ -19,6 +19,7 @@
 #include <regex>
 #include <sstream>
 #include <stack>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -33,7 +34,7 @@ private:
   std::vector<klee::ref<klee::ReadExpr>> retrieved_reads;
   std::vector<klee::ref<klee::ReadExpr>> retrieved_reads_packet_chunks;
   std::vector<klee::ref<klee::Expr>> retrieved_readLSB;
-  std::vector<std::string> retrieved_strings;
+  std::unordered_set<std::string> retrieved_strings;
   bool collapse_readLSB;
 
 public:
@@ -55,12 +56,7 @@ public:
     klee::UpdateList ul = e.updates;
     const klee::Array *root = ul.root;
 
-    auto found_it = std::find(retrieved_strings.begin(),
-                              retrieved_strings.end(), root->name);
-    if (found_it == retrieved_strings.end()) {
-      retrieved_strings.push_back(root->name);
-    }
-
+    retrieved_strings.insert(root->name);
     retrieved_reads.emplace_back((const_cast<klee::ReadExpr *>(&e)));
 
     if (root->name == "packet_chunks") {
@@ -83,7 +79,9 @@ public:
     return retrieved_readLSB;
   }
 
-  std::vector<std::string> get_retrieved_strings() { return retrieved_strings; }
+  std::unordered_set<std::string> get_retrieved_strings() {
+    return retrieved_strings;
+  }
 
   static bool contains(klee::ref<klee::Expr> expr, const std::string &symbol) {
     RetrieveSymbols retriever;
