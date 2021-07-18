@@ -52,62 +52,71 @@ bool solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints,
 bool solver_toolbox_t::are_exprs_always_equal(
     klee::ref<klee::Expr> e1, klee::ref<klee::Expr> e2,
     klee::ConstraintManager c1, klee::ConstraintManager c2) const {
-  klee::ConstraintManager constraints;
-
   RetrieveSymbols symbol_retriever1;
   RetrieveSymbols symbol_retriever2;
 
   symbol_retriever1.visit(e1);
   symbol_retriever2.visit(e2);
 
-  std::vector<klee::ref<klee::ReadExpr>> symbols1 =
-      symbol_retriever1.get_retrieved();
-
-  std::vector<klee::ref<klee::ReadExpr>> symbols2 =
-      symbol_retriever2.get_retrieved();
+  auto symbols1 = symbol_retriever1.get_retrieved();
+  auto symbols2 = symbol_retriever2.get_retrieved();
 
   ReplaceSymbols symbol_replacer1(symbols1);
   ReplaceSymbols symbol_replacer2(symbols2);
 
-  for (auto c : c1) {
-    constraints.addConstraint(symbol_replacer1.visit(c));
-  }
+  auto eq_in_e1_ctx_expr = exprBuilder->Eq(e1, symbol_replacer1.visit(e2));
+  auto eq_in_e2_ctx_expr = exprBuilder->Eq(symbol_replacer2.visit(e1), e2);
 
-  for (auto c : c2) {
-    constraints.addConstraint(symbol_replacer2.visit(c));
-  }
+  auto eq_in_e1_ctx_sat_query = klee::Query(c1, eq_in_e1_ctx_expr);
+  auto eq_in_e2_ctx_sat_query = klee::Query(c2, eq_in_e2_ctx_expr);
 
-  auto eq = exprBuilder->Eq(e1, e2);
-  klee::Query sat_query(constraints, eq);
+  bool eq_in_e1_ctx;
+  bool eq_in_e2_ctx;
 
-  bool result;
-  bool success = solver->mustBeTrue(sat_query, result);
-  assert(success);
+  bool eq_in_e1_ctx_success =
+      solver->mustBeTrue(eq_in_e1_ctx_sat_query, eq_in_e1_ctx);
+  bool eq_in_e2_ctx_success =
+      solver->mustBeTrue(eq_in_e2_ctx_sat_query, eq_in_e2_ctx);
 
-  return result;
+  assert(eq_in_e1_ctx_success);
+  assert(eq_in_e2_ctx_success);
+
+  return eq_in_e1_ctx && eq_in_e2_ctx;
 }
 
 bool solver_toolbox_t::are_exprs_always_not_equal(
     klee::ref<klee::Expr> e1, klee::ref<klee::Expr> e2,
     klee::ConstraintManager c1, klee::ConstraintManager c2) const {
-  klee::ConstraintManager constraints;
+  RetrieveSymbols symbol_retriever1;
+  RetrieveSymbols symbol_retriever2;
 
-  for (auto c : c1) {
-    constraints.addConstraint(c);
-  }
+  symbol_retriever1.visit(e1);
+  symbol_retriever2.visit(e2);
 
-  for (auto c : c2) {
-    constraints.addConstraint(c);
-  }
+  auto symbols1 = symbol_retriever1.get_retrieved();
+  auto symbols2 = symbol_retriever2.get_retrieved();
 
-  auto eq = exprBuilder->Eq(e1, e2);
-  klee::Query sat_query(constraints, eq);
+  ReplaceSymbols symbol_replacer1(symbols1);
+  ReplaceSymbols symbol_replacer2(symbols2);
 
-  bool result;
-  bool success = solver->mustBeFalse(sat_query, result);
-  assert(success);
+  auto eq_in_e1_ctx_expr = exprBuilder->Eq(e1, symbol_replacer1.visit(e2));
+  auto eq_in_e2_ctx_expr = exprBuilder->Eq(symbol_replacer2.visit(e1), e2);
 
-  return result;
+  auto eq_in_e1_ctx_sat_query = klee::Query(c1, eq_in_e1_ctx_expr);
+  auto eq_in_e2_ctx_sat_query = klee::Query(c2, eq_in_e2_ctx_expr);
+
+  bool not_eq_in_e1_ctx;
+  bool not_eq_in_e2_ctx;
+
+  bool not_eq_in_e1_ctx_success =
+      solver->mustBeFalse(eq_in_e1_ctx_sat_query, not_eq_in_e1_ctx);
+  bool not_eq_in_e2_ctx_success =
+      solver->mustBeFalse(eq_in_e2_ctx_sat_query, not_eq_in_e2_ctx);
+
+  assert(not_eq_in_e1_ctx_success);
+  assert(not_eq_in_e2_ctx_success);
+
+  return not_eq_in_e1_ctx && not_eq_in_e2_ctx;
 }
 
 bool solver_toolbox_t::is_expr_always_true(
@@ -245,6 +254,9 @@ symbols_t Node::get_all_generated_symbols() const {
   // hack: symbols always known
   klee::ref<klee::Expr> empty_expr;
   symbols.emplace_back("VIGOR_DEVICE", "VIGOR_DEVICE", empty_expr);
+  symbols.emplace_back("pkt_len", "pkt_len", empty_expr);
+  symbols.emplace_back("data_len", "data_len", empty_expr);
+  symbols.emplace_back("received_a_packet", "received_a_packet", empty_expr);
 
   while (node) {
     if (node->get_type() == Node::NodeType::CALL) {

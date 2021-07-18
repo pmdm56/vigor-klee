@@ -137,9 +137,8 @@ private:
     auto prefered_backend_found = call.ret;
     auto chosen_backend = call.args["chosen_backend"].out;
 
-    symbols.emplace_back(
-        build_label(prefered_backend_found, "prefered_backend_found", save),
-        "prefered_backend_found", prefered_backend_found);
+    symbols.emplace_back(build_label("prefered_backend_found", save),
+                         "prefered_backend_found", prefered_backend_found);
     symbols.emplace_back(build_label(chosen_backend, "chosen_backend", save),
                          "chosen_backend", chosen_backend);
 
@@ -159,8 +158,13 @@ private:
 
     symbols.emplace_back(build_label("map_has_this_key", save),
                          "map_has_this_key", map_has_this_key);
-    symbols.emplace_back(build_label(value_out, "allocated_index", save),
-                         "allocated_index", value_out);
+
+    auto has_this_key =
+        solver_toolbox.exprBuilder->Constant(1, map_has_this_key->getWidth());
+    if (solver_toolbox.are_exprs_always_equal(map_has_this_key, has_this_key)) {
+      symbols.emplace_back(build_label(value_out, "allocated_index", save),
+                           "allocated_index", value_out);
+    }
 
     return symbols;
   }
@@ -309,37 +313,39 @@ private:
 public:
   SymbolFactory() {
     call_processor_lookup_table = {
-      { "current_time", &SymbolFactory::current_time },
-      { "packet_return_chunk", &SymbolFactory::no_process },
-      { "dchain_rejuvenate_index", &SymbolFactory::no_process },
-      { "packet_get_unread_length", &SymbolFactory::no_process },
-      { "vector_return", &SymbolFactory::no_process },
-      { "map_put", &SymbolFactory::no_process },
       { "start_time", &SymbolFactory::no_process },
+      { "current_time", &SymbolFactory::current_time },
       { "loop_invariant_consume", &SymbolFactory::no_process },
       { "loop_invariant_produce", &SymbolFactory::no_process },
+      { "packet_receive", &SymbolFactory::no_process },
+      { "packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk },
+      { "packet_get_unread_length", &SymbolFactory::no_process },
+      { "packet_state_total_length", &SymbolFactory::no_process },
+      { "packet_return_chunk", &SymbolFactory::no_process },
       { "packet_send", &SymbolFactory::no_process },
       { "packet_free", &SymbolFactory::no_process },
-      { "packet_state_total_length", &SymbolFactory::no_process },
-      { "packet_receive", &SymbolFactory::no_process },
       { "map_allocate", &SymbolFactory::map_allocate },
-      { "vector_allocate", &SymbolFactory::vector_allocate },
-      { "dchain_allocate", &SymbolFactory::dchain_allocate },
-      { "expire_items_single_map", &SymbolFactory::expire_items_single_map },
-      { "rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash },
-      { "packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk },
       { "map_get", &SymbolFactory::map_get },
+      { "map_put", &SymbolFactory::no_process },
+      { "vector_allocate", &SymbolFactory::vector_allocate },
+      { "vector_borrow", &SymbolFactory::vector_borrow },
+      { "vector_return", &SymbolFactory::no_process },
+      { "map_erase", &SymbolFactory::no_process },
+      { "dchain_allocate", &SymbolFactory::dchain_allocate },
       { "dchain_allocate_new_index",
         &SymbolFactory::dchain_allocate_new_index },
       { "dchain_is_index_allocated",
         &SymbolFactory::dchain_is_index_allocated },
-      { "vector_borrow", &SymbolFactory::vector_borrow },
-      { "nf_set_rte_ipv4_udptcp_checksum",
-        &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum },
+      { "dchain_rejuvenate_index", &SymbolFactory::no_process },
+      { "dchain_free_index", &SymbolFactory::no_process },
+      { "expire_items_single_map", &SymbolFactory::expire_items_single_map },
       { "cht_fill_cht", &SymbolFactory::cht_fill_cht },
       { "LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash },
       { "cht_find_preferred_available_backend",
         &SymbolFactory::cht_find_preferred_available_backend },
+      { "rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash },
+      { "nf_set_rte_ipv4_udptcp_checksum",
+        &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum },
     };
 
     stack.emplace_back();
