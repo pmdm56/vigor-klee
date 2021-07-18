@@ -72,11 +72,12 @@ struct MaximizeSwitchNodesComparator : public HeuristicConfiguration {
 
     s.set(Score::Category::NumberOfSwitchNodes,
           get_switch_nodes(e) + 2 * get_number_of_merged_tables(e));
+    s.set(Score::Category::NumberOfNodes, e.get_nodes());
 
     return s;
   }
 
-  bool terminate_on_first_solution() const override { return true; }
+  bool terminate_on_first_solution() const override { return false; }
 };
 
 using MaximizeSwitchNodes = Heuristic<MaximizeSwitchNodesComparator>;

@@ -13,9 +13,9 @@ public:
   enum Category {
     SentToController,
     NumberOfReorderedNodes,
+    NumberOfSwitchNodes,
     NumberOfNodes,
     NumberOfControllerNodes,
-    NumberOfSwitchNodes,
     NumberOfTables,
     Depth,
   };
