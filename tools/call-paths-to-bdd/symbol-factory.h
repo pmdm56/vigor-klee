@@ -319,6 +319,8 @@ public:
       { "loop_invariant_produce", &SymbolFactory::no_process },
       { "packet_receive", &SymbolFactory::no_process },
       { "packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk },
+      { "packet_insert_new_chunk", &SymbolFactory::no_process },
+      { "packet_shrink_chunk", &SymbolFactory::no_process },
       { "packet_get_unread_length", &SymbolFactory::no_process },
       { "packet_state_total_length", &SymbolFactory::no_process },
       { "packet_return_chunk", &SymbolFactory::no_process },
