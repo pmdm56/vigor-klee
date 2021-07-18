@@ -437,8 +437,8 @@ inline bool operator==(const ExecutionPlan &lhs, const ExecutionPlan &rhs) {
     }
   }
 
-  std::vector<ExecutionPlanNode_ptr> lhs_nodes{ lhs.get_root() };
-  std::vector<ExecutionPlanNode_ptr> rhs_nodes{ rhs.get_root() };
+  auto lhs_nodes = std::vector<ExecutionPlanNode_ptr>{ lhs.get_root() };
+  auto rhs_nodes = std::vector<ExecutionPlanNode_ptr>{ rhs.get_root() };
 
   while (lhs_nodes.size()) {
     auto lhs_node = lhs_nodes[0];
@@ -466,6 +466,44 @@ inline bool operator==(const ExecutionPlan &lhs, const ExecutionPlan &rhs) {
 
     lhs_nodes.insert(lhs_nodes.end(), lhs_branches.begin(), lhs_branches.end());
     rhs_nodes.insert(rhs_nodes.end(), rhs_branches.begin(), rhs_branches.end());
+  }
+
+  // BDD comparisons but only by ID
+
+  auto lhs_bdd = lhs.get_bdd();
+  auto rhs_bdd = rhs.get_bdd();
+
+  auto lhs_bdd_nodes = std::vector<BDD::BDDNode_ptr>{ lhs_bdd.get_process() };
+  auto rhs_bdd_nodes = std::vector<BDD::BDDNode_ptr>{ rhs_bdd.get_process() };
+
+  while (lhs_bdd_nodes.size()) {
+    auto lhs_bdd_node = lhs_bdd_nodes[0];
+    auto rhs_bdd_node = rhs_bdd_nodes[0];
+
+    lhs_bdd_nodes.erase(lhs_bdd_nodes.begin());
+    rhs_bdd_nodes.erase(rhs_bdd_nodes.begin());
+
+    if (lhs_bdd_node->get_type() != rhs_bdd_node->get_type()) {
+      return false;
+    }
+
+    if (lhs_bdd_node->get_id() != rhs_bdd_node->get_id()) {
+      return false;
+    }
+
+    if (lhs_bdd_node->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto lhs_branch = static_cast<BDD::Branch *>(lhs_bdd_node.get());
+      auto rhs_branch = static_cast<BDD::Branch *>(rhs_bdd_node.get());
+
+      lhs_bdd_nodes.push_back(lhs_branch->get_on_true());
+      rhs_bdd_nodes.push_back(rhs_branch->get_on_true());
+
+      lhs_bdd_nodes.push_back(lhs_branch->get_on_false());
+      rhs_bdd_nodes.push_back(rhs_branch->get_on_false());
+    } else if (lhs_bdd_node->get_type() == BDD::Node::NodeType::CALL) {
+      lhs_bdd_nodes.push_back(lhs_bdd_node->get_next());
+      rhs_bdd_nodes.push_back(rhs_bdd_node->get_next());
+    }
   }
 
   return true;

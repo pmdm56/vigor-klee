@@ -82,7 +82,6 @@ template <typename T> Log &operator<<(Log &log, T &&t) {
   log.stream << log.color;
   log.stream << std::forward<T>(t);
   log.stream << Colors::RESET;
-  log.stream.flush();
 
   return log;
 }

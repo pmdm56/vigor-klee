@@ -129,12 +129,12 @@ public:
       }
     }
 
-    // std::cerr << h.get_all().size() << " solutions:\n";
+    std::cerr << h.get_all().size() << " solutions:\n";
     // for (auto &ep : h.get_all()) {
-    //   synapse::Graphviz::visualize(ep);
+    //   Graphviz::visualize(ep);
     // }
-    // synapse::Graphviz::visualize(h.get(), search_space);
-    synapse::Graphviz::visualize(h.get());
+    // Graphviz::visualize(h.get(), search_space);
+    Graphviz::visualize(h.get());
 
     return h.get();
   }

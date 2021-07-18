@@ -862,7 +862,7 @@ std::vector<ExecutionPlan> get_reordered(const ExecutionPlan &ep) {
 
         if (symbols.size()) {
           std::stringstream buffer;
-          buffer << "  symbols    :";
+          buffer << "  symbols   :";
           for (auto symbol : symbols) {
             buffer << " " << symbol.label;
           }
@@ -980,6 +980,7 @@ processing_result_t Module::process_node(const ExecutionPlan &ep,
   }
 
   std::vector<ExecutionPlan> reordered;
+
   for (auto ep : result.next_eps) {
     auto ep_reodered = get_reordered(ep);
     reordered.insert(reordered.end(), ep_reodered.begin(), ep_reodered.end());
