@@ -7,9 +7,9 @@ namespace synapse {
 
 struct MostCompactComparator : public HeuristicConfiguration {
   Score get_score(const ExecutionPlan &e) const override {
-    Score s;
-    s.set(Score::Category::NumberOfNodes, -e.get_nodes());
-    return s;
+    Score score(e);
+    score.add(Score::Category::NumberOfNodes, Score::Objective::MINIMIZE);
+    return score;
   }
 
   bool terminate_on_first_solution() const override { return false; }

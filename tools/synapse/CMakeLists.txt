@@ -8,6 +8,7 @@
 #===------------------------------------------------------------------------===#
 add_executable(synapse
   synapse.cpp
+  heuristics/score.cpp
   modules/module.cpp
   execution_plan/execution_plan.cpp
   execution_plan/memory_bank.cpp

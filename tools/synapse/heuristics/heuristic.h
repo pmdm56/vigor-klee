@@ -28,7 +28,7 @@ protected:
 private:
   typename std::set<ExecutionPlan, T>::iterator get_best_it() const {
     assert(execution_plans.size());
-    return std::prev(execution_plans.end());
+    return execution_plans.begin();
   }
 
   typename std::set<ExecutionPlan, T>::iterator get_next_it() const {

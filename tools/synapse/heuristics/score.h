@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../execution_plan/execution_plan.h"
+
 #include <iostream>
 #include <map>
 #include <vector>
@@ -8,48 +10,94 @@ namespace synapse {
 
 class Score {
 public:
-  // The order of the elements in this enum matters.
-  // It defines a lexicographic order.
   enum Category {
-    SentToController,
     NumberOfReorderedNodes,
     NumberOfSwitchNodes,
     NumberOfNodes,
     NumberOfControllerNodes,
-    NumberOfTables,
+    NumberOfMergedTables,
     Depth,
   };
 
-private:
-  const Category FIRST_CATEGORY = SentToController;
-  const Category LAST_CATEGORY = Depth;
+  enum Objective {
+    MINIMIZE,
+    MAXIMIZE
+  };
 
 private:
-  std::map<Category, int> values;
+  typedef int (Score::*ComputerPtr)() const;
+
+  const ExecutionPlan &execution_plan;
+  std::map<Category, ComputerPtr> computers;
+
+  // The order of the elements in this vector matters.
+  // It defines a lexicographic order.
+  std::vector<std::pair<Category, Objective>> categories;
+
+  int get_nr_nodes() const;
+  int get_nr_merged_tables() const;
+  int get_depth() const;
+  int get_nr_switch_nodes() const;
+  int get_nr_controller_nodes() const;
+  int get_nr_reordered_nodes() const;
 
 public:
-  Score() {
-    for (int category_int = FIRST_CATEGORY; category_int <= LAST_CATEGORY;
-         category_int++) {
-      auto category = static_cast<Category>(category_int);
-      set(category, 0);
-    }
+  Score(const ExecutionPlan &_execution_plan)
+      : execution_plan(_execution_plan) {
+    computers = { { NumberOfNodes, &Score::get_nr_nodes },
+                  { NumberOfMergedTables, &Score::get_nr_merged_tables },
+                  { NumberOfSwitchNodes, &Score::get_nr_switch_nodes },
+                  { NumberOfControllerNodes, &Score::get_nr_controller_nodes },
+                  { Depth, &Score::get_depth }, };
   }
 
-  Score(const Score &score) : values(score.values) {}
+  Score(const Score &score)
+      : execution_plan(score.execution_plan), computers(score.computers),
+        categories(score.categories) {}
 
-  void set(Category category, int value) { values[category] = value; }
-  int get(Category category) const { return values.at(category); }
+  void add(Category category, Objective objective = Objective::MAXIMIZE) {
+    auto found_it =
+        std::find_if(categories.begin(), categories.end(),
+                     [&](const std::pair<Category, Objective> &saved) {
+          return saved.first == category;
+        });
+
+    assert(found_it == categories.end() && "Category already inserted");
+
+    categories.emplace_back(category, objective);
+  }
+
+  int get(Category category) const {
+    auto found_it = computers.find(category);
+
+    if (found_it == computers.end()) {
+      Log::err() << "\nScore error: " << category
+                 << " not found in lookup table.\n";
+      exit(1);
+    }
+
+    auto computer = found_it->second;
+    return (this->*computer)();
+  }
 
   inline bool operator<(const Score &other) {
-    for (int category_int = FIRST_CATEGORY; category_int <= LAST_CATEGORY;
-         category_int++) {
-      auto category = static_cast<Category>(category_int);
-      if (get(category) > other.get(category)) {
+    for (auto category_objective : categories) {
+      auto category = category_objective.first;
+      auto objective = category_objective.second;
+
+      auto this_score = get(category);
+      auto other_score = other.get(category);
+
+      if (objective == Objective::MINIMIZE) {
+        this_score *= -1;
+        other_score *= -1;
+      }
+
+      if (this_score > other_score) {
         return false;
       }
 
-      if (get(category) < other.get(category)) {
+      if (this_score < other_score) {
         return true;
       }
     }
@@ -58,10 +106,19 @@ public:
   }
 
   inline bool operator==(const Score &other) {
-    for (int category_int = FIRST_CATEGORY; category_int <= LAST_CATEGORY;
-         category_int++) {
-      auto category = static_cast<Category>(category_int);
-      if (get(category) != other.get(category)) {
+    for (auto category_objective : categories) {
+      auto category = category_objective.first;
+      auto objective = category_objective.second;
+
+      auto this_score = get(category);
+      auto other_score = other.get(category);
+
+      if (objective == Objective::MINIMIZE) {
+        this_score *= -1;
+        other_score *= -1;
+      }
+
+      if (this_score != other_score) {
         return false;
       }
     }
@@ -83,15 +140,24 @@ public:
 inline std::ostream &operator<<(std::ostream &os, const Score &score) {
   os << "<";
 
-  for (int category_int = score.FIRST_CATEGORY;
-       category_int <= score.LAST_CATEGORY; category_int++) {
-    auto category = static_cast<Score::Category>(category_int);
+  bool first = true;
+  for (auto category_objective : score.categories) {
+    auto category = category_objective.first;
+    auto objective = category_objective.second;
 
-    if (category != score.FIRST_CATEGORY) {
+    auto value = score.get(category);
+
+    if (objective == Score::Objective::MINIMIZE) {
+      value *= -1;
+    }
+
+    if (!first) {
       os << ",";
     }
 
-    os << score.get(category);
+    os << value;
+
+    first &= false;
   }
 
   os << ">";
