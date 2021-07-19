@@ -8,7 +8,7 @@ namespace synapse {
 struct MostCompactComparator : public HeuristicConfiguration {
   Score get_score(const ExecutionPlan &e) const override {
     Score s;
-    s.set(Score::Category::NumberOfNodes, e.get_nodes());
+    s.set(Score::Category::NumberOfNodes, -e.get_nodes());
     return s;
   }
 
@@ -16,4 +16,4 @@ struct MostCompactComparator : public HeuristicConfiguration {
 };
 
 using MostCompact = Heuristic<MostCompactComparator>;
-}
+} // namespace synapse

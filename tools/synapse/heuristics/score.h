@@ -57,9 +57,6 @@ public:
     return false;
   }
 
-  inline bool operator>(const Score &other) { return (*this) < other; }
-  inline bool operator<=(const Score &other) { return !((*this) > other); }
-  inline bool operator>=(const Score &other) { return !((*this) < other); }
   inline bool operator==(const Score &other) {
     for (int category_int = FIRST_CATEGORY; category_int <= LAST_CATEGORY;
          category_int++) {
@@ -72,6 +69,12 @@ public:
     return true;
   }
 
+  inline bool operator>(const Score &other) {
+    return !((*this) < other) && !((*this) == other);
+  }
+
+  inline bool operator<=(const Score &other) { return !((*this) > other); }
+  inline bool operator>=(const Score &other) { return !((*this) < other); }
   inline bool operator!=(const Score &other) { return !((*this) == other); }
 
   friend std::ostream &operator<<(std::ostream &os, const Score &dt);
@@ -94,4 +97,4 @@ inline std::ostream &operator<<(std::ostream &os, const Score &score) {
   os << ">";
   return os;
 }
-}
+} // namespace synapse

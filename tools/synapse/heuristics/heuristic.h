@@ -57,7 +57,6 @@ public:
   std::vector<ExecutionPlan> get_all() const {
     std::vector<ExecutionPlan> eps;
     eps.assign(execution_plans.begin(), execution_plans.end());
-    std::reverse(eps.begin(), eps.end());
     return eps;
   }
 

@@ -129,7 +129,7 @@ public:
       }
     }
 
-    std::cerr << h.get_all().size() << " solutions:\n";
+    std::cerr << h.get_all().size() << " solutions\n";
     // for (auto &ep : h.get_all()) {
     //   Graphviz::visualize(ep);
     // }

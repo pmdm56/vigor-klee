@@ -98,8 +98,8 @@ int main(int argc, char **argv) {
 
   // auto winner = se.search(least_reordered);
   // auto winner = se.search(dfs);
-  // auto winner = se.search(most_compact);
-  auto winner = se.search(maximize_switch_nodes);
+  auto winner = se.search(most_compact);
+  // auto winner = se.search(maximize_switch_nodes);
 
   // synapse::x86_Generator x86_generator(std::cerr);
   // winner.visit(x86_generator);
