@@ -44,13 +44,13 @@ private:
 public:
   Score(const ExecutionPlan &_execution_plan)
       : execution_plan(_execution_plan) {
-    computers = { { NumberOfNodes, &Score::get_nr_nodes },
+    computers = { { NumberOfReorderedNodes, &Score::get_nr_reordered_nodes },
+                  { NumberOfNodes, &Score::get_nr_nodes },
                   { NumberOfMergedTables, &Score::get_nr_merged_tables },
                   { NumberOfSwitchNodes, &Score::get_nr_switch_nodes },
                   { NumberOfControllerNodes, &Score::get_nr_controller_nodes },
                   { Depth, &Score::get_depth }, };
   }
-
   Score(const Score &score)
       : execution_plan(score.execution_plan), computers(score.computers),
         categories(score.categories) {}
