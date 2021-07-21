@@ -35,11 +35,11 @@ private:
     assert(execution_plans.size());
 
     auto conf = static_cast<const HeuristicConfiguration *>(&configuration);
-    auto it = std::prev(execution_plans.end());
+    auto it = execution_plans.begin();
 
     while (!conf->terminate_on_first_solution() && !it->get_next_node() &&
-           it != execution_plans.begin()) {
-      --it;
+           it != execution_plans.end()) {
+      ++it;
     }
 
     if (!it->get_next_node()) {

@@ -212,6 +212,7 @@ ExecutionPlan CodeGenerator::bmv2SimpleSwitchgRPC_extractor(
     nodes.insert(nodes.end(), next.begin(), next.end());
   }
 
+  Graphviz::visualize(extracted);
   return extracted;
 }
 
