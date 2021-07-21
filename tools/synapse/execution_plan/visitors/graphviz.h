@@ -400,6 +400,7 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::x86::MapGet)
   VISIT_PRINT_MODULE_NAME(targets::x86::CurrentTime)
   VISIT_PRINT_MODULE_NAME(targets::x86::PacketBorrowNextChunk)
+  VISIT_PRINT_MODULE_NAME(targets::x86::PacketGetMetadata)
   VISIT_PRINT_MODULE_NAME(targets::x86::PacketReturnChunk)
   VISIT_PRINT_MODULE_NAME(targets::x86::If)
   VISIT_PRINT_MODULE_NAME(targets::x86::Then)

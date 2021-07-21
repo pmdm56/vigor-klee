@@ -33,6 +33,33 @@ bool call_paths_t::is_skip_function(const std::string &fname) {
   return found_it != call_paths_t::skip_functions.end();
 }
 
+klee::ref<klee::Expr>
+solver_toolbox_t::create_new_symbol(const std::string &symbol_name,
+                                    klee::Expr::Width width) const {
+  auto domain = klee::Expr::Int32;
+  auto range = klee::Expr::Int8;
+
+  auto root = solver_toolbox.arr_cache.CreateArray(symbol_name, width, nullptr,
+                                                   nullptr, domain, range);
+
+  auto updates = klee::UpdateList(root, nullptr);
+  auto read_entire_symbol = klee::ref<klee::Expr>();
+
+  for (auto i = 0u; i < width / 8; i++) {
+    auto index = exprBuilder->Constant(i, domain);
+
+    if (read_entire_symbol.isNull()) {
+      read_entire_symbol = solver_toolbox.exprBuilder->Read(updates, index);
+      continue;
+    }
+
+    read_entire_symbol = exprBuilder->Concat(
+        solver_toolbox.exprBuilder->Read(updates, index), read_entire_symbol);
+  }
+
+  return read_entire_symbol;
+}
+
 bool solver_toolbox_t::is_expr_always_true(klee::ref<klee::Expr> expr) const {
   klee::ConstraintManager no_constraints;
   return is_expr_always_true(no_constraints, expr);

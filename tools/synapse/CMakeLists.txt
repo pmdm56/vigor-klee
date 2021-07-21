@@ -8,15 +8,16 @@
 #===------------------------------------------------------------------------===#
 add_executable(synapse
   synapse.cpp
+  code_generator.cpp
   heuristics/score.cpp
   modules/module.cpp
   execution_plan/execution_plan.cpp
   execution_plan/memory_bank.cpp
   execution_plan/visitors/visitor.cpp
-  execution_plan/visitors/x86_generator.cpp
-  execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/BMv2SimpleSwitchgRPC_generator.cpp
-  execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/klee_expr_to_p4.cpp
-  execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/keys_from_klee_expr.cpp
+  execution_plan/visitors/target_code_generators/x86/x86_generator.cpp
+  execution_plan/visitors/target_code_generators/BMv2SimpleSwitchgRPC/BMv2SimpleSwitchgRPC_generator.cpp
+  execution_plan/visitors/target_code_generators/BMv2SimpleSwitchgRPC/klee_expr_to_p4.cpp
+  execution_plan/visitors/target_code_generators/BMv2SimpleSwitchgRPC/keys_from_klee_expr.cpp
   log.cpp
   ../load-call-paths/load-call-paths.cpp
   ../call-paths-to-bdd/call-paths-to-bdd.cpp

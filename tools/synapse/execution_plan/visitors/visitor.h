@@ -12,6 +12,7 @@ namespace x86 {
 class MapGet;
 class CurrentTime;
 class PacketBorrowNextChunk;
+class PacketGetMetadata;
 class PacketReturnChunk;
 class If;
 class Then;
@@ -31,10 +32,7 @@ class SetIpv4UdpTcpChecksum;
 class DchainIsIndexAllocated;
 } // namespace x86
 
-namespace tofino {
-class A;
-class B;
-} // namespace tofino
+namespace tofino {} // namespace tofino
 
 namespace BMv2SimpleSwitchgRPC {
 class SendToController;
@@ -64,6 +62,7 @@ public:
   virtual void visit(const targets::x86::CurrentTime *node) {}
   virtual void visit(const targets::x86::PacketBorrowNextChunk *node) {}
   virtual void visit(const targets::x86::PacketReturnChunk *node) {}
+  virtual void visit(const targets::x86::PacketGetMetadata *node) {}
   virtual void visit(const targets::x86::If *node) {}
   virtual void visit(const targets::x86::Then *node) {}
   virtual void visit(const targets::x86::Else *node) {}
@@ -80,9 +79,6 @@ public:
   virtual void visit(const targets::x86::PacketGetUnreadLength *node) {}
   virtual void visit(const targets::x86::SetIpv4UdpTcpChecksum *node) {}
   virtual void visit(const targets::x86::DchainIsIndexAllocated *node) {}
-
-  virtual void visit(const targets::tofino::A *node) {}
-  virtual void visit(const targets::tofino::B *node) {}
 
   virtual void
   visit(const targets::BMv2SimpleSwitchgRPC::SendToController *node) {}

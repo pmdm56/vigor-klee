@@ -1,7 +1,7 @@
 #include "BMv2SimpleSwitchgRPC_generator.h"
 
-#include "../../../log.h"
-#include "../../../modules/modules.h"
+#include "../../../../log.h"
+#include "../../../../modules/modules.h"
 
 #include "keys_from_klee_expr.h"
 #include "klee_expr_to_p4.h"
@@ -688,9 +688,10 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::SendToController *node) {
-  // FIXME: missing code id
+  auto code_path = node->get_metadata_code_path();
+
   pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "send_to_controller(0);\n";
+  ingress.apply_block << "send_to_controller(" << code_path << ");\n";
 
   ingress.lvl--;
   pad(ingress.apply_block, ingress.lvl);

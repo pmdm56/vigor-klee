@@ -91,6 +91,9 @@ struct solver_toolbox_t {
     exprBuilder = klee::createDefaultExprBuilder();
   }
 
+  klee::ref<klee::Expr> create_new_symbol(const std::string &symbol_name,
+                                          klee::Expr::Width width) const;
+
   bool is_expr_always_true(klee::ref<klee::Expr> expr) const;
   bool is_expr_always_true(klee::ConstraintManager constraints,
                            klee::ref<klee::Expr> expr) const;

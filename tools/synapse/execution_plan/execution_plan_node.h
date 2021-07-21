@@ -30,27 +30,18 @@ private:
       : module(ep_node->module), id(counter++) {}
 
 public:
-  void set_next(Branches _next) {
-    assert(!next.size());
-    next = _next;
-  }
-
-  void set_next(ExecutionPlanNode_ptr _next) {
-    assert(!next.size());
-    next.push_back(_next);
-  }
-
-  void set_prev(ExecutionPlanNode_ptr _prev) {
-    assert(!prev);
-    prev = _prev;
-  }
+  void set_next(Branches _next) { next = _next; }
+  void set_next(ExecutionPlanNode_ptr _next) { next.push_back(_next); }
+  void set_prev(ExecutionPlanNode_ptr _prev) { prev = _prev; }
 
   const Module_ptr &get_module() const { return module; }
   void replace_module(Module_ptr _module) { module = _module; }
 
   const Branches &get_next() const { return next; }
   ExecutionPlanNode_ptr get_prev() const { return prev; }
+
   int get_id() const { return id; }
+  void set_id(int _id) { id = _id; }
 
   void replace_next(ExecutionPlanNode_ptr before, ExecutionPlanNode_ptr after) {
     for (auto &branch : next) {

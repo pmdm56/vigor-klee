@@ -76,6 +76,11 @@ public:
         nodes(ep.nodes), nodes_per_target(ep.nodes_per_target),
         reordered_nodes(ep.reordered_nodes), id(ep.id) {}
 
+  ExecutionPlan(const ExecutionPlan &ep, ExecutionPlanNode_ptr _root)
+      : root(_root), bdd(ep.bdd) {
+    // TODO: calculate metadata
+  }
+
 private:
   void update_leaves(std::vector<leaf_t> _leaves, bool is_terminal) {
     assert(leaves.size());

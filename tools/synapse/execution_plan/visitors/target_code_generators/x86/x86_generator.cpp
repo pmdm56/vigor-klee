@@ -1,6 +1,6 @@
 #include "x86_generator.h"
-#include "../../log.h"
-#include "../../modules/x86/x86.h"
+#include "../../../../log.h"
+#include "../../../../modules/x86/x86.h"
 
 namespace synapse {
 
@@ -1098,6 +1098,33 @@ void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
   os << ");\n";
 
   chunk_counter++;
+}
+
+void x86_Generator::visit(const targets::x86::PacketGetMetadata *node) {
+  auto metadata = node->get_metadata();
+
+  assert(!metadata.isNull());
+
+  auto code_path_metadata_label = std::string("code_path_meta");
+  auto metadata_key_label = std::string("metadata_key");
+  auto metadata_key = std::string("code_path");
+
+  stack.add(code_path_metadata_label, metadata);
+
+  pad();
+  os << "const char " << metadata_key_label << "[]";
+  os << " = ";
+  os << "\"" << metadata_key << "\";\n";
+
+  pad();
+  os << "int " << code_path_metadata_label << ";\n";
+
+  pad();
+  os << "metadata_get(meta";
+  os << ", (void*) " << metadata_key_label;
+  os << ", " << metadata_key.size();
+  os << ", (void*) &" << code_path_metadata_label;
+  os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::PacketReturnChunk *node) {

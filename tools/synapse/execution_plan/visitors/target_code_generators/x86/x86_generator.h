@@ -1,8 +1,9 @@
 #pragma once
 
-#include "../../log.h"
-#include "../execution_plan.h"
-#include "visitor.h"
+#include "../../../../log.h"
+#include "../../../execution_plan.h"
+#include "../../visitor.h"
+#include "../target_code_generator.h"
 
 #include <ctime>
 #include <fstream>
@@ -265,10 +266,8 @@ struct stack_t {
   }
 };
 
-class x86_Generator : public ExecutionPlanVisitor {
+class x86_Generator : public TargetCodeGenerator {
 private:
-  std::ostream &os;
-
   int lvl;
   std::stack<bool> pending_ifs;
   stack_t stack;
@@ -289,7 +288,8 @@ private:
                     std::ostream &buffer);
 
 public:
-  x86_Generator(std::ostream &_os) : os(_os), lvl(0), stack() {}
+  x86_Generator(std::ostream &_os)
+      : TargetCodeGenerator(_os), lvl(0), stack() {}
 
   void visit(ExecutionPlan ep) override;
   void visit(const ExecutionPlanNode *ep_node) override;
@@ -297,6 +297,7 @@ public:
   void visit(const targets::x86::MapGet *node) override;
   void visit(const targets::x86::CurrentTime *node) override;
   void visit(const targets::x86::PacketBorrowNextChunk *node) override;
+  void visit(const targets::x86::PacketGetMetadata *node) override;
   void visit(const targets::x86::PacketReturnChunk *node) override;
   void visit(const targets::x86::If *node) override;
   void visit(const targets::x86::Then *node) override;

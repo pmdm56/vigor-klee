@@ -9,6 +9,9 @@ namespace targets {
 namespace BMv2SimpleSwitchgRPC {
 
 class SendToController : public Module {
+private:
+  uint64_t metadata_code_path;
+
 public:
   SendToController()
       : Module(ModuleType::BMv2SimpleSwitchgRPC_SendToController,
@@ -16,9 +19,10 @@ public:
     next_target = Target::x86;
   }
 
-  SendToController(BDD::BDDNode_ptr node)
+  SendToController(BDD::BDDNode_ptr node, uint64_t _metadata_code_path)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_SendToController,
-               Target::BMv2SimpleSwitchgRPC, "SendToController", node) {
+               Target::BMv2SimpleSwitchgRPC, "SendToController", node),
+        metadata_code_path(_metadata_code_path) {
     next_target = Target::x86;
   }
 
@@ -90,8 +94,10 @@ private:
     auto node_cloned = bdd.get_node_by_id(node->get_id());
 
     auto next = clone_calls(ep_cloned, node_cloned);
+    auto _metadata_code_path = node->get_id();
 
-    auto new_module = std::make_shared<SendToController>(node_cloned);
+    auto new_module =
+        std::make_shared<SendToController>(node_cloned, _metadata_code_path);
     auto next_ep = ep_cloned.add_leaves(new_module, next, false, false);
     next_ep.replace_active_leaf_node(next, false);
 
@@ -119,13 +125,25 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new SendToController(node);
+    auto cloned = new SendToController(node, metadata_code_path);
     return std::shared_ptr<Module>(cloned);
   }
 
   virtual bool equals(const Module *other) const override {
-    return other->get_type() == type;
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const SendToController *>(other);
+
+    if (metadata_code_path != other_cast->metadata_code_path) {
+      return false;
+    }
+
+    return true;
   }
+
+  uint64_t get_metadata_code_path() const { return metadata_code_path; }
 };
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets

@@ -22,10 +22,9 @@
 #include "call-paths-to-bdd.h"
 #include "load-call-paths.h"
 
+#include "code_generator.h"
 #include "execution_plan/execution_plan.h"
-#include "execution_plan/visitors/BMv2SimpleSwitchgRPC_generator/BMv2SimpleSwitchgRPC_generator.h"
 #include "execution_plan/visitors/graphviz.h"
-#include "execution_plan/visitors/x86_generator.h"
 #include "heuristics/heuristics.h"
 #include "log.h"
 #include "modules/modules.h"
@@ -84,29 +83,34 @@ int main(int argc, char **argv) {
     os_ptr = &std::cerr;
   }
 
-  BDD::BDD bdd = build_bdd();
-  synapse::SearchEngine se(bdd);
+  std::vector<synapse::Target> targets;
 
+  targets.push_back(synapse::Target::x86);
+  targets.push_back(synapse::Target::BMv2SimpleSwitchgRPC);
+
+  BDD::BDD bdd = build_bdd();
+
+  synapse::SearchEngine search_engine(bdd);
+  synapse::CodeGenerator code_generator;
+
+  synapse::Biggest biggest;
   synapse::DFS dfs;
   synapse::MostCompact most_compact;
   synapse::LeastReordered least_reordered;
   synapse::MaximizeSwitchNodes maximize_switch_nodes;
 
-  se.add_target(synapse::Target::x86);
-  se.add_target(synapse::Target::BMv2SimpleSwitchgRPC);
-  // se.add_target(synapse::Target::Tofino);
+  for (auto target : targets) {
+    search_engine.add_target(target);
+    code_generator.add_target(target);
+  }
 
+  auto winner = search_engine.search(biggest);
   // auto winner = se.search(least_reordered);
   // auto winner = se.search(dfs);
-  auto winner = se.search(most_compact);
+  // auto winner = search_engine.search(most_compact);
   // auto winner = se.search(maximize_switch_nodes);
 
-  // synapse::x86_Generator x86_generator(std::cerr);
-  // winner.visit(x86_generator);
-
-  // synapse::BMv2SimpleSwitchgRPC_Generator BMv2SimpleSwitchgRPC_generator(
-  //     *os_ptr);
-  // winner.visit(BMv2SimpleSwitchgRPC_generator);
+  code_generator.generate(winner);
 
   if (os_ptr != &std::cerr) {
     delete os_ptr;

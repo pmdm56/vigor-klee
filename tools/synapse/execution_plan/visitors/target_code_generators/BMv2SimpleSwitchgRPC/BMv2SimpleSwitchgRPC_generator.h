@@ -1,9 +1,10 @@
 #pragma once
 
-#include "../../../log.h"
-#include "../../execution_plan.h"
+#include "../../../../log.h"
+#include "../../../execution_plan.h"
 
-#include "visitor.h"
+#include "../../visitor.h"
+#include "../target_code_generator.h"
 
 #include <ctime>
 #include <fstream>
@@ -16,7 +17,7 @@ namespace synapse {
 class KleeExprToP4;
 class KeysFromKleeExpr;
 
-class BMv2SimpleSwitchgRPC_Generator : public ExecutionPlanVisitor {
+class BMv2SimpleSwitchgRPC_Generator : public TargetCodeGenerator {
   friend class KleeExprToP4;
   friend class KeysFromKleeExpr;
 
@@ -311,7 +312,6 @@ private:
   };
 
 private:
-  std::ostream &os;
   int lvl;
   bool parsing_headers;
 
@@ -343,7 +343,7 @@ private:
 
 public:
   BMv2SimpleSwitchgRPC_Generator(std::ostream &_os)
-      : os(_os), lvl(0), parsing_headers(true) {}
+      : TargetCodeGenerator(_os), lvl(0), parsing_headers(true) {}
 
   void visit(ExecutionPlan ep) override;
   void visit(const ExecutionPlanNode *ep_node) override;
