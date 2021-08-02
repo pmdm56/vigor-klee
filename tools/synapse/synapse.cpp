@@ -36,6 +36,20 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 
 llvm::cl::OptionCategory SyNAPSE("SyNAPSE specific options");
 
+llvm::cl::list<synapse::Target>
+    TargetList(llvm::cl::desc("Available targets:"), llvm::cl::Required,
+               llvm::cl::OneOrMore,
+               llvm::cl::values(
+                   clEnumValN(synapse::Target::x86, "x86", "x86"),
+                   clEnumValN(synapse::Target::BMv2SimpleSwitchgRPC, "bmv2",
+                              "P4 (BMv2 Simple Switch with gRPC)"),
+                   clEnumValN(synapse::Target::FPGA, "fpga", "VeriLog (FPGA)"),
+                   clEnumValN(synapse::Target::Netronome, "netronome",
+                              "Micro C (Netronome)"),
+                   clEnumValN(synapse::Target::Tofino, "tofino", "P4 (Tofino)"),
+                   clEnumValEnd),
+               llvm::cl::cat(SyNAPSE));
+
 llvm::cl::opt<std::string>
     InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
                  llvm::cl::cat(SyNAPSE));
@@ -83,11 +97,6 @@ int main(int argc, char **argv) {
     os_ptr = &std::cerr;
   }
 
-  std::vector<synapse::Target> targets;
-
-  targets.push_back(synapse::Target::x86);
-  targets.push_back(synapse::Target::BMv2SimpleSwitchgRPC);
-
   BDD::BDD bdd = build_bdd();
 
   synapse::SearchEngine search_engine(bdd);
@@ -99,9 +108,9 @@ int main(int argc, char **argv) {
   synapse::LeastReordered least_reordered;
   synapse::MaximizeSwitchNodes maximize_switch_nodes;
 
-  for (auto target : targets) {
-    search_engine.add_target(target);
-    code_generator.add_target(target);
+  for (unsigned i = 0; i != TargetList.size(); ++i) {
+    search_engine.add_target(TargetList[i]);
+    code_generator.add_target(TargetList[i]);
   }
 
   // auto winner = search_engine.search(biggest);
