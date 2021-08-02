@@ -183,7 +183,8 @@ CodeGenerator::x86_extractor(const ExecutionPlan &execution_plan) const {
   }
 
   auto extracted = ExecutionPlan(execution_plan, new_root);
-  Graphviz::visualize(extracted);
+  // Graphviz::visualize(extracted);
+
   return extracted;
 }
 
@@ -212,7 +213,8 @@ ExecutionPlan CodeGenerator::bmv2SimpleSwitchgRPC_extractor(
     nodes.insert(nodes.end(), next.begin(), next.end());
   }
 
-  Graphviz::visualize(extracted);
+  // Graphviz::visualize(extracted);
+
   return extracted;
 }
 

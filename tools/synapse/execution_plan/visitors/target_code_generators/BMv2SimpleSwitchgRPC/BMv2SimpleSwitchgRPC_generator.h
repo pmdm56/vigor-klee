@@ -328,7 +328,7 @@ private:
   deparser_t deparser;
 
 private:
-  void pad() { os << std::string(lvl * 2, ' '); }
+  void pad() { *os << std::string(lvl * 2, ' '); }
   void dump();
   void close_if_clauses(std::ostream &os, unsigned _lvl);
 
@@ -342,8 +342,8 @@ private:
   void err_label_from_vars(klee::ref<klee::Expr> expr) const;
 
 public:
-  BMv2SimpleSwitchgRPC_Generator(std::ostream &_os)
-      : TargetCodeGenerator(_os), lvl(0), parsing_headers(true) {}
+  BMv2SimpleSwitchgRPC_Generator()
+      : TargetCodeGenerator(), lvl(0), parsing_headers(true) {}
 
   void visit(ExecutionPlan ep) override;
   void visit(const ExecutionPlanNode *ep_node) override;

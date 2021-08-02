@@ -129,12 +129,11 @@ public:
       }
     }
 
-    std::cerr << h.get_all().size() << " solutions\n";
+    std::cerr << "solutions: " << h.get_all().size() << "\n";
+    std::cerr << "winner:    " << h.get_score(h.get()) << "\n";
+    std::cerr << "loser:     " << h.get_score(h.get_all().back()) << "\n";
 
-    std::cerr << "winner: " << h.get_score(h.get()) << "\n";
-    std::cerr << "loser: " << h.get_score(h.get_all().back()) << "\n";
-
-    Graphviz::visualize(h.get());
+    // Graphviz::visualize(h.get());
     // Graphviz::visualize(h.get_all().back());
 
     // for (auto &ep : h.get_all()) {

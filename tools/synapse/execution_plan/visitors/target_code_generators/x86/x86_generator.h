@@ -273,7 +273,7 @@ private:
   stack_t stack;
 
 private:
-  void pad() { os << std::string(lvl * 2, ' '); }
+  void pad() { *os << std::string(lvl * 2, ' '); }
   void pad(std::ostream &_os) const { _os << std::string(lvl * 2, ' '); }
 
   void close_if_clauses();
@@ -288,8 +288,7 @@ private:
                     std::ostream &buffer);
 
 public:
-  x86_Generator(std::ostream &_os)
-      : TargetCodeGenerator(_os), lvl(0), stack() {}
+  x86_Generator() : TargetCodeGenerator(), lvl(0), stack() {}
 
   void visit(ExecutionPlan ep) override;
   void visit(const ExecutionPlanNode *ep_node) override;

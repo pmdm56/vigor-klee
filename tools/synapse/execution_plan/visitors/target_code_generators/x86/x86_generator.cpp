@@ -777,7 +777,7 @@ void x86_Generator::close_if_clauses() {
   while (!if_clause) {
     lvl--;
     pad();
-    os << "}\n";
+    *os << "}\n";
 
     if (pending_ifs.size()) {
       if_clause = pending_ifs.top();
@@ -963,8 +963,8 @@ void x86_Generator::allocate(const ExecutionPlan &ep) {
 
   buffer << "}\n\n";
 
-  os << global_state.str();
-  os << buffer.str();
+  *os << global_state.str();
+  *os << buffer.str();
 
   lvl = 0;
 }
@@ -982,12 +982,12 @@ void x86_Generator::visit(ExecutionPlan ep) {
   stack.add(pkt_len_label);
   stack.add(now_label);
 
-  os << "int nf_process(";
-  os << "uint16_t " << vigor_device_label;
-  os << ", uint8_t* " << packet_label;
-  os << ", uint16_t " << pkt_len_label;
-  os << ", int64_t " << now_label;
-  os << ") {\n";
+  *os << "int nf_process(";
+  *os << "uint16_t " << vigor_device_label;
+  *os << ", uint8_t* " << packet_label;
+  *os << ", uint16_t " << pkt_len_label;
+  *os << ", int64_t " << now_label;
+  *os << ") {\n";
   lvl++;
 
   ExecutionPlanVisitor::visit(ep);
@@ -1041,20 +1041,20 @@ void x86_Generator::visit(const targets::x86::MapGet *node) {
 
   for (auto key_assignment : key_assignments) {
     pad();
-    os << key_assignment << "\n";
+    *os << key_assignment << "\n";
   }
 
   pad();
-  os << "int " << allocated_index_label << ";\n";
+  *os << "int " << allocated_index_label << ";\n";
 
   pad();
-  os << "int " << map_has_this_key_label;
-  os << " = ";
-  os << "map_get(";
-  os << map;
-  os << ", (void*)" << key_label;
-  os << ", &" << allocated_index_label;
-  os << ");\n";
+  *os << "int " << map_has_this_key_label;
+  *os << " = ";
+  *os << "map_get(";
+  *os << map;
+  *os << ", (void*)" << key_label;
+  *os << ", &" << allocated_index_label;
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::CurrentTime *node) {
@@ -1091,11 +1091,11 @@ void x86_Generator::visit(const targets::x86::PacketBorrowNextChunk *node) {
 
   pad();
 
-  os << "uint8_t* " << chunk_label << " = (uint8_t*)";
-  os << "nf_borrow_next_chunk(";
-  os << p_label;
-  os << ", " << transpile(length, stack);
-  os << ");\n";
+  *os << "uint8_t* " << chunk_label << " = (uint8_t*)";
+  *os << "nf_borrow_next_chunk(";
+  *os << p_label;
+  *os << ", " << transpile(length, stack);
+  *os << ");\n";
 
   chunk_counter++;
 }
@@ -1112,19 +1112,19 @@ void x86_Generator::visit(const targets::x86::PacketGetMetadata *node) {
   stack.add(code_path_metadata_label, metadata);
 
   pad();
-  os << "const char " << metadata_key_label << "[]";
-  os << " = ";
-  os << "\"" << metadata_key << "\";\n";
+  *os << "const char " << metadata_key_label << "[]";
+  *os << " = ";
+  *os << "\"" << metadata_key << "\";\n";
 
   pad();
-  os << "int " << code_path_metadata_label << ";\n";
+  *os << "int " << code_path_metadata_label << ";\n";
 
   pad();
-  os << "metadata_get(meta";
-  os << ", (void*) " << metadata_key_label;
-  os << ", " << metadata_key.size();
-  os << ", (void*) &" << code_path_metadata_label;
-  os << ");\n";
+  *os << "metadata_get(meta";
+  *os << ", (void*) " << metadata_key_label;
+  *os << ", " << metadata_key.size();
+  *os << ", (void*) &" << code_path_metadata_label;
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::PacketReturnChunk *node) {
@@ -1150,10 +1150,10 @@ void x86_Generator::visit(const targets::x86::PacketReturnChunk *node) {
     if (!BDD::solver_toolbox.are_exprs_always_equal(chunk_byte,
                                                     before_chunk_byte)) {
       pad();
-      os << label << "[" << b / 8 << "]";
-      os << " = ";
-      os << transpile(chunk_byte, stack);
-      os << ";\n";
+      *os << label << "[" << b / 8 << "]";
+      *os << " = ";
+      *os << transpile(chunk_byte, stack);
+      *os << ";\n";
     }
   }
 }
@@ -1162,9 +1162,9 @@ void x86_Generator::visit(const targets::x86::If *node) {
   auto condition = node->get_condition();
 
   pad();
-  os << "if (";
-  os << transpile(condition, stack);
-  os << ") {\n";
+  *os << "if (";
+  *os << transpile(condition, stack);
+  *os << ") {\n";
   lvl++;
 
   pending_ifs.push(true);
@@ -1174,39 +1174,39 @@ void x86_Generator::visit(const targets::x86::Then *node) {}
 
 void x86_Generator::visit(const targets::x86::Else *node) {
   pad();
-  os << "else {\n";
+  *os << "else {\n";
   lvl++;
 }
 
 void x86_Generator::visit(const targets::x86::Forward *node) {
   pad();
-  os << "return " << node->get_port() << ";\n";
+  *os << "return " << node->get_port() << ";\n";
 
   lvl--;
   pad();
-  os << "}\n";
+  *os << "}\n";
 
   close_if_clauses();
 }
 
 void x86_Generator::visit(const targets::x86::Broadcast *node) {
   pad();
-  os << "return 65535;\n";
+  *os << "return 65535;\n";
 
   lvl--;
   pad();
-  os << "}\n";
+  *os << "}\n";
 
   close_if_clauses();
 }
 
 void x86_Generator::visit(const targets::x86::Drop *node) {
   pad();
-  os << "return device;\n";
+  *os << "return device;\n";
 
   lvl--;
   pad();
-  os << "}\n";
+  *os << "}\n";
 
   close_if_clauses();
 }
@@ -1251,14 +1251,14 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   stack.add(number_of_freed_flows_label, number_of_freed_flows);
 
   pad();
-  os << "int " << number_of_freed_flows_label;
-  os << " = ";
-  os << "expire_items_single_map(";
-  os << dchain;
-  os << ", " << vector;
-  os << ", " << map;
-  os << ", " << transpile(time, stack);
-  os << ");\n";
+  *os << "int " << number_of_freed_flows_label;
+  *os << " = ";
+  *os << "expire_items_single_map(";
+  *os << dchain;
+  *os << ", " << vector;
+  *os << ", " << map;
+  *os << ", " << transpile(time, stack);
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::RteEtherAddrHash *node) {
@@ -1279,15 +1279,15 @@ void x86_Generator::visit(const targets::x86::RteEtherAddrHash *node) {
 
   for (auto obj_assignment : obj_assignments) {
     pad();
-    os << obj_assignment << "\n";
+    *os << obj_assignment << "\n";
   }
 
   pad();
-  os << "uint32_t " << hash_label;
-  os << " = ";
-  os << "rte_ether_addr_hash(";
-  os << "(void*) &" << obj_label;
-  os << ");\n";
+  *os << "uint32_t " << hash_label;
+  *os << " = ";
+  *os << "rte_ether_addr_hash(";
+  *os << "(void*) &" << obj_label;
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::DchainRejuvenateIndex *node) {
@@ -1306,11 +1306,11 @@ void x86_Generator::visit(const targets::x86::DchainRejuvenateIndex *node) {
   }
 
   pad();
-  os << "dchain_rejuvenate_index(";
-  os << dchain;
-  os << ", " << transpile(index, stack);
-  os << ", " << transpile(time, stack);
-  os << ");\n";
+  *os << "dchain_rejuvenate_index(";
+  *os << dchain;
+  *os << ", " << transpile(index, stack);
+  *os << ", " << transpile(time, stack);
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
@@ -1340,14 +1340,14 @@ void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
   stack.add(value_out_label, borrowed_cell, value_out);
 
   pad();
-  os << "uint8_t " << value_out_label << "[" << borrowed_cell_sz / 8 << "];\n";
+  *os << "uint8_t " << value_out_label << "[" << borrowed_cell_sz / 8 << "];\n";
 
   pad();
-  os << "vector_borrow(";
-  os << vector;
-  os << ", " << transpile(index, stack);
-  os << ", (void **)&" << value_out_label;
-  os << ");\n";
+  *os << "vector_borrow(";
+  *os << vector;
+  *os << ", " << transpile(index, stack);
+  *os << ", (void **)&" << value_out_label;
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::VectorReturn *node) {
@@ -1385,15 +1385,15 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
 
   for (auto assignment : assignments) {
     pad();
-    os << assignment << "\n";
+    *os << assignment << "\n";
   }
 
   pad();
-  os << "vector_return(";
-  os << vector;
-  os << ", " << transpile(index, stack);
-  os << ", (void *)" << value_label;
-  os << ");\n";
+  *os << "vector_return(";
+  *os << vector;
+  *os << ", " << transpile(index, stack);
+  *os << ", (void *)" << value_label;
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
@@ -1423,16 +1423,16 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
   stack.add(new_index_label, index_out);
 
   pad();
-  os << "int " << new_index_label << ";\n";
+  *os << "int " << new_index_label << ";\n";
 
   pad();
-  os << "int " << out_of_space_label;
-  os << " = ";
-  os << "dchain_allocate_new_index(";
-  os << dchain;
-  os << ", &" << new_index_label;
-  os << ", " << transpile(time, stack);
-  os << ");\n";
+  *os << "int " << out_of_space_label;
+  *os << " = ";
+  *os << "dchain_allocate_new_index(";
+  *os << dchain;
+  *os << ", &" << new_index_label;
+  *os << ", " << transpile(time, stack);
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::MapPut *node) {
@@ -1457,15 +1457,15 @@ void x86_Generator::visit(const targets::x86::MapPut *node) {
 
   for (auto key_assignment : key_assignments) {
     pad();
-    os << key_assignment << "\n";
+    *os << key_assignment << "\n";
   }
 
   pad();
-  os << "map_put(";
-  os << map;
-  os << ", (void*)" << key_label;
-  os << ", " << transpile(value, stack);
-  os << ");\n";
+  *os << "map_put(";
+  *os << map;
+  *os << ", (void*)" << key_label;
+  *os << ", " << transpile(value, stack);
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {
@@ -1482,24 +1482,24 @@ void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {
   auto unread_len_label = get_label(generated_symbols, "unread_len");
 
   pad();
-  os << "uint32_t " << unread_len_label;
-  os << " = ";
-  os << "packet_get_unread_length(";
-  os << p_label;
-  os << ");\n";
+  *os << "uint32_t " << unread_len_label;
+  *os << " = ";
+  *os << "packet_get_unread_length(";
+  *os << p_label;
+  *os << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::SetIpv4UdpTcpChecksum *node) {
   pad();
-  os << "rte_ipv4_udptcp_cksum(";
-  os << ");\n";
+  *os << "rte_ipv4_udptcp_cksum(";
+  *os << ");\n";
   assert(false && "TODO");
 }
 
 void x86_Generator::visit(const targets::x86::DchainIsIndexAllocated *node) {
   pad();
-  os << "dchain_is_index_allocated(";
-  os << ");\n";
+  *os << "dchain_is_index_allocated(";
+  *os << ");\n";
   assert(false && "TODO");
 }
 

@@ -83,24 +83,18 @@ BDD::BDD build_bdd() {
 }
 
 int main(int argc, char **argv) {
-  synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::DEBUG;
-
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
-  std::ostream *os_ptr;
-
-  if (Out.size()) {
-    auto file = new std::ofstream(Out + "/bmv2_ss_grpc.gen.p4");
-    assert(file->is_open());
-    os_ptr = file;
-  } else {
-    os_ptr = &std::cerr;
-  }
-
+  synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::DEBUG;
   BDD::BDD bdd = build_bdd();
 
   synapse::SearchEngine search_engine(bdd);
-  synapse::CodeGenerator code_generator;
+  synapse::CodeGenerator code_generator(Out);
+
+  for (unsigned i = 0; i != TargetList.size(); ++i) {
+    search_engine.add_target(TargetList[i]);
+    code_generator.add_target(TargetList[i]);
+  }
 
   synapse::Biggest biggest;
   synapse::DFS dfs;
@@ -108,22 +102,13 @@ int main(int argc, char **argv) {
   synapse::LeastReordered least_reordered;
   synapse::MaximizeSwitchNodes maximize_switch_nodes;
 
-  for (unsigned i = 0; i != TargetList.size(); ++i) {
-    search_engine.add_target(TargetList[i]);
-    code_generator.add_target(TargetList[i]);
-  }
-
-  // auto winner = search_engine.search(biggest);
+  auto winner = search_engine.search(biggest);
   // auto winner = search_engine.search(least_reordered);
   // auto winner = search_engine.search(dfs);
   // auto winner = search_engine.search(most_compact);
-  auto winner = search_engine.search(maximize_switch_nodes);
+  // auto winner = search_engine.search(maximize_switch_nodes);
 
   code_generator.generate(winner);
-
-  if (os_ptr != &std::cerr) {
-    delete os_ptr;
-  }
 
   return 0;
 }

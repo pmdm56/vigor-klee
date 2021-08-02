@@ -407,130 +407,130 @@ void BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(std::ostream &os) {
 }
 
 void BMv2SimpleSwitchgRPC_Generator::dump() {
-  os << "#include <core.p4>\n";
-  os << "#include <v1model.p4>\n";
+  *os << "#include <core.p4>\n";
+  *os << "#include <v1model.p4>\n";
 
-  os << "\n";
-  os << "#define CPU_PORT  255\n";
-  os << "#define DROP_PORT 254\n";
+  *os << "\n";
+  *os << "#define CPU_PORT  255\n";
+  *os << "#define DROP_PORT 254\n";
 
-  os << "\n";
-  os << "/**************** H E A D E R S  ****************/\n";
+  *os << "\n";
+  *os << "/**************** H E A D E R S  ****************/\n";
 
-  os << "\n";
-  os << "@controller_header(\"packet_in\")\n";
-  os << "header packet_in_t {\n";
+  *os << "\n";
+  *os << "@controller_header(\"packet_in\")\n";
+  *os << "header packet_in_t {\n";
   lvl++;
   pad();
-  os << "bit<32> code_id;\n";
+  *os << "bit<32> code_id;\n";
   lvl--;
-  os << "}\n";
+  *os << "}\n";
 
   for (auto header : headers) {
-    os << "\n";
-    os << "header " << header.type_label << " {\n";
+    *os << "\n";
+    *os << "header " << header.type_label << " {\n";
     lvl++;
 
     for (auto field : header.fields) {
       pad();
-      os << field.type << " " << field.label << ";\n";
+      *os << field.type << " " << field.label << ";\n";
     }
 
     lvl--;
-    os << "}\n";
+    *os << "}\n";
   }
 
-  os << "\n";
-  os << "struct headers {\n";
+  *os << "\n";
+  *os << "struct headers {\n";
   lvl++;
 
   pad();
-  os << "packet_in_t packet_in;\n";
+  *os << "packet_in_t packet_in;\n";
 
   for (auto header : headers) {
     pad();
-    os << header.type_label << " " << header.label << ";\n";
+    *os << header.type_label << " " << header.label << ";\n";
   }
 
   lvl--;
-  os << "}\n";
+  *os << "}\n";
 
-  os << "\n";
-  os << "struct metadata {\n";
+  *os << "\n";
+  *os << "struct metadata {\n";
   lvl++;
 
   for (auto meta : metadata.get_all()) {
-    pad(os, lvl);
+    pad(*os, lvl);
     assert(meta.exprs.size());
-    os << p4_type_from_expr(meta.exprs[0]) << " " << meta.label << ";\n";
+    *os << p4_type_from_expr(meta.exprs[0]) << " " << meta.label << ";\n";
   }
 
   lvl--;
-  os << "}\n";
+  *os << "}\n";
 
-  os << "\n";
-  os << "/****************************************************************\n";
-  os << "*************************  P A R S E R  *************************\n";
-  os << "****************************************************************/\n";
-  os << "\n";
+  *os << "\n";
+  *os << "/****************************************************************\n";
+  *os << "*************************  P A R S E R  *************************\n";
+  *os << "****************************************************************/\n";
+  *os << "\n";
 
-  parser.dump(os);
+  parser.dump(*os);
 
-  os << "\n";
-  os << "/****************************************************************\n";
-  os << "********** C H E C K S U M    V E R I F I C A T I O N ***********\n";
-  os << "****************************************************************/\n";
-  os << "\n";
+  *os << "\n";
+  *os << "/****************************************************************\n";
+  *os << "********** C H E C K S U M    V E R I F I C A T I O N ***********\n";
+  *os << "****************************************************************/\n";
+  *os << "\n";
 
-  verify_checksum.dump(os);
+  verify_checksum.dump(*os);
 
-  os << "\n";
-  os << "/****************************************************************\n";
-  os << "************** I N G R E S S   P R O C E S S I N G **************\n";
-  os << "****************************************************************/\n";
-  os << "\n";
+  *os << "\n";
+  *os << "/****************************************************************\n";
+  *os << "************** I N G R E S S   P R O C E S S I N G **************\n";
+  *os << "****************************************************************/\n";
+  *os << "\n";
 
-  ingress.dump(os);
+  ingress.dump(*os);
 
-  os << "\n";
-  os << "/****************************************************************\n";
-  os << "*************** E G R E S S   P R O C E S S I N G ***************\n";
-  os << "****************************************************************/\n";
-  os << "\n";
+  *os << "\n";
+  *os << "/****************************************************************\n";
+  *os << "*************** E G R E S S   P R O C E S S I N G ***************\n";
+  *os << "****************************************************************/\n";
+  *os << "\n";
 
-  egress.dump(os);
+  egress.dump(*os);
 
-  os << "\n";
-  os << "/****************************************************************\n";
-  os << "**********  C H E C K S U M    C O M P U T A T I O N   **********\n";
-  os << "****************************************************************/\n";
-  os << "\n";
+  *os << "\n";
+  *os << "/****************************************************************\n";
+  *os << "**********  C H E C K S U M    C O M P U T A T I O N   **********\n";
+  *os << "****************************************************************/\n";
+  *os << "\n";
 
-  compute_checksum.dump(os);
+  compute_checksum.dump(*os);
 
-  os << "\n";
-  os << "/****************************************************************\n";
-  os << "***********************  D E P A R S E R  ***********************\n";
-  os << "****************************************************************/\n";
-  os << "\n";
+  *os << "\n";
+  *os << "/****************************************************************\n";
+  *os << "***********************  D E P A R S E R  ***********************\n";
+  *os << "****************************************************************/\n";
+  *os << "\n";
 
-  deparser.dump(os);
+  deparser.dump(*os);
 
-  os << "\n";
-  os << "/****************************************************************\n";
-  os << "************************** S W I T C H **************************\n";
-  os << "****************************************************************/\n";
-  os << "\n";
+  *os << "\n";
+  *os << "/****************************************************************\n";
+  *os << "************************** S W I T C H **************************\n";
+  *os << "****************************************************************/\n";
+  *os << "\n";
 
-  os << "V1Switch(";
-  os << parser.label << "(),\n";
-  os << "         " << verify_checksum.label << "(),\n";
-  os << "         " << ingress.label << "(),\n";
-  os << "         " << egress.label << "(),\n";
-  os << "         " << compute_checksum.label << "(),\n";
-  os << "         " << deparser.label << "()\n";
-  os << ") main;";
-  os << "\n";
+  *os << "V1Switch(";
+  *os << parser.label << "(),\n";
+  *os << "         " << verify_checksum.label << "(),\n";
+  *os << "         " << ingress.label << "(),\n";
+  *os << "         " << egress.label << "(),\n";
+  *os << "         " << compute_checksum.label << "(),\n";
+  *os << "         " << deparser.label << "()\n";
+  *os << ") main;";
+  *os << "\n";
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(ExecutionPlan ep) {
