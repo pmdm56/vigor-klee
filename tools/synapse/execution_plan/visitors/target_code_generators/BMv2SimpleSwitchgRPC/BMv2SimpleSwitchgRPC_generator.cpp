@@ -324,6 +324,8 @@ void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) {
   os << "hdr.packet_in.setValid();\n";
   pad(os, lvl);
   os << "hdr.packet_in.code_id = code_id;\n";
+  pad(os, lvl);
+  os << "hdr.packet_in.device = standard_metadata.ingress_port;\n";
 
   lvl--;
   pad(os, lvl);
@@ -363,7 +365,43 @@ void BMv2SimpleSwitchgRPC_Generator::egress_t::dump(std::ostream &os) {
   os << label_pad << "inout standard_metadata_t standard_metadata) {\n";
 
   pad(os, lvl);
-  os << "apply {}\n";
+  os << "action drop() {\n";
+
+  lvl++;
+  pad(os, lvl);
+  os << "standard_metadata.egress_spec = DROP_PORT;\n";
+
+  lvl--;
+  pad(os, lvl);
+  os << "}\n";
+
+  os << "\n";
+
+  pad(os, lvl);
+  os << "apply {\n";
+  
+  lvl++;
+
+  pad(os, lvl);
+  os << "if (";
+  os << "standard_metadata.ingress_port";
+  os << " == ";
+  os << "standard_metadata.egress_spec";
+  os << ") {\n";
+
+  lvl++;
+  
+  pad(os, lvl);
+  os << "drop();\n";
+
+  lvl--;
+
+  pad(os, lvl);
+  os << "}\n";
+  
+  lvl--;
+  pad(os, lvl);
+  os << "}\n";
 
   os << "}\n";
 }
@@ -394,6 +432,9 @@ void BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(std::ostream &os) {
 
   pad(os, lvl + 1);
   os << "packet.emit(hdr.packet_in);\n";
+  
+  pad(os, lvl + 1);
+  os << "packet.emit(hdr.packet_out);\n";
 
   for (auto header_label : headers_labels) {
     pad(os, lvl + 1);
@@ -423,6 +464,21 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
   lvl++;
   pad();
   *os << "bit<32> code_id;\n";
+  pad();
+  *os << "bit<9> device;\n";
+  pad();
+  *os << "bit<7> pad;\n";
+  lvl--;
+  *os << "}\n";
+
+  *os << "\n";
+  *os << "@controller_header(\"packet_out\")\n";
+  *os << "header packet_out_t {\n";
+  lvl++;
+  pad();
+  *os << "bit<9> fwd_port;\n";
+  pad();
+  *os << "bit<7> pad;\n";
   lvl--;
   *os << "}\n";
 
@@ -446,6 +502,9 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
 
   pad();
   *os << "packet_in_t packet_in;\n";
+  
+  pad();
+  *os << "packet_out_t packet_out;\n";
 
   for (auto header : headers) {
     pad();
@@ -534,6 +593,27 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(ExecutionPlan ep) {
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "if (";
+  ingress.apply_block << "standard_metadata.ingress_port";
+  ingress.apply_block << " == ";
+  ingress.apply_block << "CPU_PORT";
+  ingress.apply_block << ") {\n";
+
+  ingress.lvl++;
+  
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "forward(hdr.packet_out.fwd_port);\n";
+  
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "return;\n";
+  
+  pad(ingress.apply_block, ingress.lvl);
+  ingress.apply_block << "}\n";
+  
+  ingress.lvl--;
+  ingress.apply_block << "\n";
+
   ExecutionPlanVisitor::visit(ep);
   dump();
 }
