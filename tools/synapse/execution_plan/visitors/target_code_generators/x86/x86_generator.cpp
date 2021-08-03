@@ -1112,18 +1112,25 @@ void x86_Generator::visit(const targets::x86::PacketGetMetadata *node) {
   stack.add(code_path_metadata_label, metadata);
 
   pad();
-  *os << "const char " << metadata_key_label << "[]";
+  *os << "string_t " << metadata_key_label << " = {";
+
+  *os << " .str = ";
+  *os << "\"" << metadata_key << "\"";
+  *os << ", .sz = " << metadata_key.size() << " };\n";
+
+  pad();
+  *os << "string_ptr_t " << code_path_metadata_label << "_str";
   *os << " = ";
-  *os << "\"" << metadata_key << "\";\n";
+  *os << "get_packet_in_metadata_by_name(";
+  *os << "g_env";
+  *os << ", " << metadata_key_label;
+  *os << ");\n";
 
   pad();
-  *os << "int " << code_path_metadata_label << ";\n";
-
-  pad();
-  *os << "metadata_get(meta";
-  *os << ", (void*) " << metadata_key_label;
-  *os << ", " << metadata_key.size();
-  *os << ", (void*) &" << code_path_metadata_label;
+  *os << "int " << code_path_metadata_label;
+  *os << " = ";
+  *os << "synapse_runtime_wrappers_decode_int(";
+  *os << code_path_metadata_label << "_str";
   *os << ");\n";
 }
 
