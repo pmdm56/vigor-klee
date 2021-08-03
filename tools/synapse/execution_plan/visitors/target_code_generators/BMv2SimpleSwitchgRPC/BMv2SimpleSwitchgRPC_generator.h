@@ -33,14 +33,16 @@ private:
 
     stage_t(std::string _label) : label(_label), lvl(1) {}
     stage_t(std::string _label, unsigned _lvl) : label(_label), lvl(_lvl) {}
-    virtual void dump(std::ostream &os) = 0;
+    virtual void dump(code_builder_t &code_builder) = 0;
 
     int close_if_clauses(std::ostream &os) {
+      assert(pending_ifs.size());
+
       int closed = 0;
       auto if_clause = pending_ifs.top();
       pending_ifs.pop();
       closed++;
-      while (!if_clause) {
+      if (!if_clause && pending_ifs.size()) {
         lvl--;
         pad(os, lvl);
         os << "}\n";
@@ -271,13 +273,13 @@ private:
 
     parser_t() : stage_t("SyNAPSE_Parser") {}
 
-    void dump(std::ostream &os) override;
+    void dump(code_builder_t &code_builder) override;
   };
 
   struct verify_checksum_t : stage_t {
     verify_checksum_t() : stage_t("SyNAPSE_VerifyChecksum") {}
 
-    void dump(std::ostream &os) override;
+    void dump(code_builder_t &code_builder) override;
   };
 
   struct ingress_t : stage_t {
@@ -288,31 +290,30 @@ private:
 
     ingress_t() : stage_t("SyNAPSE_Ingress", 2) {}
 
-    void dump(std::ostream &os) override;
+    void dump(code_builder_t &code_builder) override;
   };
 
   struct egress_t : stage_t {
     std::stack<bool> pending_ifs;
     egress_t() : stage_t("SyNAPSE_Egress") {}
 
-    void dump(std::ostream &os) override;
+    void dump(code_builder_t &code_builder) override;
   };
 
   struct compute_checksum_t : stage_t {
     compute_checksum_t() : stage_t("SyNAPSE_ComputeChecksum") {}
 
-    void dump(std::ostream &os) override;
+    void dump(code_builder_t &code_builder) override;
   };
 
   struct deparser_t : stage_t {
     std::vector<std::string> headers_labels;
     deparser_t() : stage_t("SyNAPSE_Deparser") {}
 
-    void dump(std::ostream &os) override;
+    void dump(code_builder_t &code_builder) override;
   };
 
 private:
-  int lvl;
   bool parsing_headers;
 
   std::vector<header_t> headers;
@@ -328,7 +329,6 @@ private:
   deparser_t deparser;
 
 private:
-  void pad() { *os << std::string(lvl * 2, ' '); }
   void dump();
   void close_if_clauses(std::ostream &os, unsigned _lvl);
 
@@ -343,7 +343,8 @@ private:
 
 public:
   BMv2SimpleSwitchgRPC_Generator()
-      : TargetCodeGenerator(), lvl(0), parsing_headers(true) {}
+      : TargetCodeGenerator(GET_BOILERPLATE_PATH("boilerplate.p4")),
+        parsing_headers(true) {}
 
   void visit(ExecutionPlan ep) override;
   void visit(const ExecutionPlanNode *ep_node) override;
@@ -361,9 +362,8 @@ public:
   void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) override;
   void
   visit(const targets::BMv2SimpleSwitchgRPC::SendToController *node) override;
-  void
-  visit(const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications *node)
-      override;
+  void visit(const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications
+                 *node) override;
   void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node) override;
   void visit(const targets::BMv2SimpleSwitchgRPC::Then *node) override;
 };

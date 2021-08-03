@@ -70,12 +70,13 @@ private:
 
       if (node->get_type() == BDD::Node::NodeType::CALL) {
         auto clone = node->clone();
-        clone->update_id(bdd.get_and_inc_id());
 
         clone->replace_next(root);
         clone->replace_prev(nullptr);
 
         root->replace_prev(clone);
+
+        clone->update_id(bdd.get_and_inc_id());
 
         root = clone;
       }

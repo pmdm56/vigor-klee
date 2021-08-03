@@ -6,6 +6,14 @@
 #include "keys_from_klee_expr.h"
 #include "klee_expr_to_p4.h"
 
+#define MARKER_HEADERS_DEFINITIONS "headers_definitions"
+#define MARKER_HEADERS_DECLARATIONS "headers_declarations"
+#define MARKER_METADATA_FIELDS "metadata_fields"
+#define MARKER_PARSER_STATES "parser_states"
+#define MARKER_INGRESS_GLOBALS "ingress_globals"
+#define MARKER_INGRESS_APPLY_CONTENT "ingress_apply_content"
+#define MARKER_DEPARSER_APPLY "deparser_apply"
+
 namespace synapse {
 
 void BMv2SimpleSwitchgRPC_Generator::err_label_from_chunk(
@@ -220,400 +228,153 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
   return code;
 }
 
-void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(std::ostream &os) {
-  auto label_pad = std::string(label.size() + 8, ' ');
-
-  os << "parser " << label << "(";
-  os << "packet_in packet,\n";
-  os << label_pad << "out headers hdr,\n";
-  os << label_pad << "inout metadata meta,\n";
-  os << label_pad << "inout standard_metadata_t standard_metadata) {\n";
+void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
+    code_builder_t &code_builder) {
+  std::stringstream parser_states_stream;
+  auto lvl = code_builder.get_indentation_level(MARKER_PARSER_STATES);
 
   for (unsigned i = 0; i < headers_labels.size(); i++) {
     auto label = headers_labels[i];
 
     if (i == 0) {
-      pad(os, lvl);
-      os << "state start {\n";
+      pad(parser_states_stream, lvl);
+      parser_states_stream << "state start {\n";
     } else {
-      pad(os, lvl);
-      os << "state parse_" << label << " {\n";
+      pad(parser_states_stream, lvl);
+      parser_states_stream << "state parse_" << label << " {\n";
     }
 
     lvl++;
 
-    pad(os, lvl);
-    os << "packet.extract(hdr." << label << ");\n";
+    pad(parser_states_stream, lvl);
+    parser_states_stream << "packet.extract(hdr." << label << ");\n";
 
     if (i == headers_labels.size() - 1) {
-      pad(os, lvl);
-      os << "transition accept;\n";
+      pad(parser_states_stream, lvl);
+      parser_states_stream << "transition accept;\n";
     } else {
-      pad(os, lvl);
-      os << "transition parse_" << headers_labels[i + 1] << ";\n";
+      pad(parser_states_stream, lvl);
+      parser_states_stream << "transition parse_" << headers_labels[i + 1]
+                           << ";\n";
     }
 
     lvl--;
 
-    pad(os, lvl);
-    os << "}\n";
+    pad(parser_states_stream, lvl);
+    parser_states_stream << "}\n";
   }
 
-  os << "}\n";
+  code_builder.fill_mark(MARKER_PARSER_STATES, parser_states_stream.str());
 }
 
-void BMv2SimpleSwitchgRPC_Generator::verify_checksum_t::dump(std::ostream &os) {
-  auto label_pad = std::string(label.size() + 9, ' ');
+void BMv2SimpleSwitchgRPC_Generator::verify_checksum_t::dump(
+    code_builder_t &code_builder) {}
 
-  os << "control " << label << "(";
-  os << "inout headers hdr,\n";
-  os << label_pad << "inout metadata meta) {\n";
+void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(
+    code_builder_t &code_builder) {
+  std::stringstream ingress_globals_stream;
+  auto lvl = code_builder.get_indentation_level(MARKER_INGRESS_GLOBALS);
 
-  pad(os, lvl);
-  os << "apply {}\n";
-
-  os << "}\n";
-}
-
-void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(std::ostream &os) {
-  auto label_pad = std::string(label.size() + 9, ' ');
-
-  os << "control " << label << "(";
-  os << "inout headers hdr,\n";
-  os << label_pad << "inout metadata meta,\n";
-  os << label_pad << "inout standard_metadata_t standard_metadata) {\n";
-
-  pad(os, lvl);
-  os << "\n";
-  pad(os, lvl);
-  os << "/**************** B O I L E R P L A T E  ****************/\n";
-  pad(os, lvl);
-  os << "\n";
-
-  pad(os, lvl);
-  os << "action drop() {\n";
-
-  lvl++;
-  pad(os, lvl);
-  os << "standard_metadata.egress_spec = DROP_PORT;\n";
-
-  lvl--;
-  pad(os, lvl);
-  os << "}\n";
-
-  os << "\n";
-  pad(os, lvl);
-  os << "action forward(bit<9> port) {\n";
-
-  lvl++;
-  pad(os, lvl);
-  os << "standard_metadata.egress_spec = port;\n";
-
-  lvl--;
-  pad(os, lvl);
-  os << "}\n";
-
-  os << "\n";
-  pad(os, lvl);
-  os << "action send_to_controller(bit<32> code_id) {\n";
-
-  lvl++;
-  pad(os, lvl);
-  os << "standard_metadata.egress_spec = CPU_PORT;\n";
-  pad(os, lvl);
-  os << "hdr.packet_in.setValid();\n";
-  pad(os, lvl);
-  os << "hdr.packet_in.code_id = code_id;\n";
-  pad(os, lvl);
-  os << "hdr.packet_in.device = standard_metadata.ingress_port;\n";
-
-  lvl--;
-  pad(os, lvl);
-  os << "}\n";
-
-  os << "\n";
   for (auto key_byte : key_bytes) {
-    pad(os, lvl);
-    os << "bit<" << key_byte.size << "> " << key_byte.label << ";\n";
+    pad(ingress_globals_stream, lvl);
+    ingress_globals_stream << "bit<" << key_byte.size << "> " << key_byte.label
+                           << ";\n";
   }
 
   std::vector<std::string> declared_table_ids;
+
   for (auto table : tables) {
     auto found_it = std::find(declared_table_ids.begin(),
                               declared_table_ids.end(), table.label);
     if (found_it == declared_table_ids.end()) {
-      table.dump(os, 1);
+      table.dump(ingress_globals_stream, 1);
       declared_table_ids.push_back(table.label);
     }
   }
 
-  os << "\n";
-  pad(os, 1);
-  os << "apply {\n";
+  code_builder.fill_mark(MARKER_INGRESS_GLOBALS, ingress_globals_stream.str());
 
-  os << apply_block.str();
-
-  os << "}\n";
+  std::stringstream ingress_apply_content_stream;
+  lvl = code_builder.get_indentation_level(MARKER_INGRESS_APPLY_CONTENT);
+  ingress_apply_content_stream << apply_block.str();
+  code_builder.fill_mark(MARKER_INGRESS_APPLY_CONTENT,
+                         ingress_apply_content_stream.str());
 }
 
-void BMv2SimpleSwitchgRPC_Generator::egress_t::dump(std::ostream &os) {
-  auto label_pad = std::string(label.size() + 9, ' ');
-
-  os << "control " << label << "(";
-  os << "inout headers hdr,\n";
-  os << label_pad << "inout metadata meta,\n";
-  os << label_pad << "inout standard_metadata_t standard_metadata) {\n";
-
-  pad(os, lvl);
-  os << "action drop() {\n";
-
-  lvl++;
-  pad(os, lvl);
-  os << "standard_metadata.egress_spec = DROP_PORT;\n";
-
-  lvl--;
-  pad(os, lvl);
-  os << "}\n";
-
-  os << "\n";
-
-  pad(os, lvl);
-  os << "apply {\n";
-  
-  lvl++;
-
-  pad(os, lvl);
-  os << "if (";
-  os << "standard_metadata.ingress_port";
-  os << " == ";
-  os << "standard_metadata.egress_spec";
-  os << ") {\n";
-
-  lvl++;
-  
-  pad(os, lvl);
-  os << "drop();\n";
-
-  lvl--;
-
-  pad(os, lvl);
-  os << "}\n";
-  
-  lvl--;
-  pad(os, lvl);
-  os << "}\n";
-
-  os << "}\n";
-}
+void BMv2SimpleSwitchgRPC_Generator::egress_t::dump(
+    code_builder_t &code_builder) {}
 
 void BMv2SimpleSwitchgRPC_Generator::compute_checksum_t::dump(
-    std::ostream &os) {
-  auto label_pad = std::string(label.size() + 9, ' ');
+    code_builder_t &code_builder) {}
 
-  os << "control " << label << "(";
-  os << "inout headers hdr,\n";
-  os << label_pad << "inout metadata meta) {\n";
-
-  pad(os, lvl);
-  os << "apply {}\n";
-
-  os << "}\n";
-}
-
-void BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(std::ostream &os) {
-  auto label_pad = std::string(label.size() + 9, ' ');
-
-  os << "control " << label << "(";
-  os << "packet_out packet,\n";
-  os << label_pad << "in headers hdr) {\n";
-
-  pad(os, lvl);
-  os << "apply {\n";
-
-  pad(os, lvl + 1);
-  os << "packet.emit(hdr.packet_in);\n";
-  
-  pad(os, lvl + 1);
-  os << "packet.emit(hdr.packet_out);\n";
+void BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(
+    code_builder_t &code_builder) {
+  std::stringstream deparser_apply_stream;
 
   for (auto header_label : headers_labels) {
-    pad(os, lvl + 1);
-    os << "packet.emit(hdr." << header_label << ");\n";
+    pad(deparser_apply_stream, lvl + 1);
+    deparser_apply_stream << "packet.emit(hdr." << header_label << ");\n";
   }
 
-  pad(os, lvl);
-  os << "}\n";
-
-  os << "}\n";
+  code_builder.fill_mark(MARKER_DEPARSER_APPLY, deparser_apply_stream.str());
 }
 
 void BMv2SimpleSwitchgRPC_Generator::dump() {
-  *os << "#include <core.p4>\n";
-  *os << "#include <v1model.p4>\n";
-
-  *os << "\n";
-  *os << "#define CPU_PORT  255\n";
-  *os << "#define DROP_PORT 254\n";
-
-  *os << "\n";
-  *os << "/**************** H E A D E R S  ****************/\n";
-
-  *os << "\n";
-  *os << "@controller_header(\"packet_in\")\n";
-  *os << "header packet_in_t {\n";
-  lvl++;
-  pad();
-  *os << "bit<32> code_id;\n";
-  pad();
-  *os << "bit<9> device;\n";
-  pad();
-  *os << "bit<7> pad;\n";
-  lvl--;
-  *os << "}\n";
-
-  *os << "\n";
-  *os << "@controller_header(\"packet_out\")\n";
-  *os << "header packet_out_t {\n";
-  lvl++;
-  pad();
-  *os << "bit<9> fwd_port;\n";
-  pad();
-  *os << "bit<7> pad;\n";
-  lvl--;
-  *os << "}\n";
+  std::stringstream headers_definitions_stream;
+  auto lvl = code_builder.get_indentation_level(MARKER_HEADERS_DEFINITIONS);
 
   for (auto header : headers) {
-    *os << "\n";
-    *os << "header " << header.type_label << " {\n";
+    pad(headers_definitions_stream, lvl);
+    headers_definitions_stream << "header " << header.type_label << " {\n";
     lvl++;
 
     for (auto field : header.fields) {
-      pad();
-      *os << field.type << " " << field.label << ";\n";
+      pad(headers_definitions_stream, lvl);
+      headers_definitions_stream << field.type << " " << field.label << ";\n";
     }
 
     lvl--;
-    *os << "}\n";
+    headers_definitions_stream << "}\n\n";
   }
 
-  *os << "\n";
-  *os << "struct headers {\n";
-  lvl++;
+  code_builder.fill_mark(MARKER_HEADERS_DEFINITIONS,
+                         headers_definitions_stream.str());
 
-  pad();
-  *os << "packet_in_t packet_in;\n";
-  
-  pad();
-  *os << "packet_out_t packet_out;\n";
+  lvl = code_builder.get_indentation_level(MARKER_HEADERS_DECLARATIONS);
+  std::stringstream headers_declarations_stream;
 
   for (auto header : headers) {
-    pad();
-    *os << header.type_label << " " << header.label << ";\n";
+    pad(headers_declarations_stream, lvl);
+    headers_declarations_stream << header.type_label << " " << header.label
+                                << ";\n";
   }
 
-  lvl--;
-  *os << "}\n";
+  code_builder.fill_mark(MARKER_HEADERS_DECLARATIONS,
+                         headers_declarations_stream.str());
 
-  *os << "\n";
-  *os << "struct metadata {\n";
-  lvl++;
+  std::stringstream metadata_fields_stream;
+  lvl = code_builder.get_indentation_level(MARKER_METADATA_FIELDS);
 
   for (auto meta : metadata.get_all()) {
-    pad(*os, lvl);
+    pad(metadata_fields_stream, lvl);
     assert(meta.exprs.size());
-    *os << p4_type_from_expr(meta.exprs[0]) << " " << meta.label << ";\n";
+    metadata_fields_stream << p4_type_from_expr(meta.exprs[0]) << " "
+                           << meta.label << ";\n";
   }
 
-  lvl--;
-  *os << "}\n";
+  code_builder.fill_mark(MARKER_METADATA_FIELDS, metadata_fields_stream.str());
 
-  *os << "\n";
-  *os << "/****************************************************************\n";
-  *os << "*************************  P A R S E R  *************************\n";
-  *os << "****************************************************************/\n";
-  *os << "\n";
+  parser.dump(code_builder);
+  verify_checksum.dump(code_builder);
+  ingress.dump(code_builder);
+  egress.dump(code_builder);
+  compute_checksum.dump(code_builder);
+  deparser.dump(code_builder);
 
-  parser.dump(*os);
-
-  *os << "\n";
-  *os << "/****************************************************************\n";
-  *os << "********** C H E C K S U M    V E R I F I C A T I O N ***********\n";
-  *os << "****************************************************************/\n";
-  *os << "\n";
-
-  verify_checksum.dump(*os);
-
-  *os << "\n";
-  *os << "/****************************************************************\n";
-  *os << "************** I N G R E S S   P R O C E S S I N G **************\n";
-  *os << "****************************************************************/\n";
-  *os << "\n";
-
-  ingress.dump(*os);
-
-  *os << "\n";
-  *os << "/****************************************************************\n";
-  *os << "*************** E G R E S S   P R O C E S S I N G ***************\n";
-  *os << "****************************************************************/\n";
-  *os << "\n";
-
-  egress.dump(*os);
-
-  *os << "\n";
-  *os << "/****************************************************************\n";
-  *os << "**********  C H E C K S U M    C O M P U T A T I O N   **********\n";
-  *os << "****************************************************************/\n";
-  *os << "\n";
-
-  compute_checksum.dump(*os);
-
-  *os << "\n";
-  *os << "/****************************************************************\n";
-  *os << "***********************  D E P A R S E R  ***********************\n";
-  *os << "****************************************************************/\n";
-  *os << "\n";
-
-  deparser.dump(*os);
-
-  *os << "\n";
-  *os << "/****************************************************************\n";
-  *os << "************************** S W I T C H **************************\n";
-  *os << "****************************************************************/\n";
-  *os << "\n";
-
-  *os << "V1Switch(";
-  *os << parser.label << "(),\n";
-  *os << "         " << verify_checksum.label << "(),\n";
-  *os << "         " << ingress.label << "(),\n";
-  *os << "         " << egress.label << "(),\n";
-  *os << "         " << compute_checksum.label << "(),\n";
-  *os << "         " << deparser.label << "()\n";
-  *os << ") main;";
-  *os << "\n";
+  TargetCodeGenerator::dump();
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(ExecutionPlan ep) {
-  pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "if (";
-  ingress.apply_block << "standard_metadata.ingress_port";
-  ingress.apply_block << " == ";
-  ingress.apply_block << "CPU_PORT";
-  ingress.apply_block << ") {\n";
-
-  ingress.lvl++;
-  
-  pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "forward(hdr.packet_out.fwd_port);\n";
-  
-  pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "return;\n";
-  
-  pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "}\n";
-  
-  ingress.lvl--;
-  ingress.apply_block << "\n";
-
   ExecutionPlanVisitor::visit(ep);
   dump();
 }

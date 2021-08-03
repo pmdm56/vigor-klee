@@ -268,12 +268,15 @@ struct stack_t {
 
 class x86_Generator : public TargetCodeGenerator {
 private:
+  std::stringstream nf_init_stream;
+  std::stringstream nf_process_stream;
+  std::stringstream global_state_stream;
+
   int lvl;
   std::stack<bool> pending_ifs;
   stack_t stack;
 
 private:
-  void pad() { *os << std::string(lvl * 2, ' '); }
   void pad(std::ostream &_os) const { _os << std::string(lvl * 2, ' '); }
 
   void close_if_clauses();
@@ -288,7 +291,9 @@ private:
                     std::ostream &buffer);
 
 public:
-  x86_Generator() : TargetCodeGenerator(), lvl(0), stack() {}
+  x86_Generator()
+      : TargetCodeGenerator(GET_BOILERPLATE_PATH("boilerplate.c")), lvl(0),
+        stack() {}
 
   void visit(ExecutionPlan ep) override;
   void visit(const ExecutionPlanNode *ep_node) override;
