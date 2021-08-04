@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstream>
+#include <stdio.h>
 #include <streambuf>
 #include <string>
 
@@ -68,11 +69,10 @@ protected:
 
 private:
   std::unique_ptr<std::ostream> os;
+  std::string fpath;
 
 protected:
   code_builder_t code_builder;
-
-  void dump() { *os << code_builder.code; }
 
 public:
   TargetCodeGenerator(const std::string &boilerplate_fpath)
@@ -80,8 +80,23 @@ public:
     os = std::unique_ptr<std::ostream>(new std::ostream(std::cerr.rdbuf()));
   }
 
-  void output_to_file(const std::string &fpath) {
+  void output_to_file(const std::string &_fpath) {
+    fpath = _fpath;
     os = std::unique_ptr<std::ostream>(new std::ofstream(fpath));
+  }
+
+  void generate(ExecutionPlan &execution_plan) {
+    if (execution_plan.get_nodes() == 0) {
+      if (!fpath.size()) {
+        return;
+      }
+
+      remove(fpath.c_str());
+      return;
+    }
+
+    visit(execution_plan);
+    *os << code_builder.code;
   }
 };
 

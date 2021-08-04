@@ -77,8 +77,25 @@ public:
         reordered_nodes(ep.reordered_nodes), id(ep.id) {}
 
   ExecutionPlan(const ExecutionPlan &ep, ExecutionPlanNode_ptr _root)
-      : root(_root), bdd(ep.bdd) {
-    // TODO: calculate metadata
+      : root(_root), bdd(ep.bdd), depth(0), nodes(0), reordered_nodes(0),
+        id(counter++) {
+    if (!_root) {
+      return;
+    }
+
+    Branches branches = { _root };
+
+    while (branches.size()) {
+      auto node = branches[0];
+      branches.erase(branches.begin());
+
+      nodes++;
+
+      auto next = node->get_next();
+      branches.insert(branches.end(), next.begin(), next.end());
+    }
+
+    // TODO: calculate the rest of metadata
   }
 
 private:

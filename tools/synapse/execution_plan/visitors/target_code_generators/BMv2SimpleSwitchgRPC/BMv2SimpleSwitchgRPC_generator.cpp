@@ -370,8 +370,6 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
   egress.dump(code_builder);
   compute_checksum.dump(code_builder);
   deparser.dump(code_builder);
-
-  TargetCodeGenerator::dump();
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(ExecutionPlan ep) {

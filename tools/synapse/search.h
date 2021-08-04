@@ -48,7 +48,7 @@ public:
     auto first_execution_plan = ExecutionPlan(bdd);
     SearchSpace search_space(h.get_cfg(), first_execution_plan);
 
-    h.add(std::vector<ExecutionPlan>{first_execution_plan});
+    h.add(std::vector<ExecutionPlan>{ first_execution_plan });
 
     while (!h.finished()) {
       auto available = h.size();
@@ -133,7 +133,7 @@ public:
     std::cerr << "winner:    " << h.get_score(h.get()) << "\n";
     std::cerr << "loser:     " << h.get_score(h.get_all().back()) << "\n";
 
-    Graphviz::visualize(h.get());
+    // Graphviz::visualize(h.get());
     // Graphviz::visualize(h.get_all().back());
 
     // for (auto &ep : h.get_all()) {

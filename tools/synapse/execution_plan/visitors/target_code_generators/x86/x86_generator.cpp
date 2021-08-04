@@ -984,8 +984,6 @@ void x86_Generator::visit(ExecutionPlan ep) {
   code_builder.fill_mark(MARKER_NF_INIT, nf_init_stream.str());
   code_builder.fill_mark(MARKER_NF_PROCESS, nf_process_stream.str());
   code_builder.fill_mark(MARKER_GLOBAL_STATE, global_state_stream.str());
-
-  dump();
 }
 
 void x86_Generator::visit(const ExecutionPlanNode *ep_node) {

@@ -128,6 +128,12 @@ CodeGenerator::x86_extractor(const ExecutionPlan &execution_plan) const {
     branches.insert(branches.end(), next_branches.begin(), next_branches.end());
   }
 
+  if (roots.size() == 0) {
+    auto extracted = ExecutionPlan(execution_plan, ExecutionPlanNode_ptr());
+    Graphviz::visualize(extracted);
+    return extracted;
+  }
+
   auto metadata = BDD::solver_toolbox.create_new_symbol("metadata", 32);
   auto packet_get_metadata =
       std::make_shared<targets::x86::PacketGetMetadata>(nullptr, metadata);
