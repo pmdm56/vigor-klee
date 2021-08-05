@@ -776,21 +776,21 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack) {
 }
 
 void x86_Generator::close_if_clauses() {
-  auto if_clause = pending_ifs.top();
-  pending_ifs.pop();
-  while (!if_clause) {
+  assert(pending_ifs.size());
+
+  while (pending_ifs.size()) {
     lvl--;
     pad(nf_process_stream);
     nf_process_stream << "}\n";
 
-    if (pending_ifs.size()) {
-      if_clause = pending_ifs.top();
-      pending_ifs.pop();
-    } else {
-      if_clause = true;
+    auto if_clause = pending_ifs.top();
+    pending_ifs.pop();
+
+    if (if_clause) {
+      pending_ifs.push(false);
+      break;
     }
   }
-  pending_ifs.push(false);
 }
 
 void x86_Generator::allocate_map(call_t call, std::ostream &global_state,
@@ -958,8 +958,6 @@ void x86_Generator::allocate(const ExecutionPlan &ep) {
 
     node = node->get_next();
   }
-
-  nf_init_stream << "}\n\n";
 }
 
 void x86_Generator::visit(ExecutionPlan ep) {
@@ -1183,31 +1181,18 @@ void x86_Generator::visit(const targets::x86::Forward *node) {
   pad(nf_process_stream);
   nf_process_stream << "return " << node->get_port() << ";\n";
 
-  lvl--;
-  pad(nf_process_stream);
-  nf_process_stream << "}\n";
-
   close_if_clauses();
 }
 
 void x86_Generator::visit(const targets::x86::Broadcast *node) {
   pad(nf_process_stream);
   nf_process_stream << "return 65535;\n";
-
-  lvl--;
-  pad(nf_process_stream);
-  nf_process_stream << "}\n";
-
   close_if_clauses();
 }
 
 void x86_Generator::visit(const targets::x86::Drop *node) {
   pad(nf_process_stream);
   nf_process_stream << "return device;\n";
-
-  lvl--;
-  pad(nf_process_stream);
-  nf_process_stream << "}\n";
 
   close_if_clauses();
 }
@@ -1387,7 +1372,7 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
 
   for (auto assignment : assignments) {
     pad(nf_process_stream);
-    nf_process_stream << assignment << "\n";
+    nf_process_stream << assignment << ";\n";
   }
 
   pad(nf_process_stream);

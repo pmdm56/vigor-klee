@@ -12,13 +12,14 @@ typedef bit<16> mcast_group_t;
 @controller_header("packet_in")
 header packet_in_t {
   bit<32> code_id;
-  bit<9> device;
+  bit<9> src_device;
   bit<7> pad;
 }
 
 @controller_header("packet_out")
 header packet_out_t {
-  bit<9> fwd_port;
+  bit<9> dst_device;
+  bit<9> src_device;
   bit<7> pad;
 }
 
@@ -42,7 +43,19 @@ parser SyNAPSE_Parser(packet_in packet,
                       out headers hdr,
                       inout metadata meta,
                       inout standard_metadata_t standard_metadata) {
-  {{parser_states}}
+  state start {
+    transition select(standard_metadata.ingress_port) {
+      CPU_PORT: parse_packet_out;
+      default: parse_headers;
+    }
+  }
+
+  state parse_packet_out {
+    packet.extract(hdr.packet_out);
+    transition parse_headers;
+  }
+
+  {{parse_headers}}
 }
 
 /****************************************************************
@@ -66,6 +79,7 @@ control SyNAPSE_Ingress(inout headers hdr,
 
   action broadcast() {
     standard_metadata.mcast_grp = (mcast_group_t) 1;
+    meta.bcast = true;
   }
   
   action drop() {
@@ -84,14 +98,14 @@ control SyNAPSE_Ingress(inout headers hdr,
     standard_metadata.egress_spec = CPU_PORT;
     hdr.packet_in.setValid();
     hdr.packet_in.code_id = code_id;
-    hdr.packet_in.device = standard_metadata.ingress_port;
+    hdr.packet_in.src_device = standard_metadata.ingress_port;
   }
 
   {{ingress_globals}}
 
   apply {
     if (standard_metadata.ingress_port == CPU_PORT) {
-      forward(hdr.packet_out.fwd_port);
+      forward(hdr.packet_out.dst_device);
       return;
     }
 
@@ -134,7 +148,6 @@ control SyNAPSE_Deparser(packet_out packet,
                          in headers hdr) {
   apply {
     packet.emit(hdr.packet_in);
-    packet.emit(hdr.packet_out);
     {{deparser_apply}}
   }
 }

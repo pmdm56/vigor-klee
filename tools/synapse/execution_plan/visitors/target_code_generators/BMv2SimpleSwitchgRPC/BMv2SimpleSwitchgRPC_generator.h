@@ -37,25 +37,24 @@ private:
 
     int close_if_clauses(std::ostream &os) {
       assert(pending_ifs.size());
-
       int closed = 0;
-      auto if_clause = pending_ifs.top();
-      pending_ifs.pop();
-      closed++;
-      if (!if_clause && pending_ifs.size()) {
+
+      while (pending_ifs.size()) {
         lvl--;
         pad(os, lvl);
         os << "}\n";
 
-        if (pending_ifs.size()) {
-          if_clause = pending_ifs.top();
-          pending_ifs.pop();
-          closed++;
-        } else {
-          if_clause = true;
+        closed++;
+
+        auto if_clause = pending_ifs.top();
+        pending_ifs.pop();
+
+        if (if_clause) {
+          pending_ifs.push(false);
+          break;
         }
       }
-      pending_ifs.push(false);
+
       return closed;
     }
   };
@@ -330,7 +329,6 @@ private:
 
 private:
   void dump();
-  void close_if_clauses(std::ostream &os, unsigned _lvl);
 
   std::string p4_type_from_expr(klee::ref<klee::Expr> expr) const;
   std::string label_from_packet_chunk(klee::ref<klee::Expr> expr) const;
@@ -362,8 +360,9 @@ public:
   void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) override;
   void
   visit(const targets::BMv2SimpleSwitchgRPC::SendToController *node) override;
-  void visit(const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications
-                 *node) override;
+  void
+  visit(const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications *node)
+      override;
   void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node) override;
   void visit(const targets::BMv2SimpleSwitchgRPC::Then *node) override;
 };

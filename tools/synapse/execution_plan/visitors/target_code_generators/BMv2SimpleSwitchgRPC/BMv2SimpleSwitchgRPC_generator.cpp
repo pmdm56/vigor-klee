@@ -9,7 +9,7 @@
 #define MARKER_HEADERS_DEFINITIONS "headers_definitions"
 #define MARKER_HEADERS_DECLARATIONS "headers_declarations"
 #define MARKER_METADATA_FIELDS "metadata_fields"
-#define MARKER_PARSER_STATES "parser_states"
+#define MARKER_PARSE_HEADERS "parse_headers"
 #define MARKER_INGRESS_GLOBALS "ingress_globals"
 #define MARKER_INGRESS_APPLY_CONTENT "ingress_apply_content"
 #define MARKER_DEPARSER_APPLY "deparser_apply"
@@ -231,14 +231,14 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
 void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
     code_builder_t &code_builder) {
   std::stringstream parser_states_stream;
-  auto lvl = code_builder.get_indentation_level(MARKER_PARSER_STATES);
+  auto lvl = code_builder.get_indentation_level(MARKER_PARSE_HEADERS);
 
   for (unsigned i = 0; i < headers_labels.size(); i++) {
     auto label = headers_labels[i];
 
     if (i == 0) {
       pad(parser_states_stream, lvl);
-      parser_states_stream << "state start {\n";
+      parser_states_stream << "state parse_headers {\n";
     } else {
       pad(parser_states_stream, lvl);
       parser_states_stream << "state parse_" << label << " {\n";
@@ -264,7 +264,7 @@ void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
     parser_states_stream << "}\n";
   }
 
-  code_builder.fill_mark(MARKER_PARSER_STATES, parser_states_stream.str());
+  code_builder.fill_mark(MARKER_PARSE_HEADERS, parser_states_stream.str());
 }
 
 void BMv2SimpleSwitchgRPC_Generator::verify_checksum_t::dump(
@@ -465,10 +465,6 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "forward(" << node->get_port() << ");\n";
 
-  ingress.lvl--;
-  pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "}\n";
-
   auto closed = ingress.close_if_clauses(ingress.apply_block);
 
   for (auto i = 0; i < closed; i++) {
@@ -481,10 +477,6 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Drop *node) {
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "drop();\n";
-
-  ingress.lvl--;
-  pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "}\n";
 
   auto closed = ingress.close_if_clauses(ingress.apply_block);
 
@@ -531,10 +523,6 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "send_to_controller(" << code_path << ");\n";
-
-  ingress.lvl--;
-  pad(ingress.apply_block, ingress.lvl);
-  ingress.apply_block << "}\n";
 
   auto closed = ingress.close_if_clauses(ingress.apply_block);
 
