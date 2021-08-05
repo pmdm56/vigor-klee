@@ -4,8 +4,33 @@
 
 namespace synapse {
 
+bool all_x86_no_controller(const ExecutionPlan &execution_plan) {
+  auto nodes = std::vector<ExecutionPlanNode_ptr>{execution_plan.get_root()};
+
+  while (nodes.size()) {
+    auto node = nodes[0];
+    nodes.erase(nodes.begin());
+
+    assert(node);
+    auto module = node->get_module();
+
+    if (module->get_target() != Target::x86) {
+      return false;
+    }
+
+    auto next = node->get_next();
+    nodes.insert(nodes.end(), next.begin(), next.end());
+  }
+
+  return true;
+}
+
 ExecutionPlan
 CodeGenerator::x86_extractor(const ExecutionPlan &execution_plan) const {
+  if (all_x86_no_controller(execution_plan)) {
+    return execution_plan;
+  }
+
   assert(execution_plan.get_root());
 
   struct annotated_node_t {
@@ -130,7 +155,6 @@ CodeGenerator::x86_extractor(const ExecutionPlan &execution_plan) const {
 
   if (roots.size() == 0) {
     auto extracted = ExecutionPlan(execution_plan, ExecutionPlanNode_ptr());
-    Graphviz::visualize(extracted);
     return extracted;
   }
 

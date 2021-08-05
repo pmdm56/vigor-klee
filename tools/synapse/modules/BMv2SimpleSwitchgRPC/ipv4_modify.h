@@ -48,17 +48,16 @@ private:
       return result;
     }
 
-    auto all_prev_packet_return_chunk =
-        get_all_prev_functions(casted, "packet_return_chunk");
-
-    if (all_prev_packet_return_chunk.size() != 0) {
-      return result;
-    }
-
     auto all_prev_packet_borrow_next_chunk =
         get_all_prev_functions(casted, "packet_borrow_next_chunk");
 
-    if (all_prev_packet_borrow_next_chunk.size() <= 1) {
+    assert(all_prev_packet_borrow_next_chunk.size());
+
+    auto all_prev_packet_return_chunk =
+        get_all_prev_functions(casted, "packet_return_chunk");
+
+    if (all_prev_packet_return_chunk.size() !=
+        all_prev_packet_borrow_next_chunk.size() - 2) {
       return result;
     }
 
