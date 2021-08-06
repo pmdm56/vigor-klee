@@ -249,6 +249,7 @@ struct stack_t {
   void err_dump() const {
     Log::err() << "============================================\n";
     for (auto it = frames.rbegin(); it != frames.rend(); it++) {
+      Log::err() << "-------------------------------------------\n";
       for (auto var : *it) {
         std::stringstream ss;
         ss << var.label;
@@ -279,7 +280,7 @@ private:
 private:
   void pad(std::ostream &_os) const { _os << std::string(lvl * 2, ' '); }
 
-  void close_if_clauses();
+  int close_if_clauses();
   void allocate(const ExecutionPlan &ep);
   void allocate_map(call_t call, std::ostream &global_state,
                     std::ostream &buffer);

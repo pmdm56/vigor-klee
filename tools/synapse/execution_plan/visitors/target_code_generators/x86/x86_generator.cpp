@@ -775,13 +775,17 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack) {
   return transpile(e, stack, false);
 }
 
-void x86_Generator::close_if_clauses() {
+int x86_Generator::close_if_clauses() {
+  int closed = 0;
+
   assert(pending_ifs.size());
 
   while (pending_ifs.size()) {
     lvl--;
     pad(nf_process_stream);
     nf_process_stream << "}\n";
+
+    closed++;
 
     auto if_clause = pending_ifs.top();
     pending_ifs.pop();
@@ -791,6 +795,8 @@ void x86_Generator::close_if_clauses() {
       break;
     }
   }
+
+  return closed;
 }
 
 void x86_Generator::allocate_map(call_t call, std::ostream &global_state,
@@ -969,6 +975,8 @@ void x86_Generator::visit(ExecutionPlan ep) {
   std::string pkt_len_label = "pkt_len";
   std::string now_label = "now";
 
+  stack.push();
+
   stack.add(vigor_device_label);
   stack.add(packet_label);
   stack.add(pkt_len_label);
@@ -976,7 +984,9 @@ void x86_Generator::visit(ExecutionPlan ep) {
 
   lvl = code_builder.get_indentation_level(MARKER_NF_PROCESS);
 
+  stack.push();
   ExecutionPlanVisitor::visit(ep);
+  stack.pop();
 
   code_builder.fill_mark(MARKER_NF_INIT, nf_init_stream.str());
   code_builder.fill_mark(MARKER_NF_PROCESS, nf_process_stream.str());
@@ -1173,6 +1183,7 @@ void x86_Generator::visit(const targets::x86::If *node) {
   nf_process_stream << ") {\n";
   lvl++;
 
+  stack.push();
   pending_ifs.push(true);
 }
 
@@ -1182,26 +1193,38 @@ void x86_Generator::visit(const targets::x86::Else *node) {
   pad(nf_process_stream);
   nf_process_stream << "else {\n";
   lvl++;
+
+  stack.push();
 }
 
 void x86_Generator::visit(const targets::x86::Forward *node) {
   pad(nf_process_stream);
   nf_process_stream << "return " << node->get_port() << ";\n";
 
-  close_if_clauses();
+  auto closed = close_if_clauses();
+  for (int i = 0; i < closed; i++) {
+    stack.pop();
+  }
 }
 
 void x86_Generator::visit(const targets::x86::Broadcast *node) {
   pad(nf_process_stream);
   nf_process_stream << "return 65535;\n";
-  close_if_clauses();
+  
+  auto closed = close_if_clauses();
+  for (int i = 0; i < closed; i++) {
+    stack.pop();
+  }
 }
 
 void x86_Generator::visit(const targets::x86::Drop *node) {
   pad(nf_process_stream);
   nf_process_stream << "return device;\n";
 
-  close_if_clauses();
+  auto closed = close_if_clauses();
+  for (int i = 0; i < closed; i++) {
+    stack.pop();
+  }
 }
 
 void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
