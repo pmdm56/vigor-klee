@@ -18,9 +18,9 @@ header packet_in_t {
 
 @controller_header("packet_out")
 header packet_out_t {
-  bit<9> dst_device;
   bit<9> src_device;
-  bit<7> pad;
+  bit<9> dst_device;
+  bit<6> pad;
 }
 
 {{headers_definitions}}
@@ -79,7 +79,6 @@ control SyNAPSE_Ingress(inout headers hdr,
 
   action broadcast() {
     standard_metadata.mcast_grp = (mcast_group_t) 1;
-    meta.bcast = true;
   }
   
   action drop() {
@@ -96,6 +95,7 @@ control SyNAPSE_Ingress(inout headers hdr,
 
   action send_to_controller(bit<32> code_id) {
     standard_metadata.egress_spec = CPU_PORT;
+
     hdr.packet_in.setValid();
     hdr.packet_in.code_id = code_id;
     hdr.packet_in.src_device = standard_metadata.ingress_port;
@@ -125,7 +125,8 @@ control SyNAPSE_Egress(inout headers hdr,
   }
 
   apply {
-    if (standard_metadata.ingress_port == standard_metadata.egress_spec) {
+    if (standard_metadata.ingress_port == CPU_PORT
+      && hdr.packet_out.src_device == standard_metadata.egress_port) {
       drop();
     }
   }

@@ -80,8 +80,10 @@ private:
     auto _length = call.args["length"].expr;
     auto _chunk = call.extra_vars["the_chunk"].second;
 
-    is_valid_ipv4(all_prev_packet_borrow_next_chunk[0].get(), _length,
-                  node->get_constraints());
+    auto valid = is_valid_ipv4(all_prev_packet_borrow_next_chunk[0].get(),
+                               _length, node->get_constraints());
+
+    assert(valid);
 
     auto new_module = std::make_shared<IPv4Consume>(node);
     auto new_ep = ep.add_leaves(new_module, node->get_next());

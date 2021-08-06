@@ -850,7 +850,6 @@ void x86_Generator::allocate_vector(call_t call, std::ostream &global_state,
   buffer << "vector_allocate(";
   buffer << transpile(elem_size, stack);
   buffer << ", " << transpile(capacity, stack);
-  buffer << ", " << transpile(capacity, stack);
   buffer << ", " << init_elem;
   buffer << ", &" << vector_label;
   buffer << ")";
@@ -1155,6 +1154,14 @@ void x86_Generator::visit(const targets::x86::PacketReturnChunk *node) {
       nf_process_stream << ";\n";
     }
   }
+
+  auto chunk_label = stack.get_label(chunk_addr);
+
+  pad(nf_process_stream);
+  nf_process_stream << "packet_return_chunk(";
+  nf_process_stream << "*p";
+  nf_process_stream << ", (void*) " << chunk_label;
+  nf_process_stream << ");\n";
 }
 
 void x86_Generator::visit(const targets::x86::If *node) {

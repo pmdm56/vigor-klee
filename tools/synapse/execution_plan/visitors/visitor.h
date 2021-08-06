@@ -47,6 +47,9 @@ class EthernetModify;
 class TableLookup;
 class IPv4Consume;
 class IPv4Modify;
+class TcpUdpConsume;
+class TcpUdpModify;
+class IPOptionsConsume;
 class Drop;
 class Forward;
 class VectorReturn;
@@ -96,6 +99,11 @@ public:
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::TableLookup *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) {}
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::TcpUdpConsume *node) {
+  }
+  virtual void visit(const targets::BMv2SimpleSwitchgRPC::TcpUdpModify *node) {}
+  virtual void
+  visit(const targets::BMv2SimpleSwitchgRPC::IPOptionsConsume *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Drop *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Forward *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::VectorReturn *node) {}
