@@ -822,6 +822,9 @@ void x86_Generator::allocate_map(call_t call, std::ostream &global_state,
 
   global_state << "struct Map* " << map_label << ";\n";
 
+  global_state << "bool " << keq << "(void* a, void* b);\n";
+  global_state << "uint32_t " << khash << "(void* obj);\n\n";
+
   buffer << "map_allocate(";
   buffer << keq;
   buffer << ", " << khash;
@@ -852,6 +855,7 @@ void x86_Generator::allocate_vector(call_t call, std::ostream &global_state,
   stack.add(vector_label, dummy, vector_out);
 
   global_state << "struct Vector* " << vector_label << ";\n";
+  global_state << "void " << init_elem << "(void* obj);\n\n";
 
   buffer << "vector_allocate(";
   buffer << transpile(elem_size, stack);
@@ -1210,7 +1214,7 @@ void x86_Generator::visit(const targets::x86::Forward *node) {
 void x86_Generator::visit(const targets::x86::Broadcast *node) {
   pad(nf_process_stream);
   nf_process_stream << "return 65535;\n";
-  
+
   auto closed = close_if_clauses();
   for (int i = 0; i < closed; i++) {
     stack.pop();
