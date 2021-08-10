@@ -50,6 +50,7 @@ class IPv4Modify;
 class TcpUdpConsume;
 class TcpUdpModify;
 class IPOptionsConsume;
+class IPOptionsModify;
 class Drop;
 class Forward;
 class VectorReturn;
@@ -104,6 +105,8 @@ public:
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::TcpUdpModify *node) {}
   virtual void
   visit(const targets::BMv2SimpleSwitchgRPC::IPOptionsConsume *node) {}
+  virtual void
+  visit(const targets::BMv2SimpleSwitchgRPC::IPOptionsModify *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Drop *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Forward *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::VectorReturn *node) {}

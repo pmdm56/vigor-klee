@@ -68,6 +68,7 @@ public:
     BMv2SimpleSwitchgRPC_TcpUdpConsume,
     BMv2SimpleSwitchgRPC_TcpUdpModify,
     BMv2SimpleSwitchgRPC_IPOptionsConsume,
+    BMv2SimpleSwitchgRPC_IPOptionsModify,
     BMv2SimpleSwitchgRPC_Drop,
     BMv2SimpleSwitchgRPC_Forward,
     BMv2SimpleSwitchgRPC_VectorReturn,

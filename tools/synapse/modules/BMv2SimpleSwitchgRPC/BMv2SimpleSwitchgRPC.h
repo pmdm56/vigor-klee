@@ -10,6 +10,7 @@
 #include "if.h"
 #include "ignore.h"
 #include "ip_options_consume.h"
+#include "ip_options_modify.h"
 #include "ipv4_consume.h"
 #include "ipv4_modify.h"
 #include "send_to_controller.h"
@@ -34,7 +35,7 @@ inline std::vector<Module_ptr> get_modules() {
     MODULE(EthernetModify),   MODULE(IPv4Modify),
     MODULE(Drop),             MODULE(Forward),
     MODULE(VectorReturn),     MODULE(IPOptionsConsume),
-    MODULE(TcpUdpModify),
+    MODULE(TcpUdpModify),     MODULE(IPOptionsModify),
   };
 
   return modules;

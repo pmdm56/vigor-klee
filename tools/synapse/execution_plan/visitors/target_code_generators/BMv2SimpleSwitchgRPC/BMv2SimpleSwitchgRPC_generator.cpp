@@ -518,6 +518,26 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::IPOptionsConsume *node) {
+  assert(false && "TODO");
+}
+
+void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::IPOptionsModify *node) {
+  assert(false && "TODO");
+}
+
+void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::TcpUdpConsume *node) {
+  assert(false && "TODO");
+}
+
+void BMv2SimpleSwitchgRPC_Generator::visit(
+    const targets::BMv2SimpleSwitchgRPC::TcpUdpModify *node) {
+  assert(false && "TODO");
+}
+
+void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::SendToController *node) {
   auto code_path = node->get_metadata_code_path();
 

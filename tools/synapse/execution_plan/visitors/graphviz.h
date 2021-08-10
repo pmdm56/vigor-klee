@@ -440,6 +440,7 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::TcpUdpConsume)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::TcpUdpModify)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::IPOptionsConsume)
+  VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::IPOptionsModify)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Drop)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Forward)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::VectorReturn)

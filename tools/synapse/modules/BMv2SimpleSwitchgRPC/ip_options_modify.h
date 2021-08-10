@@ -10,23 +10,23 @@ namespace synapse {
 namespace targets {
 namespace BMv2SimpleSwitchgRPC {
 
-class TcpUdpModify : public Module {
+class IPOptionsModify : public Module {
 private:
   std::vector<modification_t> modifications;
 
 public:
-  TcpUdpModify()
-      : Module(ModuleType::BMv2SimpleSwitchgRPC_TcpUdpModify,
-               Target::BMv2SimpleSwitchgRPC, "TcpUdpModify") {}
+  IPOptionsModify()
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_IPOptionsModify,
+               Target::BMv2SimpleSwitchgRPC, "IPOptionsModify") {}
 
-  TcpUdpModify(BDD::BDDNode_ptr node,
-               const std::vector<modification_t> &_modifications)
-      : Module(ModuleType::BMv2SimpleSwitchgRPC_TcpUdpModify,
-               Target::BMv2SimpleSwitchgRPC, "TcpUdpModify", node),
+  IPOptionsModify(BDD::BDDNode_ptr node,
+                  const std::vector<modification_t> &_modifications)
+      : Module(ModuleType::BMv2SimpleSwitchgRPC_IPOptionsModify,
+               Target::BMv2SimpleSwitchgRPC, "IPOptionsModify", node),
         modifications(_modifications) {}
 
 private:
-  klee::ref<klee::Expr> get_tcpudp_chunk(const BDD::Node *node) const {
+  klee::ref<klee::Expr> get_ip_options_chunk(const BDD::Node *node) const {
     assert(node->get_type() == BDD::Node::NodeType::CALL);
 
     auto call_node = static_cast<const BDD::Call *>(node);
@@ -66,22 +66,26 @@ private:
     auto all_prev_packet_return_chunk =
         get_all_prev_functions(casted, "packet_return_chunk");
 
-    if (all_prev_packet_return_chunk.size() != 0 ||
-        all_prev_packet_borrow_next_chunk.size() < 3 ||
-        is_ip_options(all_prev_packet_borrow_next_chunk[0].get())) {
+    auto borrow_ip_options =
+        all_prev_packet_borrow_next_chunk.rbegin()[2].get();
+
+    if (all_prev_packet_borrow_next_chunk.size() < 3 ||
+        all_prev_packet_return_chunk.size() !=
+            all_prev_packet_borrow_next_chunk.size() - 3 ||
+        !is_ip_options(borrow_ip_options)) {
       return result;
     }
 
-    auto borrow_tcpudp = all_prev_packet_borrow_next_chunk[0].get();
+    assert(!call.args["the_chunk"].in.isNull());
 
-    auto curr_tcpudp_chunk = call.args["the_chunk"].in;
-    auto prev_tcpudp_chunk = get_tcpudp_chunk(borrow_tcpudp);
+    auto curr_ip_options_chunk = call.args["the_chunk"].in;
+    auto prev_ip_options_chunk = get_ip_options_chunk(borrow_ip_options);
 
-    assert(curr_tcpudp_chunk->getWidth() == 4 * 8);
-    assert(prev_tcpudp_chunk->getWidth() == 4 * 8);
+    assert(curr_ip_options_chunk->getWidth() ==
+           prev_ip_options_chunk->getWidth());
 
     auto _modifications =
-        build_modifications(prev_tcpudp_chunk, curr_tcpudp_chunk);
+        build_modifications(prev_ip_options_chunk, curr_ip_options_chunk);
 
     if (_modifications.size() == 0) {
       auto new_module = std::make_shared<Ignore>(node);
@@ -94,7 +98,7 @@ private:
       return result;
     }
 
-    auto new_module = std::make_shared<TcpUdpModify>(node, _modifications);
+    auto new_module = std::make_shared<IPOptionsModify>(node, _modifications);
     auto new_ep = ep.add_leaves(new_module, node->get_next());
 
     result.module = new_module;
@@ -109,7 +113,7 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new TcpUdpModify(node, modifications);
+    auto cloned = new IPOptionsModify(node, modifications);
     return std::shared_ptr<Module>(cloned);
   }
 
@@ -118,7 +122,7 @@ public:
       return false;
     }
 
-    auto other_cast = static_cast<const TcpUdpModify *>(other);
+    auto other_cast = static_cast<const IPOptionsModify *>(other);
 
     auto other_modifications = other_cast->get_modifications();
 

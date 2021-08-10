@@ -359,6 +359,12 @@ public:
   void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) override;
   void visit(const targets::BMv2SimpleSwitchgRPC::IPv4Modify *node) override;
   void
+  visit(const targets::BMv2SimpleSwitchgRPC::IPOptionsConsume *node) override;
+  void
+  visit(const targets::BMv2SimpleSwitchgRPC::IPOptionsModify *node) override;
+  void visit(const targets::BMv2SimpleSwitchgRPC::TcpUdpConsume *node) override;
+  void visit(const targets::BMv2SimpleSwitchgRPC::TcpUdpModify *node) override;
+  void
   visit(const targets::BMv2SimpleSwitchgRPC::SendToController *node) override;
   void
   visit(const targets::BMv2SimpleSwitchgRPC::SetupExpirationNotifications *node)

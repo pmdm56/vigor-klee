@@ -76,6 +76,10 @@ public:
 
           h.add(result.next_eps);
           search_space.add_leaves(next_ep, result.module, result.next_eps);
+
+          // for (auto result : result.next_eps) {
+          //   Graphviz::visualize(result);
+          // }
         }
       }
 
@@ -131,9 +135,8 @@ public:
 
     std::cerr << "solutions: " << h.get_all().size() << "\n";
     std::cerr << "winner:    " << h.get_score(h.get()) << "\n";
-    std::cerr << "loser:     " << h.get_score(h.get_all().back()) << "\n";
 
-    // Graphviz::visualize(h.get());
+    Graphviz::visualize(h.get());
     // Graphviz::visualize(h.get_all().back());
 
     // for (auto &ep : h.get_all()) {
