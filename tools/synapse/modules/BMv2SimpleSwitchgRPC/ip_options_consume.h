@@ -11,14 +11,18 @@ namespace targets {
 namespace BMv2SimpleSwitchgRPC {
 
 class IPOptionsConsume : public Module {
+private:
+  klee::ref<klee::Expr> chunk;
+
 public:
   IPOptionsConsume()
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPOptionsConsume,
                Target::BMv2SimpleSwitchgRPC, "IPOptionsConsume") {}
 
-  IPOptionsConsume(BDD::BDDNode_ptr node)
+  IPOptionsConsume(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _chunk)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPOptionsConsume,
-               Target::BMv2SimpleSwitchgRPC, "IPOptionsConsume", node) {}
+               Target::BMv2SimpleSwitchgRPC, "IPOptionsConsume", node),
+        chunk(_chunk) {}
 
 private:
   bool always_true(klee::ref<klee::Expr> expr,
@@ -104,6 +108,9 @@ private:
       return result;
     }
 
+    assert(!call.args["length"].expr.isNull());
+    assert(!call.extra_vars["the_chunk"].second.isNull());
+
     auto _length = call.args["length"].expr;
     auto _chunk = call.extra_vars["the_chunk"].second;
 
@@ -117,7 +124,7 @@ private:
       return result;
     }
 
-    auto new_module = std::make_shared<IPOptionsConsume>(node);
+    auto new_module = std::make_shared<IPOptionsConsume>(node, _chunk);
     auto new_ep = ep.add_leaves(new_module, node->get_next());
 
     result.module = new_module;
@@ -132,13 +139,15 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new IPOptionsConsume(node);
+    auto cloned = new IPOptionsConsume(node, chunk);
     return std::shared_ptr<Module>(cloned);
   }
 
   virtual bool equals(const Module *other) const override {
     return other->get_type() == type;
   }
+
+  const klee::ref<klee::Expr> &get_chunk() const { return chunk; }
 };
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets

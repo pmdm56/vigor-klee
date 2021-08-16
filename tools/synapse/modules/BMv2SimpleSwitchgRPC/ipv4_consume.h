@@ -9,14 +9,18 @@ namespace targets {
 namespace BMv2SimpleSwitchgRPC {
 
 class IPv4Consume : public Module {
+private:
+  klee::ref<klee::Expr> chunk;
+
 public:
   IPv4Consume()
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Consume,
                Target::BMv2SimpleSwitchgRPC, "IPv4Consume") {}
 
-  IPv4Consume(BDD::BDDNode_ptr node)
+  IPv4Consume(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _chunk)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Consume,
-               Target::BMv2SimpleSwitchgRPC, "IPv4Consume", node) {}
+               Target::BMv2SimpleSwitchgRPC, "IPv4Consume", node),
+        chunk(_chunk) {}
 
 private:
   bool is_valid_ipv4(const BDD::Node *ethernet_node, klee::ref<klee::Expr> len,
@@ -77,6 +81,9 @@ private:
       return result;
     }
 
+    assert(!call.args["length"].expr.isNull());
+    assert(!call.extra_vars["the_chunk"].second.isNull());
+
     auto _length = call.args["length"].expr;
     auto _chunk = call.extra_vars["the_chunk"].second;
 
@@ -85,7 +92,7 @@ private:
 
     assert(valid);
 
-    auto new_module = std::make_shared<IPv4Consume>(node);
+    auto new_module = std::make_shared<IPv4Consume>(node, _chunk);
     auto new_ep = ep.add_leaves(new_module, node->get_next());
 
     result.module = new_module;
@@ -100,13 +107,15 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new IPv4Consume(node);
+    auto cloned = new IPv4Consume(node, chunk);
     return std::shared_ptr<Module>(cloned);
   }
 
   virtual bool equals(const Module *other) const override {
     return other->get_type() == type;
   }
+
+  const klee::ref<klee::Expr> &get_chunk() const { return chunk; }
 };
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets

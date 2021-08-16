@@ -11,14 +11,18 @@ namespace targets {
 namespace BMv2SimpleSwitchgRPC {
 
 class TcpUdpConsume : public Module {
+private:
+  klee::ref<klee::Expr> chunk;
+
 public:
   TcpUdpConsume()
       : Module(ModuleType::BMv2SimpleSwitchgRPC_TcpUdpConsume,
                Target::BMv2SimpleSwitchgRPC, "TcpUdpConsume") {}
 
-  TcpUdpConsume(BDD::BDDNode_ptr node)
+  TcpUdpConsume(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _chunk)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_TcpUdpConsume,
-               Target::BMv2SimpleSwitchgRPC, "TcpUdpConsume", node) {}
+               Target::BMv2SimpleSwitchgRPC, "TcpUdpConsume", node),
+        chunk(_chunk) {}
 
 private:
   bool always_true(klee::ref<klee::Expr> expr,
@@ -138,6 +142,9 @@ private:
       return result;
     }
 
+    assert(!call.args["length"].expr.isNull());
+    assert(!call.extra_vars["the_chunk"].second.isNull());
+
     auto _length = call.args["length"].expr;
     auto _chunk = call.extra_vars["the_chunk"].second;
 
@@ -153,7 +160,7 @@ private:
       return result;
     }
 
-    auto new_module = std::make_shared<TcpUdpConsume>(node);
+    auto new_module = std::make_shared<TcpUdpConsume>(node, _chunk);
     auto new_ep = ep.add_leaves(new_module, node->get_next());
 
     result.module = new_module;
@@ -168,13 +175,15 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new TcpUdpConsume(node);
+    auto cloned = new TcpUdpConsume(node, chunk);
     return std::shared_ptr<Module>(cloned);
   }
 
   virtual bool equals(const Module *other) const override {
     return other->get_type() == type;
   }
+
+  const klee::ref<klee::Expr> &get_chunk() const { return chunk; }
 };
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets

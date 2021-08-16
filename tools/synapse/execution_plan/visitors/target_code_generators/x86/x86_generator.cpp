@@ -1109,11 +1109,11 @@ void x86_Generator::visit(const targets::x86::PacketGetMetadata *node) {
 
   assert(!metadata.isNull());
 
-  auto code_path_metadata_label = std::string("code_path_meta");
+  auto code_id_metadata_label = std::string("code_id_meta");
   auto metadata_key_label = std::string("metadata_key");
-  auto metadata_key = std::string("code_path");
+  auto metadata_key = std::string("code_id");
 
-  stack.add(code_path_metadata_label, metadata);
+  stack.add(code_id_metadata_label, metadata);
 
   pad(nf_process_stream);
   nf_process_stream << "string_t " << metadata_key_label;
@@ -1124,18 +1124,21 @@ void x86_Generator::visit(const targets::x86::PacketGetMetadata *node) {
   nf_process_stream << " };\n";
 
   pad(nf_process_stream);
-  nf_process_stream << "string_ptr_t " << code_path_metadata_label << "_str";
-  nf_process_stream << " = ";
-  nf_process_stream << "get_packet_in_metadata_by_name(";
-  nf_process_stream << "g_env";
+  nf_process_stream << "string_ptr_t " << code_id_metadata_label << "_str;\n";
+
+  pad(nf_process_stream);
+  nf_process_stream << "synapse_get_packet_in_metadata(";
+  nf_process_stream << "meta_in";
+  nf_process_stream << ", meta_in_size";
   nf_process_stream << ", " << metadata_key_label;
+  nf_process_stream << ", &" << code_id_metadata_label << "_str";
   nf_process_stream << ");\n";
 
   pad(nf_process_stream);
-  nf_process_stream << "int " << code_path_metadata_label;
+  nf_process_stream << "int " << code_id_metadata_label;
   nf_process_stream << " = ";
-  nf_process_stream << "synapse_runtime_wrappers_decode_int(";
-  nf_process_stream << code_path_metadata_label << "_str";
+  nf_process_stream << "synapse_decode_p4_uint32(";
+  nf_process_stream << code_id_metadata_label << "_str";
   nf_process_stream << ");\n";
 }
 

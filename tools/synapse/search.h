@@ -136,7 +136,7 @@ public:
     std::cerr << "solutions: " << h.get_all().size() << "\n";
     std::cerr << "winner:    " << h.get_score(h.get()) << "\n";
 
-    Graphviz::visualize(h.get());
+    // Graphviz::visualize(h.get());
     // Graphviz::visualize(h.get_all().back());
 
     // for (auto &ep : h.get_all()) {

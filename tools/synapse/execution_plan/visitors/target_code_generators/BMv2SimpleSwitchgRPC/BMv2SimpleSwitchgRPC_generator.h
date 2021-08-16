@@ -82,21 +82,34 @@ private:
              const std::vector<header_field_t> &_fields)
         : chunk(_chunk), type_label(_label + "_t"), label(_label),
           fields(_fields) {
+      assert(!chunk.isNull());
+
       unsigned total_sz = 0;
       for (auto field : fields) {
         total_sz += field.sz;
       }
 
-      assert(total_sz == chunk->getWidth());
+      assert(total_sz <= chunk->getWidth());
     }
   };
 
   struct metadata_t {
     std::string label;
     std::vector<klee::ref<klee::Expr>> exprs;
+    unsigned sz;
 
     metadata_t(std::string _label, std::vector<klee::ref<klee::Expr>> _exprs)
-        : label(_label), exprs(_exprs) {}
+        : label(_label), exprs(_exprs) {
+      assert(_exprs.size());
+      assert(!_exprs[0].isNull());
+
+      sz = _exprs[0]->getWidth();
+      for (auto expr : exprs) {
+        assert(expr->getWidth() == sz);
+      }
+    }
+
+    metadata_t(std::string _label, unsigned _sz) : label(_label), sz(_sz) {}
   };
 
   struct metadata_stack_t {
@@ -227,13 +240,16 @@ private:
       os << "\n";
 
       pad(os, lvl);
-      os << "table " << label << "{\n";
+      os << "table " << label << " {\n";
       lvl++;
 
       pad(os, lvl);
       os << "key = {\n";
 
       lvl++;
+
+      pad(os, lvl);
+      os << "meta." << label << "_tag: range;\n";
 
       for (auto key : keys) {
         pad(os, lvl);
@@ -268,11 +284,92 @@ private:
   };
 
   struct parser_t : stage_t {
-    std::vector<std::string> headers_labels;
+    struct parsing_stage {
+      std::string label;
+      std::string condition;
+      std::shared_ptr<parsing_stage> next_on_true;
+      std::shared_ptr<parsing_stage> next_on_false;
+
+      parsing_stage() : next_on_true(nullptr), next_on_false(nullptr) {}
+    };
+
+    std::stack<std::shared_ptr<parsing_stage>> stages_stack;
+    std::vector<std::shared_ptr<parsing_stage>> stages;
 
     parser_t() : stage_t("SyNAPSE_Parser") {}
 
     void dump(code_builder_t &code_builder) override;
+
+    void add(std::string label) {
+      if (label != "accept" && label != "reject") {
+        label = "parse_" + label;
+      }
+
+      if (stages_stack.size() && stages_stack.top()->label.size() == 0) {
+        stages_stack.top()->label = label;
+      } else {
+        auto new_stage = std::shared_ptr<parsing_stage>(new parsing_stage());
+        new_stage->label = label;
+
+        stages.push_back(new_stage);
+
+        if (stages_stack.size() && stages_stack.top()->label != "accept" &&
+            stages_stack.top()->label != "reject") {
+          auto current = stages_stack.top();
+          current->next_on_true = new_stage;
+        }
+
+        stages_stack.push(new_stage);
+        assert(stages_stack.top());
+      }
+
+      std::cerr << "=== STAGES ===\n";
+      for (auto stage : stages) {
+        std::cerr << "stage " << stage->label << "\n";
+        if (stage->next_on_true) {
+          std::cerr << "   true:  " << stage->next_on_true->label << "\n";
+        }
+        if (stage->next_on_false) {
+          std::cerr << "   false: " << stage->next_on_false->label << "\n";
+        }
+      }
+      std::cerr << "============\n\n";
+    }
+
+    void accept() { add("accept"); }
+    void reject() { add("reject"); }
+
+    void push_on_true() {
+      assert(stages_stack.size());
+
+      auto &current = stages_stack.top();
+      stages.emplace_back(new parsing_stage());
+
+      current->next_on_true = stages.back();
+      stages_stack.push(stages.back());
+    }
+
+    void push_on_false() {
+      assert(stages_stack.size());
+
+      auto &current = stages_stack.top();
+      stages.emplace_back(new parsing_stage());
+
+      current->next_on_false = stages.back();
+      stages_stack.push(stages.back());
+    }
+
+    void pop() {
+      assert(stages_stack.size());
+      stages_stack.pop();
+    }
+
+    void add_condition(const std::string &condition) {
+      assert(stages_stack.size());
+
+      auto &current = stages_stack.top();
+      current->condition = condition;
+    }
   };
 
   struct verify_checksum_t : stage_t {
@@ -331,6 +428,9 @@ private:
   void dump();
 
   std::string p4_type_from_expr(klee::ref<klee::Expr> expr) const;
+  void field_header_from_packet_chunk(klee::ref<klee::Expr> expr,
+                                      std::string &field,
+                                      unsigned &bit_offset) const;
   std::string label_from_packet_chunk(klee::ref<klee::Expr> expr) const;
   std::string label_from_vars(klee::ref<klee::Expr> expr) const;
   std::vector<std::string> assign_key_bytes(klee::ref<klee::Expr> expr);

@@ -12,6 +12,7 @@
 #define MARKER_PARSE_HEADERS "parse_headers"
 #define MARKER_INGRESS_GLOBALS "ingress_globals"
 #define MARKER_INGRESS_APPLY_CONTENT "ingress_apply_content"
+#define MARKER_INGRESS_TAG_VERSIONS_ACTIONS "ingress_tag_versions_action"
 #define MARKER_DEPARSER_APPLY "deparser_apply"
 
 namespace synapse {
@@ -88,6 +89,44 @@ std::string get_bytes_of_label(std::string label, unsigned size,
   code << std::dec;
 
   return code.str();
+}
+
+void BMv2SimpleSwitchgRPC_Generator::field_header_from_packet_chunk(
+    klee::ref<klee::Expr> expr, std::string &field_str,
+    unsigned &bit_offset) const {
+  RetrieveSymbols retriever;
+  retriever.visit(expr);
+
+  auto symbols = retriever.get_retrieved_strings();
+
+  if (symbols.size() != 1 || (*symbols.begin()) != "packet_chunks") {
+    return;
+  }
+
+  auto sz = expr->getWidth();
+
+  for (auto header : headers) {
+    auto chunk = header.chunk;
+    auto offset = 0u;
+
+    for (auto field : header.fields) {
+
+      for (unsigned byte = 0; byte * 8 + sz <= field.sz; byte++) {
+        auto field_expr = BDD::solver_toolbox.exprBuilder->Extract(
+            chunk, offset + byte * 8, sz);
+
+        if (BDD::solver_toolbox.are_exprs_always_equal(field_expr, expr)) {
+          field_str = std::string("hdr." + header.label + "." + field.label);
+          bit_offset = byte * 8;
+          return;
+        }
+      }
+
+      offset += field.sz;
+    }
+  }
+
+  return;
 }
 
 std::string BMv2SimpleSwitchgRPC_Generator::label_from_packet_chunk(
@@ -233,29 +272,54 @@ void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
   std::stringstream parser_states_stream;
   auto lvl = code_builder.get_indentation_level(MARKER_PARSE_HEADERS);
 
-  for (unsigned i = 0; i < headers_labels.size(); i++) {
-    auto label = headers_labels[i];
+  for (unsigned i = 0; i < stages.size(); i++) {
+    assert(stages[i]->label.size());
+
+    if (stages[i]->label == "accept" || stages[i]->label == "reject") {
+      continue;
+    }
 
     if (i == 0) {
       pad(parser_states_stream, lvl);
       parser_states_stream << "state parse_headers {\n";
     } else {
       pad(parser_states_stream, lvl);
-      parser_states_stream << "state parse_" << label << " {\n";
+      parser_states_stream << stages[i]->label << " {\n";
     }
 
     lvl++;
 
     pad(parser_states_stream, lvl);
-    parser_states_stream << "packet.extract(hdr." << label << ");\n";
+    parser_states_stream << "packet.extract(hdr." << stages[i]->label << ");\n";
 
-    if (i == headers_labels.size() - 1) {
+    pad(parser_states_stream, lvl);
+    parser_states_stream << "transition ";
+
+    if (stages[i]->condition.size()) {
+      assert(stages[i]->next_on_true);
+      assert(stages[i]->next_on_false);
+
+      parser_states_stream << "select(";
+      parser_states_stream << stages[i]->condition;
+      parser_states_stream << ") {\n";
+
+      lvl++;
+
       pad(parser_states_stream, lvl);
-      parser_states_stream << "transition accept;\n";
+      parser_states_stream << "true: ";
+      parser_states_stream << stages[i]->next_on_true->label << ";\n";
+
+      pad(parser_states_stream, lvl);
+      parser_states_stream << "false: ";
+      parser_states_stream << stages[i]->next_on_false->label << ";\n";
+
+      lvl--;
+
+      pad(parser_states_stream, lvl);
+      parser_states_stream << "}\n";
     } else {
-      pad(parser_states_stream, lvl);
-      parser_states_stream << "transition parse_" << headers_labels[i + 1]
-                           << ";\n";
+      assert(stages[i]->next_on_true);
+      parser_states_stream << stages[i]->next_on_true->label << ";\n";
     }
 
     lvl--;
@@ -353,16 +417,68 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
                          headers_declarations_stream.str());
 
   std::stringstream metadata_fields_stream;
+
   lvl = code_builder.get_indentation_level(MARKER_METADATA_FIELDS);
+
+  std::vector<std::pair<unsigned, std::string>> meta_tags;
 
   for (auto meta : metadata.get_all()) {
     pad(metadata_fields_stream, lvl);
-    assert(meta.exprs.size());
-    metadata_fields_stream << p4_type_from_expr(meta.exprs[0]) << " "
-                           << meta.label << ";\n";
+
+    metadata_fields_stream << "bit<" << meta.sz << "> ";
+    metadata_fields_stream << meta.label << ";\n";
+
+    auto marker = std::string("_tag");
+    auto delim = meta.label.find(marker);
+
+    if (delim != std::string::npos &&
+        delim + marker.size() == meta.label.size()) {
+      meta_tags.push_back(std::make_pair(meta.sz, meta.label));
+    }
   }
 
   code_builder.fill_mark(MARKER_METADATA_FIELDS, metadata_fields_stream.str());
+
+  if (meta_tags.size()) {
+    std::stringstream ingress_tag_versions_action_stream;
+    lvl =
+        code_builder.get_indentation_level(MARKER_INGRESS_TAG_VERSIONS_ACTIONS);
+
+    pad(ingress_tag_versions_action_stream, lvl);
+    ingress_tag_versions_action_stream << "action tag_versions(";
+
+    auto first = true;
+    for (auto meta : meta_tags) {
+      if (first) {
+        first = false;
+      } else {
+        ingress_tag_versions_action_stream << ", ";
+      }
+
+      ingress_tag_versions_action_stream << "bit<" << meta.first << "> ";
+      ingress_tag_versions_action_stream << meta.second;
+    }
+
+    ingress_tag_versions_action_stream << ") {\n";
+
+    lvl++;
+
+    for (auto meta : meta_tags) {
+      pad(ingress_tag_versions_action_stream, lvl);
+
+      ingress_tag_versions_action_stream << "meta." << meta.second;
+      ingress_tag_versions_action_stream << " = " << meta.second;
+      ingress_tag_versions_action_stream << ";\n";
+    }
+
+    lvl--;
+
+    pad(ingress_tag_versions_action_stream, lvl);
+    ingress_tag_versions_action_stream << "}\n";
+
+    code_builder.fill_mark(MARKER_INGRESS_TAG_VERSIONS_ACTIONS,
+                           ingress_tag_versions_action_stream.str());
+  }
 
   parser.dump(code_builder);
   verify_checksum.dump(code_builder);
@@ -419,7 +535,8 @@ void BMv2SimpleSwitchgRPC_Generator::visit(const ExecutionPlanNode *ep_node) {
 
   mod->visit(*this);
 
-  if (!pending_packet_borrow_next_chunk(ep_node)) {
+  if (parsing_headers && !pending_packet_borrow_next_chunk(ep_node)) {
+    parser.accept();
     parsing_headers = false;
   }
 
@@ -432,6 +549,10 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Else *node) {
   local_vars.push();
   metadata.push();
+
+  if (parsing_headers) {
+    parser.push_on_false();
+  }
 
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "else {\n";
@@ -451,13 +572,52 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   headers.emplace_back(chunk, label, fields);
 
-  parser.headers_labels.push_back(label);
+  parser.add(label);
   deparser.headers_labels.push_back(label);
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::EthernetModify *node) {
-  assert(false && "TODO");
+  auto ethernet_chunk = node->get_ethernet_chunk();
+  auto modifications = node->get_modifications();
+
+  auto field = std::string();
+  auto offset = 0u;
+
+  for (auto mod : modifications) {
+    auto byte = mod.byte;
+    auto expr = mod.expr;
+
+    auto modified_byte = BDD::solver_toolbox.exprBuilder->Extract(
+        ethernet_chunk, byte * 8, klee::Expr::Int8);
+
+    field_header_from_packet_chunk(modified_byte, field, offset);
+
+    pad(ingress.apply_block, ingress.lvl);
+    ingress.apply_block << field << " = ";
+    ingress.apply_block << field << " & ";
+    ingress.apply_block << "(";
+    ingress.apply_block << "(";
+    ingress.apply_block << "(";
+    ingress.apply_block << transpile(expr);
+    ingress.apply_block << ")";
+    ingress.apply_block << " << ";
+    ingress.apply_block << offset;
+    ingress.apply_block << ")";
+    ingress.apply_block << " | ";
+
+    uint64_t mask = 0;
+    for (auto bit = 0u; bit < offset; bit++) {
+      mask = (mask << 1) | 1;
+    }
+
+    ingress.apply_block << mask;
+    ingress.apply_block << ")";
+
+    ingress.apply_block << ";\n";
+
+    assert(field.size());
+  }
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -466,6 +626,11 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   ingress.apply_block << "forward(" << node->get_port() << ");\n";
 
   auto closed = ingress.close_if_clauses(ingress.apply_block);
+
+  if (parsing_headers) {
+    parser.accept();
+    parser.pop();
+  }
 
   for (auto i = 0; i < closed; i++) {
     local_vars.pop();
@@ -480,6 +645,11 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   auto closed = ingress.close_if_clauses(ingress.apply_block);
 
+  if (parsing_headers) {
+    parser.reject();
+    parser.pop();
+  }
+
   for (auto i = 0; i < closed; i++) {
     local_vars.pop();
     metadata.pop();
@@ -489,7 +659,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::If *node) {
   if (parsing_headers) {
-    assert(false && "TODO");
+    parser.add_condition(transpile(node->get_condition(), true));
   }
 
   local_vars.push();
@@ -509,7 +679,29 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::IPv4Consume *node) {
-  assert(false && "TODO");
+  header_field_t version_ihl(8, "version_ihl");
+  header_field_t diff_serv(8, "diff_serv");
+  header_field_t total_len(16, "total_len");
+  header_field_t id(16, "id");
+  header_field_t flags(3, "flags");
+  header_field_t frag_offset(13, "frag_offset");
+  header_field_t ttl(8, "ttl");
+  header_field_t proto(8, "proto");
+  header_field_t checksum(16, "checksum");
+  header_field_t src_addr(32, "src_addr");
+  header_field_t dst_addr(32, "dst_addr");
+
+  std::vector<header_field_t> fields = {
+      version_ihl, diff_serv, total_len, id,       flags,   frag_offset,
+      ttl,         proto,     checksum,  src_addr, dst_addr};
+
+  auto chunk = node->get_chunk();
+  auto label = "ipv4";
+
+  headers.emplace_back(chunk, label, fields);
+
+  parser.add(label);
+  deparser.headers_labels.push_back(label);
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -529,7 +721,18 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::TcpUdpConsume *node) {
-  assert(false && "TODO");
+  header_field_t src_port(16, "src_port");
+  header_field_t dst_port(16, "dst_port");
+
+  std::vector<header_field_t> fields = {src_port, dst_port};
+
+  auto chunk = node->get_chunk();
+  auto label = "tcp_udp";
+
+  headers.emplace_back(chunk, label, fields);
+
+  parser.add(label);
+  deparser.headers_labels.push_back(label);
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -545,6 +748,10 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   ingress.apply_block << "send_to_controller(" << code_path << ");\n";
 
   auto closed = ingress.close_if_clauses(ingress.apply_block);
+
+  if (parsing_headers) {
+    parser.pop();
+  }
 
   for (auto i = 0; i < closed; i++) {
     local_vars.pop();
@@ -605,6 +812,10 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     new_metadata.push_back(meta_param);
   }
 
+  metadata_t meta_tag_param(code_table_id.str() + "_tag", 32);
+  metadata.append(meta_tag_param);
+  new_metadata.push_back(meta_tag_param);
+
   table_t table(code_table_id.str(), key_bytes_label, params_type,
                 new_metadata);
   ingress.tables.push_back(table);
@@ -656,6 +867,10 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
-    const targets::BMv2SimpleSwitchgRPC::Then *node) {}
+    const targets::BMv2SimpleSwitchgRPC::Then *node) {
+  if (parsing_headers) {
+    parser.push_on_true();
+  }
+}
 
 }; // namespace synapse

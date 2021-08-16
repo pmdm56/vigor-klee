@@ -12,6 +12,7 @@ namespace BMv2SimpleSwitchgRPC {
 
 class EthernetModify : public Module {
 private:
+  klee::ref<klee::Expr> ethernet_chunk;
   std::vector<modification_t> modifications;
 
 public:
@@ -20,10 +21,11 @@ public:
                Target::BMv2SimpleSwitchgRPC, "EthernetModify") {}
 
   EthernetModify(BDD::BDDNode_ptr node,
+                 const klee::ref<klee::Expr> &_ethernet_chunk,
                  const std::vector<modification_t> &_modifications)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_EthernetModify,
                Target::BMv2SimpleSwitchgRPC, "EthernetModify", node),
-        modifications(_modifications) {}
+        ethernet_chunk(_ethernet_chunk), modifications(_modifications) {}
 
 private:
   klee::ref<klee::Expr> get_ethernet_chunk(const BDD::Node *node) const {
@@ -85,7 +87,8 @@ private:
       return result;
     }
 
-    auto new_module = std::make_shared<EthernetModify>(node, _modifications);
+    auto new_module = std::make_shared<EthernetModify>(node, prev_ether_chunk,
+                                                       _modifications);
     auto new_ep = ep.add_leaves(new_module, node->get_next());
 
     result.module = new_module;
@@ -100,7 +103,7 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new EthernetModify(node, modifications);
+    auto cloned = new EthernetModify(node, ethernet_chunk, modifications);
     return std::shared_ptr<Module>(cloned);
   }
 
@@ -110,6 +113,11 @@ public:
     }
 
     auto other_cast = static_cast<const EthernetModify *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(
+             ethernet_chunk, other_cast->ethernet_chunk)) {
+      return false;
+    }
 
     auto other_modifications = other_cast->get_modifications();
 
@@ -132,6 +140,10 @@ public:
     }
 
     return true;
+  }
+
+  const klee::ref<klee::Expr> &get_ethernet_chunk() const {
+    return ethernet_chunk;
   }
 
   const std::vector<modification_t> &get_modifications() const {

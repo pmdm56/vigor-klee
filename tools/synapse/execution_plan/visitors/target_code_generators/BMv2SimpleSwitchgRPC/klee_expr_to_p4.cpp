@@ -12,7 +12,8 @@ bool KleeExprToP4::is_read_lsb(klee::ref<klee::Expr> e) const {
 
   auto sz = e->getWidth();
   assert(sz % 8 == 0);
-  auto index = (sz / 8) - 1;
+
+  std::pair<bool, uint64_t> index;
 
   if (e->getKind() != klee::Expr::Kind::Concat) {
     return false;
@@ -34,11 +35,16 @@ bool KleeExprToP4::is_read_lsb(klee::ref<klee::Expr> e) const {
 
     auto const_msb_index = static_cast<klee::ConstantExpr *>(msb_index.get());
 
-    if (const_msb_index->getZExtValue() != index) {
+    if (!index.first) {
+      index.first = true;
+      index.second = const_msb_index->getZExtValue();
+    }
+
+    if (index.first && const_msb_index->getZExtValue() != index.second) {
       return false;
     }
 
-    index--;
+    index.second--;
     e = lsb;
   }
 
@@ -51,12 +57,12 @@ bool KleeExprToP4::is_read_lsb(klee::ref<klee::Expr> e) const {
 
     auto const_last_index = static_cast<klee::ConstantExpr *>(last_index.get());
 
-    if (const_last_index->getZExtValue() != index) {
+    if (const_last_index->getZExtValue() != index.second) {
       return false;
     }
   }
 
-  return index == 0;
+  return true;
 }
 
 klee::ExprVisitor::Action KleeExprToP4::visitRead(const klee::ReadExpr &e) {
@@ -113,6 +119,11 @@ klee::ExprVisitor::Action KleeExprToP4::visitConcat(const klee::ConcatExpr &e) {
       return klee::ExprVisitor::Action::skipChildren();
     }
 
+    if (symbol == "pkt_len") {
+      code << "standard_metadata.packet_length";
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+
     if (symbol == "packet_chunks") {
       auto label = generator.label_from_packet_chunk(eref);
 
@@ -133,6 +144,8 @@ klee::ExprVisitor::Action KleeExprToP4::visitConcat(const klee::ConcatExpr &e) {
     code << label;
     return klee::ExprVisitor::Action::skipChildren();
   }
+
+  std::cerr << "expr: " << expr_to_string(eref, true) << "\n";
 
   assert(false && "TODO");
   return klee::ExprVisitor::Action::skipChildren();
@@ -192,6 +205,15 @@ KleeExprToP4::visitExtract(const klee::ExtractExpr &e) {
 
   if (offset == 0 && expr->getWidth() == sz) {
     code << generator.transpile(expr);
+    return klee::ExprVisitor::Action::skipChildren();
+  }
+
+  if (expr->getKind() == klee::Expr::Constant && sz <= 64) {
+    auto extracted = BDD::solver_toolbox.exprBuilder->Extract(expr, offset, sz);
+    auto value = BDD::solver_toolbox.value_from_expr(extracted);
+
+    code << value;
+
     return klee::ExprVisitor::Action::skipChildren();
   }
 

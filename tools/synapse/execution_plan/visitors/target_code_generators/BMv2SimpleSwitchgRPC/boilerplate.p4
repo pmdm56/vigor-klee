@@ -77,6 +77,16 @@ control SyNAPSE_Ingress(inout headers hdr,
   
   /**************** B O I L E R P L A T E  ****************/
 
+  {{ingress_tag_versions_action}}  
+
+  table tag_control {
+    actions = {
+      tag_versions;
+    }
+
+    size = 1;
+  }
+
   action broadcast() {
     standard_metadata.mcast_grp = (mcast_group_t) 1;
   }
@@ -104,6 +114,8 @@ control SyNAPSE_Ingress(inout headers hdr,
   {{ingress_globals}}
 
   apply {
+    tag_control.apply();
+    
     if (standard_metadata.ingress_port == CPU_PORT) {
       forward(hdr.packet_out.dst_device);
       return;
