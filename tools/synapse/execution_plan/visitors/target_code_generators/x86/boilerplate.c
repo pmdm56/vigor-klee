@@ -1,5 +1,9 @@
 {{global_state}}
 
+bool synapse_runtime_configure(synapse_config_t *config) {
+  {{runtime_configure}}  
+}
+
 bool nf_init() {
   {{nf_init}}
 }

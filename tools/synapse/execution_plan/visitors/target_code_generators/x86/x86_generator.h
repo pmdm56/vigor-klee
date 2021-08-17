@@ -269,9 +269,10 @@ struct stack_t {
 
 class x86_Generator : public TargetCodeGenerator {
 private:
+  std::stringstream global_state_stream;
+  std::stringstream runtime_configure_stream;
   std::stringstream nf_init_stream;
   std::stringstream nf_process_stream;
-  std::stringstream global_state_stream;
 
   int lvl;
   std::stack<bool> pending_ifs;
@@ -281,6 +282,7 @@ private:
   void pad(std::ostream &_os) const { _os << std::string(lvl * 2, ' '); }
 
   int close_if_clauses();
+  void build_runtime_configure();
   void allocate(const ExecutionPlan &ep);
   void allocate_map(call_t call, std::ostream &global_state,
                     std::ostream &buffer);

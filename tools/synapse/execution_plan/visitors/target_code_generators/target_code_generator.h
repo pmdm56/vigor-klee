@@ -73,10 +73,11 @@ private:
 
 protected:
   code_builder_t code_builder;
+  const ExecutionPlan *original_ep;
 
 public:
   TargetCodeGenerator(const std::string &boilerplate_fpath)
-      : code_builder(boilerplate_fpath) {
+      : code_builder(boilerplate_fpath), original_ep(nullptr) {
     os = std::unique_ptr<std::ostream>(new std::ostream(std::cerr.rdbuf()));
   }
 
@@ -85,8 +86,10 @@ public:
     os = std::unique_ptr<std::ostream>(new std::ofstream(fpath));
   }
 
-  void generate(ExecutionPlan &execution_plan) {
-    if (execution_plan.get_nodes() == 0) {
+  void generate(ExecutionPlan &target_ep, const ExecutionPlan &_original_ep) {
+    original_ep = &_original_ep;
+
+    if (target_ep.get_nodes() == 0) {
       if (!fpath.size()) {
         return;
       }
@@ -95,7 +98,7 @@ public:
       return;
     }
 
-    visit(execution_plan);
+    visit(target_ep);
     *os << code_builder.code;
   }
 };

@@ -99,7 +99,7 @@ public:
       auto &generator = helper.generator;
 
       auto extracted_ep = (this->*extractor)(execution_plan);
-      generator->generate(extracted_ep);
+      generator->generate(extracted_ep, execution_plan);
     }
   }
 };

@@ -226,6 +226,18 @@ uint64_t solver_toolbox_t::value_from_expr(klee::ref<klee::Expr> expr) const {
   return value_expr->getZExtValue();
 }
 
+uint64_t
+solver_toolbox_t::value_from_expr(klee::ref<klee::Expr> expr,
+                                  klee::ConstraintManager constraints) const {
+  klee::Query sat_query(constraints, expr);
+
+  klee::ref<klee::ConstantExpr> value_expr;
+  bool success = solver->getValue(sat_query, value_expr);
+
+  assert(success);
+  return value_expr->getZExtValue();
+}
+
 bool solver_toolbox_t::are_calls_equal(call_t c1, call_t c2) const {
   if (c1.function_name != c2.function_name) {
     return false;

@@ -1,8 +1,10 @@
 #include "x86_generator.h"
 #include "../../../../log.h"
+#include "../../../../modules/BMv2SimpleSwitchgRPC/table_lookup.h"
 #include "../../../../modules/x86/x86.h"
 
 #define MARKER_GLOBAL_STATE "global_state"
+#define MARKER_RUNTIME_CONFIGURE "runtime_configure"
 #define MARKER_NF_INIT "nf_init"
 #define MARKER_NF_PROCESS "nf_process"
 
@@ -909,6 +911,7 @@ void x86_Generator::allocate_cht(call_t call, std::ostream &global_state,
 
 void x86_Generator::allocate(const ExecutionPlan &ep) {
   auto node = ep.get_bdd().get_init();
+
   while (node) {
     switch (node->get_type()) {
     case BDD::Node::NodeType::CALL: {
@@ -969,10 +972,146 @@ void x86_Generator::allocate(const ExecutionPlan &ep) {
   }
 }
 
+klee::ref<klee::Expr>
+get_readLSB_vigor_device(std::vector<klee::ConstraintManager> managers) {
+  for (auto manager : managers) {
+    for (auto constraint : manager) {
+      RetrieveSymbols retriever(true);
+      retriever.visit(constraint);
+
+      auto symbols = retriever.get_retrieved_strings();
+
+      if (symbols.size() != 1 || *symbols.begin() != "VIGOR_DEVICE") {
+        continue;
+      }
+
+      if (retriever.get_retrieved_readLSB().size() == symbols.size()) {
+        return retriever.get_retrieved_readLSB()[0];
+      }
+    }
+  }
+
+  assert(false && "Could not find VIGOR_DEVICE in constraints");
+}
+
+void x86_Generator::build_runtime_configure() {
+  assert(original_ep);
+  assert(original_ep->get_root());
+
+  std::unordered_set<uint64_t> devices;
+  std::unordered_set<std::string> tags;
+  unsigned i = 0;
+
+  // retrieve devices
+  std::vector<ExecutionPlanNode_ptr> nodes = {original_ep->get_root()};
+
+  while (nodes.size()) {
+    auto node = nodes[0];
+    nodes.erase(nodes.begin());
+
+    auto module = node->get_module();
+
+    if (module->get_type() == Module::ModuleType::x86_CurrentTime) {
+      auto bdd_node = module->get_node();
+      auto constraint_managers = bdd_node->get_constraints();
+
+      auto vigor_device = get_readLSB_vigor_device(constraint_managers);
+
+      for (auto manager : constraint_managers) {
+        auto value = BDD::solver_toolbox.value_from_expr(vigor_device, manager);
+        auto eq = BDD::solver_toolbox.exprBuilder->Eq(
+            vigor_device, BDD::solver_toolbox.exprBuilder->Constant(
+                              value, vigor_device->getWidth()));
+
+        auto always_eq = BDD::solver_toolbox.is_expr_always_true(manager, eq);
+        assert(always_eq);
+
+        devices.insert(value);
+      }
+    }
+
+    if (module->get_type() ==
+        Module::ModuleType::BMv2SimpleSwitchgRPC_TableLookup) {
+      auto table_lookup =
+          static_cast<targets::BMv2SimpleSwitchgRPC::TableLookup *>(
+              module.get());
+
+      auto bdd_function = table_lookup->get_bdd_function();
+      auto table_id = table_lookup->get_table_id();
+
+      std::stringstream tag_name;
+      tag_name << bdd_function;
+      tag_name << "_";
+      tag_name << table_id;
+      tag_name << "_tag";
+
+      tags.insert(tag_name.str());
+    }
+
+    auto next = node->get_next();
+    nodes.insert(nodes.end(), next.begin(), next.end());
+  }
+
+  pad(runtime_configure_stream);
+  runtime_configure_stream << "config->devices_size";
+  runtime_configure_stream << " = ";
+  runtime_configure_stream << devices.size();
+  runtime_configure_stream << ";\n";
+
+  pad(runtime_configure_stream);
+  runtime_configure_stream << "config->devices";
+  runtime_configure_stream << " = ";
+  runtime_configure_stream << "(uint32_t*) malloc(";
+  runtime_configure_stream << "sizeof(uint32_t) * config->devices_size";
+  runtime_configure_stream << ")";
+  runtime_configure_stream << ";\n";
+
+  i = 0;
+  for (auto device : devices) {
+    pad(runtime_configure_stream);
+    runtime_configure_stream << "config->devices[" << i << "]";
+    runtime_configure_stream << " = ";
+    runtime_configure_stream << device;
+    runtime_configure_stream << ";\n";
+
+    i++;
+  }
+
+  pad(runtime_configure_stream);
+  runtime_configure_stream << "config->tags_size";
+  runtime_configure_stream << " = ";
+  runtime_configure_stream << tags.size();
+  runtime_configure_stream << ";\n";
+
+  pad(runtime_configure_stream);
+  runtime_configure_stream << "config->tags_names";
+  runtime_configure_stream << " = ";
+  runtime_configure_stream << "(string_t*) malloc(";
+  runtime_configure_stream << "sizeof(string_t) * config->tags_size";
+  runtime_configure_stream << ")";
+  runtime_configure_stream << ";\n";
+
+  i = 0;
+  for (auto tag : tags) {
+    pad(runtime_configure_stream);
+    runtime_configure_stream << "config->tags_names[" << i << "]";
+    runtime_configure_stream << " = { ";
+    runtime_configure_stream << ".str = \"" << tag << "\"";
+    runtime_configure_stream << ", .sz = " << tag.size() << "";
+    runtime_configure_stream << " }";
+    runtime_configure_stream << ";\n";
+
+    i++;
+  }
+}
+
 void x86_Generator::visit(ExecutionPlan ep) {
   lvl = code_builder.get_indentation_level(MARKER_NF_INIT);
 
   allocate(ep);
+
+  lvl = code_builder.get_indentation_level(MARKER_RUNTIME_CONFIGURE);
+  build_runtime_configure();
 
   std::string vigor_device_label = "VIGOR_DEVICE";
   std::string packet_label = "p";
@@ -992,9 +1131,11 @@ void x86_Generator::visit(ExecutionPlan ep) {
   ExecutionPlanVisitor::visit(ep);
   stack.pop();
 
+  code_builder.fill_mark(MARKER_GLOBAL_STATE, global_state_stream.str());
+  code_builder.fill_mark(MARKER_RUNTIME_CONFIGURE,
+                         runtime_configure_stream.str());
   code_builder.fill_mark(MARKER_NF_INIT, nf_init_stream.str());
   code_builder.fill_mark(MARKER_NF_PROCESS, nf_process_stream.str());
-  code_builder.fill_mark(MARKER_GLOBAL_STATE, global_state_stream.str());
 }
 
 void x86_Generator::visit(const ExecutionPlanNode *ep_node) {
