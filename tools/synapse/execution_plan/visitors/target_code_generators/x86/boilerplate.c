@@ -1,4 +1,6 @@
-unsigned char data_buffer[512];
+#define DATA_BUFFER_SZ 512
+
+unsigned char data_buffer[DATA_BUFFER_SZ];
 unsigned data_buffer_offset;
 
 {{global_state}}

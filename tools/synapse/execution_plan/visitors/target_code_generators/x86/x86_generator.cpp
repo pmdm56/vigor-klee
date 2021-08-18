@@ -1863,6 +1863,9 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
       pad(nf_process_stream);
       nf_process_stream << "data_buffer_offset += " << value->getWidth() / 8
                         << ";\n";
+
+      pad(nf_process_stream);
+      nf_process_stream << "assert(data_buffer_offset <= DATA_BUFFER_SZ);\n";
     }
 
     nf_process_stream << "\n";
