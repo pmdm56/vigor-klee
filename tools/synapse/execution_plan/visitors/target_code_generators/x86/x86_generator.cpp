@@ -972,6 +972,99 @@ void x86_Generator::allocate(const ExecutionPlan &ep) {
   }
 }
 
+std::pair<bool, uint64_t>
+x86_Generator::get_expiration_time(klee::ref<klee::Expr> libvig_obj) const {
+  for (auto et : expiration_times) {
+    auto obj = et.first;
+    auto time = et.second;
+
+    auto obj_extracted = BDD::solver_toolbox.exprBuilder->Extract(
+        obj, 0, libvig_obj->getWidth());
+
+    if (BDD::solver_toolbox.are_exprs_always_equal(obj_extracted, libvig_obj)) {
+      return std::make_pair(true, time);
+    }
+  }
+
+  return std::make_pair(false, 0);
+}
+
+std::vector<x86_Generator::p4_table> x86_Generator::get_associated_p4_tables(
+    klee::ref<klee::Expr> libvig_obj) const {
+  std::vector<x86_Generator::p4_table> tables;
+
+  assert(original_ep);
+  assert(original_ep->get_root());
+
+  std::vector<ExecutionPlanNode_ptr> nodes = {original_ep->get_root()};
+
+  while (nodes.size()) {
+    auto node = nodes[0];
+    nodes.erase(nodes.begin());
+
+    auto module = node->get_module();
+
+    if (module->get_type() ==
+        Module::ModuleType::BMv2SimpleSwitchgRPC_TableLookup) {
+      auto table_lookup =
+          static_cast<targets::BMv2SimpleSwitchgRPC::TableLookup *>(
+              module.get());
+
+      auto bdd_node = module->get_node();
+
+      assert(bdd_node);
+      assert(bdd_node->get_type() == BDD::Node::NodeType::CALL);
+
+      auto bdd_call = static_cast<const BDD::Call *>(bdd_node.get());
+      auto call = bdd_call->get_call();
+
+      auto obj = table_lookup->get_obj();
+      assert(!obj.isNull());
+
+      if (!BDD::solver_toolbox.are_exprs_always_equal(libvig_obj, obj)) {
+        goto skip;
+      }
+
+      auto bdd_function = table_lookup->get_bdd_function();
+      auto table_id = table_lookup->get_table_id();
+      auto keys = table_lookup->get_keys();
+      auto params = table_lookup->get_params();
+
+      std::stringstream table_name;
+      table_name << bdd_function;
+      table_name << "_";
+      table_name << table_id;
+
+      std::stringstream tag_name;
+      tag_name << table_name.str();
+      tag_name << "_tag";
+
+      auto found_it = std::find_if(tables.begin(), tables.end(),
+                                   [&](x86_Generator::p4_table table) {
+                                     return table.name == table_name.str();
+                                   });
+
+      if (found_it != tables.end()) {
+        goto skip;
+      }
+
+      x86_Generator::p4_table table;
+      table.name = table_name.str();
+      table.tag = tag_name.str();
+      table.n_keys = keys.size();
+      table.n_params = params.size();
+
+      tables.push_back(table);
+    }
+
+  skip:
+    auto next = node->get_next();
+    nodes.insert(nodes.end(), next.begin(), next.end());
+  }
+
+  return tables;
+}
+
 klee::ref<klee::Expr>
 get_readLSB_vigor_device(std::vector<klee::ConstraintManager> managers) {
   for (auto manager : managers) {
@@ -1002,7 +1095,6 @@ void x86_Generator::build_runtime_configure() {
   std::unordered_set<std::string> tags;
   unsigned i = 0;
 
-  // retrieve devices
   std::vector<ExecutionPlanNode_ptr> nodes = {original_ep->get_root()};
 
   while (nodes.size()) {
@@ -1375,6 +1467,31 @@ void x86_Generator::visit(const targets::x86::Drop *node) {
   }
 }
 
+uint64_t get_expiration_time_value(klee::ref<klee::Expr> time) {
+  RetrieveSymbols retriever(true);
+  retriever.visit(time);
+
+  auto readLSBs = retriever.get_retrieved_readLSB();
+  assert(readLSBs.size() == 1);
+
+  auto next_time = readLSBs[0];
+  auto expiration_time_expr =
+      BDD::solver_toolbox.exprBuilder->Sub(time, next_time);
+  auto expiration_time =
+      BDD::solver_toolbox.value_from_expr(expiration_time_expr);
+
+  auto always_eq = BDD::solver_toolbox.are_exprs_always_equal(
+      BDD::solver_toolbox.exprBuilder->Constant(
+          expiration_time, expiration_time_expr->getWidth()),
+      expiration_time_expr);
+  assert(always_eq);
+
+  // 2's complement
+  expiration_time = ~expiration_time + 1;
+
+  return expiration_time;
+}
+
 void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   auto dchain_addr = node->get_dchain_addr();
   auto vector_addr = node->get_vector_addr();
@@ -1388,6 +1505,13 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   assert(!map_addr.isNull());
   assert(!time.isNull());
   assert(!number_of_freed_flows.isNull());
+
+  // get expiration time
+  auto expiration_time = get_expiration_time_value(time);
+
+  expiration_times.emplace_back(dchain_addr, expiration_time);
+  expiration_times.emplace_back(vector_addr, expiration_time);
+  expiration_times.emplace_back(map_addr, expiration_time);
 
   auto dchain = stack.get_label(dchain_addr);
   if (!dchain.size()) {
@@ -1559,6 +1683,8 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
   nf_process_stream << ", " << transpile(index, stack);
   nf_process_stream << ", (void *)" << value_label;
   nf_process_stream << ");\n";
+
+  issue_write_to_switch(vector_addr, index, value);
 }
 
 void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
@@ -1600,6 +1726,162 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
   nf_process_stream << ");\n";
 }
 
+void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
+                                          klee::ref<klee::Expr> key,
+                                          klee::ref<klee::Expr> value) {
+  auto tables = get_associated_p4_tables(libvig_obj);
+
+  for (auto table : tables) {
+    assert(table.n_params == 1 && "TODO table merging");
+
+    nf_process_stream << "\n";
+
+    for (auto byte = 0u; byte < key->getWidth() / 8; byte++) {
+      std::stringstream key_byte_name;
+      key_byte_name << "key_byte_" << byte;
+
+      auto key_byte_expr = BDD::solver_toolbox.exprBuilder->Extract(
+          key, byte * 8, klee::Expr::Int8);
+      auto key_byte_expr_transpiled = transpile(key_byte_expr, stack);
+
+      pad(nf_process_stream);
+      nf_process_stream << "string_t " << key_byte_name.str() << "_name";
+      nf_process_stream << " = { ";
+      nf_process_stream << ".str = \"" << key_byte_name.str() << "\"";
+      nf_process_stream << ", .sz = " << key_byte_name.str().size();
+      nf_process_stream << " };\n";
+
+      pad(nf_process_stream);
+      nf_process_stream << "string_ptr_t " << key_byte_name.str() << "_value";
+      nf_process_stream << " = ";
+      nf_process_stream << "synapse_runtime_wrappers_p4_uint32_new(";
+      nf_process_stream << "(uint32_t) (";
+      nf_process_stream << key_byte_expr_transpiled;
+      nf_process_stream << "))";
+      nf_process_stream << ";\n";
+    }
+
+    nf_process_stream << "\n";
+
+    pad(nf_process_stream);
+    nf_process_stream << "pair_t keys[" << key->getWidth() / 8 << "] = {\n";
+    lvl++;
+
+    for (auto byte = 0u; byte < key->getWidth() / 8; byte++) {
+      std::stringstream key_byte_name;
+      key_byte_name << "key_byte_" << byte;
+
+      pad(nf_process_stream);
+
+      nf_process_stream << "{";
+      nf_process_stream << " .left = (void*) &" << key_byte_name.str()
+                        << "_name";
+      nf_process_stream << ", .right = (void*) " << key_byte_name.str()
+                        << "_value->bytes";
+      nf_process_stream << "}";
+
+      if (byte != (key->getWidth() / 8) - 1) {
+        nf_process_stream << ", ";
+      }
+
+      nf_process_stream << "\n";
+    }
+
+    lvl--;
+    pad(nf_process_stream);
+    nf_process_stream << "};\n";
+
+    nf_process_stream << "\n";
+
+    for (auto i = 0u; i < table.n_params; i++) {
+      std::stringstream param_name;
+      param_name << "param_" << i;
+
+      pad(nf_process_stream);
+      nf_process_stream << "string_t " << param_name.str() << "_name";
+      nf_process_stream << " = { ";
+      nf_process_stream << ".str = \"" << param_name.str() << "\"";
+      nf_process_stream << ", .sz = " << param_name.str().size();
+      nf_process_stream << " };\n";
+
+      for (auto byte = 0u; byte < value->getWidth() / 8; byte++) {
+        auto extracted = BDD::solver_toolbox.exprBuilder->Extract(
+            value, byte * 8, klee::Expr::Int8);
+
+        auto extracted_transpiled = transpile(extracted, stack);
+
+        pad(nf_process_stream);
+        nf_process_stream << "data_buffer[data_buffer_offset+" << byte << "]";
+        nf_process_stream << " = ";
+        nf_process_stream << "(char) (";
+        nf_process_stream << extracted_transpiled;
+        nf_process_stream << ");\n";
+      }
+
+      pad(nf_process_stream);
+      nf_process_stream << "string_t " << param_name.str() << "_value";
+      nf_process_stream << " = { ";
+      nf_process_stream << ".str = data_buffer + data_buffer_offset";
+      nf_process_stream << ", .sz = " << value->getWidth() / 8;
+      nf_process_stream << " };\n";
+
+      pad(nf_process_stream);
+      nf_process_stream << "data_buffer_offset += " << value->getWidth() / 8
+                        << ";\n";
+    }
+
+    nf_process_stream << "\n";
+
+    pad(nf_process_stream);
+    nf_process_stream << "pair_t params[" << table.n_params << "] = {\n";
+    lvl++;
+
+    for (auto i = 0u; i < table.n_params; i++) {
+      std::stringstream param_name;
+      param_name << "param_" << i;
+
+      pad(nf_process_stream);
+
+      nf_process_stream << "{ ";
+      nf_process_stream << ".left = (void*) &" << param_name.str() << "_name";
+      nf_process_stream << ", .right = (void*) &" << param_name.str()
+                        << "_value";
+      nf_process_stream << " };";
+
+      if (i != table.n_params - 1) {
+        nf_process_stream << ", ";
+      }
+
+      nf_process_stream << "\n";
+    }
+
+    lvl--;
+    pad(nf_process_stream);
+    nf_process_stream << "};\n";
+
+    nf_process_stream << "\n";
+
+    auto expiration_time = get_expiration_time(libvig_obj);
+
+    pad(nf_process_stream);
+    nf_process_stream << "synapse_queue_insert_table_entry(";
+    nf_process_stream << "env";
+    nf_process_stream << ", " << table.name;
+    nf_process_stream << ", keys";
+    nf_process_stream << ", " << key->getWidth() / 8;
+    nf_process_stream << ", action_name";
+    nf_process_stream << ", action_params";
+    nf_process_stream << ", " << table.n_params;
+    nf_process_stream << ", 0";
+
+    if (expiration_time.first) {
+      nf_process_stream << ", " << expiration_time.second;
+    }
+
+    nf_process_stream << ");\n";
+  }
+}
+
 void x86_Generator::visit(const targets::x86::MapPut *node) {
   auto map_addr = node->get_map_addr();
   auto key_addr = node->get_key_addr();
@@ -1625,12 +1907,16 @@ void x86_Generator::visit(const targets::x86::MapPut *node) {
     nf_process_stream << key_assignment << "\n";
   }
 
+  auto transpiled_value = transpile(value, stack);
+
   pad(nf_process_stream);
   nf_process_stream << "map_put(";
   nf_process_stream << map;
   nf_process_stream << ", (void*)" << key_label;
-  nf_process_stream << ", " << transpile(value, stack);
+  nf_process_stream << ", " << transpiled_value;
   nf_process_stream << ");\n";
+
+  issue_write_to_switch(map_addr, key, value);
 }
 
 void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {

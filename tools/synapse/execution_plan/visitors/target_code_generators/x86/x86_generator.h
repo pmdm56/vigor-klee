@@ -269,6 +269,14 @@ struct stack_t {
 
 class x86_Generator : public TargetCodeGenerator {
 private:
+  struct p4_table {
+    std::string name;
+    std::string tag;
+    unsigned n_keys;
+    unsigned n_params;
+  };
+
+private:
   std::stringstream global_state_stream;
   std::stringstream runtime_configure_stream;
   std::stringstream nf_init_stream;
@@ -277,11 +285,23 @@ private:
   int lvl;
   std::stack<bool> pending_ifs;
   stack_t stack;
+  std::vector<std::pair<klee::ref<klee::Expr>, uint64_t>> expiration_times;
 
 private:
   void pad(std::ostream &_os) const { _os << std::string(lvl * 2, ' '); }
 
   int close_if_clauses();
+
+  void issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
+                             klee::ref<klee::Expr> key,
+                             klee::ref<klee::Expr> value);
+
+  std::vector<p4_table>
+  get_associated_p4_tables(klee::ref<klee::Expr> libvig_obj) const;
+
+  std::pair<bool, uint64_t>
+  get_expiration_time(klee::ref<klee::Expr> libvig_obj) const;
+
   void build_runtime_configure();
   void allocate(const ExecutionPlan &ep);
   void allocate_map(call_t call, std::ostream &global_state,
