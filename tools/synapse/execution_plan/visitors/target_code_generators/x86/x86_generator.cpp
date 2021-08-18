@@ -1087,6 +1087,28 @@ get_readLSB_vigor_device(std::vector<klee::ConstraintManager> managers) {
   assert(false && "Could not find VIGOR_DEVICE in constraints");
 }
 
+void x86_Generator::fill_is_controller() {
+  assert(original_ep);
+  assert(original_ep->get_root());
+
+  std::vector<ExecutionPlanNode_ptr> nodes = {original_ep->get_root()};
+
+  while (nodes.size()) {
+    auto node = nodes[0];
+    nodes.erase(nodes.begin());
+
+    auto module = node->get_module();
+
+    if (module->get_target() != Target::x86) {
+      is_controller = std::make_pair(true, module->get_target());
+      return;
+    }
+
+    auto next = node->get_next();
+    nodes.insert(nodes.end(), next.begin(), next.end());
+  }
+}
+
 void x86_Generator::build_runtime_configure() {
   assert(original_ep);
   assert(original_ep->get_root());
@@ -1198,12 +1220,17 @@ void x86_Generator::build_runtime_configure() {
 }
 
 void x86_Generator::visit(ExecutionPlan ep) {
+  fill_is_controller();
+
   lvl = code_builder.get_indentation_level(MARKER_NF_INIT);
 
   allocate(ep);
 
-  lvl = code_builder.get_indentation_level(MARKER_RUNTIME_CONFIGURE);
-  build_runtime_configure();
+  if (is_controller.first &&
+      is_controller.second == Target::BMv2SimpleSwitchgRPC) {
+    lvl = code_builder.get_indentation_level(MARKER_RUNTIME_CONFIGURE);
+    build_runtime_configure();
+  }
 
   std::string vigor_device_label = "VIGOR_DEVICE";
   std::string packet_label = "p";
@@ -1224,8 +1251,13 @@ void x86_Generator::visit(ExecutionPlan ep) {
   stack.pop();
 
   code_builder.fill_mark(MARKER_GLOBAL_STATE, global_state_stream.str());
-  code_builder.fill_mark(MARKER_RUNTIME_CONFIGURE,
-                         runtime_configure_stream.str());
+
+  if (is_controller.first &&
+      is_controller.second == Target::BMv2SimpleSwitchgRPC) {
+    code_builder.fill_mark(MARKER_RUNTIME_CONFIGURE,
+                           runtime_configure_stream.str());
+  }
+
   code_builder.fill_mark(MARKER_NF_INIT, nf_init_stream.str());
   code_builder.fill_mark(MARKER_NF_PROCESS, nf_process_stream.str());
 }
@@ -1684,7 +1716,10 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
   nf_process_stream << ", (void *)" << value_label;
   nf_process_stream << ");\n";
 
-  issue_write_to_switch(vector_addr, index, value);
+  if (is_controller.first &&
+      is_controller.second == Target::BMv2SimpleSwitchgRPC) {
+    issue_write_to_switch(vector_addr, index, value);
+  }
 }
 
 void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
@@ -1778,7 +1813,7 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
                         << "_name";
       nf_process_stream << ", .right = (void*) " << key_byte_name.str()
                         << "_value->bytes";
-      nf_process_stream << "}";
+      nf_process_stream << " }";
 
       if (byte != (key->getWidth() / 8) - 1) {
         nf_process_stream << ", ";
@@ -1916,7 +1951,10 @@ void x86_Generator::visit(const targets::x86::MapPut *node) {
   nf_process_stream << ", " << transpiled_value;
   nf_process_stream << ");\n";
 
-  issue_write_to_switch(map_addr, key, value);
+  if (is_controller.first &&
+      is_controller.second == Target::BMv2SimpleSwitchgRPC) {
+    issue_write_to_switch(map_addr, key, value);
+  }
 }
 
 void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {

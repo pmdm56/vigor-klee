@@ -287,10 +287,14 @@ private:
   stack_t stack;
   std::vector<std::pair<klee::ref<klee::Expr>, uint64_t>> expiration_times;
 
+  std::pair<bool, Target> is_controller;
+
 private:
   void pad(std::ostream &_os) const { _os << std::string(lvl * 2, ' '); }
 
   int close_if_clauses();
+
+  void fill_is_controller();
 
   void issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
                              klee::ref<klee::Expr> key,
