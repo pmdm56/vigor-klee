@@ -147,8 +147,11 @@ std::string BMv2SimpleSwitchgRPC_Generator::label_from_packet_chunk(
     auto offset = 0u;
 
     for (auto field : header.fields) {
-
       for (unsigned byte = 0; byte * 8 + sz <= field.sz; byte++) {
+        if (offset + byte * 8 + sz > chunk->getWidth()) {
+          continue;
+        }
+
         auto field_expr = BDD::solver_toolbox.exprBuilder->Extract(
             chunk, offset + byte * 8, sz);
 
@@ -248,11 +251,18 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
     std::stringstream ss;
     auto constant = static_cast<klee::ConstantExpr *>(e.get());
     assert(constant->getWidth() <= 64);
-    ss << constant->getZExtValue();
+
+    if (is_signed) {
+      int64_t value = (int64_t)constant->getZExtValue();
+      ss << value;
+    } else {
+      ss << constant->getZExtValue();
+    }
+
     return ss.str();
   }
 
-  KleeExprToP4 kleeExprToP4(*this);
+  KleeExprToP4 kleeExprToP4(*this, is_signed);
   kleeExprToP4.visit(e);
 
   auto code = kleeExprToP4.get_code();
@@ -269,61 +279,99 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
 
 void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
     code_builder_t &code_builder) {
+  assert(stages.size());
+  auto root = stages[0];
+
   std::stringstream parser_states_stream;
   auto lvl = code_builder.get_indentation_level(MARKER_PARSE_HEADERS);
 
-  for (unsigned i = 0; i < stages.size(); i++) {
-    assert(stages[i]->label.size());
+  pad(parser_states_stream, lvl);
+  parser_states_stream << "state parse_headers {\n";
 
-    if (stages[i]->label == "accept" || stages[i]->label == "reject") {
+  lvl++;
+  pad(parser_states_stream, lvl);
+  parser_states_stream << "transition ";
+  parser_states_stream << root->label;
+  parser_states_stream << ";\n";
+  lvl--;
+
+  pad(parser_states_stream, lvl);
+  parser_states_stream << "}\n";
+
+  auto built_stages = std::vector<std::shared_ptr<parsing_stage>>{root};
+
+  while (built_stages.size()) {
+    auto stage = built_stages[0];
+    built_stages.erase(built_stages.begin());
+
+    if (stage->type == TERMINATOR) {
       continue;
     }
 
-    if (i == 0) {
-      pad(parser_states_stream, lvl);
-      parser_states_stream << "state parse_headers {\n";
-    } else {
-      pad(parser_states_stream, lvl);
-      parser_states_stream << stages[i]->label << " {\n";
-    }
+    parser_states_stream << "\n";
 
+    pad(parser_states_stream, lvl);
+    parser_states_stream << "state ";
+    parser_states_stream << stage->label << " {\n";
     lvl++;
 
-    pad(parser_states_stream, lvl);
-    parser_states_stream << "packet.extract(hdr." << stages[i]->label << ");\n";
+    if (stage->type == CONDITIONAL) {
+      auto conditional = static_cast<conditional_stage *>(stage.get());
 
-    pad(parser_states_stream, lvl);
-    parser_states_stream << "transition ";
-
-    if (stages[i]->condition.size()) {
-      assert(stages[i]->next_on_true);
-      assert(stages[i]->next_on_false);
-
+      pad(parser_states_stream, lvl);
       parser_states_stream << "select(";
-      parser_states_stream << stages[i]->condition;
+      parser_states_stream << conditional->condition;
       parser_states_stream << ") {\n";
 
       lvl++;
 
       pad(parser_states_stream, lvl);
       parser_states_stream << "true: ";
-      parser_states_stream << stages[i]->next_on_true->label << ";\n";
+      if (conditional->next_on_true) {
+        parser_states_stream << conditional->next_on_true->label;
+        built_stages.push_back(conditional->next_on_false);
+      } else {
+        parser_states_stream << "reject";
+      }
+      parser_states_stream << ";\n";
 
       pad(parser_states_stream, lvl);
       parser_states_stream << "false: ";
-      parser_states_stream << stages[i]->next_on_false->label << ";\n";
+      if (conditional->next_on_false) {
+        parser_states_stream << conditional->next_on_false->label;
+        built_stages.push_back(conditional->next_on_true);
+      } else {
+        parser_states_stream << "reject";
+      }
+      parser_states_stream << ";\n";
 
       lvl--;
 
       pad(parser_states_stream, lvl);
       parser_states_stream << "}\n";
-    } else {
-      assert(stages[i]->next_on_true);
-      parser_states_stream << stages[i]->next_on_true->label << ";\n";
+
+    } else if (stage->type == EXTRACTOR) {
+      auto extractor = static_cast<extractor_stage *>(stage.get());
+      assert(extractor->next);
+
+      pad(parser_states_stream, lvl);
+      parser_states_stream << "packet.extract(hdr." << extractor->hdr;
+
+      if (extractor->dynamic_length.size()) {
+        parser_states_stream << ", " << extractor->dynamic_length;
+      }
+
+      parser_states_stream << ");\n";
+
+      pad(parser_states_stream, lvl);
+      parser_states_stream << "transition ";
+      parser_states_stream << extractor->next->label;
+      parser_states_stream << ";\n";
+
+      built_stages.push_back(extractor->next);
     }
 
     lvl--;
-
     pad(parser_states_stream, lvl);
     parser_states_stream << "}\n";
   }
@@ -513,7 +561,6 @@ bool pending_packet_borrow_next_chunk(const ExecutionPlanNode *ep_node) {
 
     auto bdd_node = module->get_node();
     assert(bdd_node);
-    assert(bdd_node->get_id() < 1000);
 
     if (bdd_node->get_type() == BDD::Node::NodeType::CALL) {
       auto call_node = static_cast<const BDD::Call *>(bdd_node.get());
@@ -535,12 +582,22 @@ void BMv2SimpleSwitchgRPC_Generator::visit(const ExecutionPlanNode *ep_node) {
 
   mod->visit(*this);
 
-  if (parsing_headers && !pending_packet_borrow_next_chunk(ep_node)) {
+  auto pending_packet_borrow_ep = pending_packet_borrow_next_chunk(ep_node);
+
+  if (parsing_headers && !pending_packet_borrow_ep) {
     parser.accept();
-    parsing_headers = false;
   }
 
+  parsing_headers = pending_packet_borrow_ep;
+
   for (auto branch : next) {
+    if (ep_node->get_module()->get_type() ==
+            Module::ModuleType::BMv2SimpleSwitchgRPC_If &&
+        pending_packet_borrow_ep &&
+        !pending_packet_borrow_next_chunk(branch.get())) {
+      parser.reject();
+    }
+
     branch->visit(*this);
   }
 }
@@ -549,10 +606,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Else *node) {
   local_vars.push();
   metadata.push();
-
-  if (parsing_headers) {
-    parser.push_on_false();
-  }
+  parser.push_on_false();
 
   pad(ingress.apply_block, ingress.lvl);
   ingress.apply_block << "else {\n";
@@ -572,7 +626,9 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   headers.emplace_back(chunk, label, fields);
 
-  parser.add(label);
+  assert(parsing_headers);
+  parser.add_extractor(label);
+
   deparser.headers_labels.push_back(label);
 }
 
@@ -627,12 +683,8 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   auto closed = ingress.close_if_clauses(ingress.apply_block);
 
-  if (parsing_headers) {
-    parser.accept();
-    parser.pop();
-  }
-
   for (auto i = 0; i < closed; i++) {
+    parser.pop();
     local_vars.pop();
     metadata.pop();
   }
@@ -645,12 +697,8 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   auto closed = ingress.close_if_clauses(ingress.apply_block);
 
-  if (parsing_headers) {
-    parser.reject();
-    parser.pop();
-  }
-
   for (auto i = 0; i < closed; i++) {
+    parser.pop();
     local_vars.pop();
     metadata.pop();
   }
@@ -658,9 +706,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::If *node) {
-  if (parsing_headers) {
-    parser.add_condition(transpile(node->get_condition(), true));
-  }
+  parser.add_condition(transpile(node->get_condition(), true));
 
   local_vars.push();
   metadata.push();
@@ -700,7 +746,9 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   headers.emplace_back(chunk, label, fields);
 
-  parser.add(label);
+  assert(parsing_headers);
+  parser.add_extractor(label);
+
   deparser.headers_labels.push_back(label);
 }
 
@@ -711,7 +759,21 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::IPOptionsConsume *node) {
-  assert(false && "TODO");
+  auto chunk = node->get_chunk();
+  auto length = node->get_length();
+
+  header_field_t options(320, "options", length);
+
+  std::vector<header_field_t> fields = {options};
+
+  auto label = "ipv4_options";
+
+  headers.emplace_back(chunk, label, fields);
+
+  assert(parsing_headers);
+  parser.add_extractor(label, transpile(length));
+
+  deparser.headers_labels.push_back(label);
 }
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
@@ -731,7 +793,9 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   headers.emplace_back(chunk, label, fields);
 
-  parser.add(label);
+  assert(parsing_headers);
+  parser.add_extractor(label);
+
   deparser.headers_labels.push_back(label);
 }
 
@@ -749,11 +813,8 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   auto closed = ingress.close_if_clauses(ingress.apply_block);
 
-  if (parsing_headers) {
-    parser.pop();
-  }
-
   for (auto i = 0; i < closed; i++) {
+    parser.pop();
     local_vars.pop();
     metadata.pop();
   }
@@ -868,9 +929,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
 void BMv2SimpleSwitchgRPC_Generator::visit(
     const targets::BMv2SimpleSwitchgRPC::Then *node) {
-  if (parsing_headers) {
-    parser.push_on_true();
-  }
+  parser.push_on_true();
 }
 
 }; // namespace synapse

@@ -13,16 +13,18 @@ namespace BMv2SimpleSwitchgRPC {
 class IPOptionsConsume : public Module {
 private:
   klee::ref<klee::Expr> chunk;
+  klee::ref<klee::Expr> length;
 
 public:
   IPOptionsConsume()
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPOptionsConsume,
                Target::BMv2SimpleSwitchgRPC, "IPOptionsConsume") {}
 
-  IPOptionsConsume(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _chunk)
+  IPOptionsConsume(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _chunk,
+                   klee::ref<klee::Expr> _length)
       : Module(ModuleType::BMv2SimpleSwitchgRPC_IPOptionsConsume,
                Target::BMv2SimpleSwitchgRPC, "IPOptionsConsume", node),
-        chunk(_chunk) {}
+        chunk(_chunk), length(_length) {}
 
 private:
   bool always_true(klee::ref<klee::Expr> expr,
@@ -124,7 +126,7 @@ private:
       return result;
     }
 
-    auto new_module = std::make_shared<IPOptionsConsume>(node, _chunk);
+    auto new_module = std::make_shared<IPOptionsConsume>(node, _chunk, _length);
     auto new_ep = ep.add_leaves(new_module, node->get_next());
 
     result.module = new_module;
@@ -139,15 +141,31 @@ public:
   }
 
   virtual Module_ptr clone() const override {
-    auto cloned = new IPOptionsConsume(node, chunk);
+    auto cloned = new IPOptionsConsume(node, chunk, length);
     return std::shared_ptr<Module>(cloned);
   }
 
   virtual bool equals(const Module *other) const override {
-    return other->get_type() == type;
+    if (other->get_type() != type) {
+      return false;
+    }
+
+    auto other_cast = static_cast<const IPOptionsConsume *>(other);
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(chunk, other_cast->chunk)) {
+      return false;
+    }
+
+    if (!BDD::solver_toolbox.are_exprs_always_equal(length,
+                                                    other_cast->length)) {
+      return false;
+    }
+
+    return true;
   }
 
   const klee::ref<klee::Expr> &get_chunk() const { return chunk; }
+  const klee::ref<klee::Expr> &get_length() const { return length; }
 };
 } // namespace BMv2SimpleSwitchgRPC
 } // namespace targets

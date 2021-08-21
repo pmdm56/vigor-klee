@@ -63,11 +63,21 @@ private:
     uint64_t sz;
     std::string type;
     std::string label;
+    klee::ref<klee::Expr> var_length;
 
     header_field_t(uint64_t _sz, const std::string &_label)
         : sz(_sz), label(_label) {
       std::stringstream ss;
       ss << "bit<" << sz << ">";
+      type = ss.str();
+    }
+
+    header_field_t(uint64_t _sz, const std::string &_label,
+                   klee::ref<klee::Expr> _var_length)
+        : sz(_sz), label(_label), var_length(_var_length) {
+      assert(!var_length.isNull());
+      std::stringstream ss;
+      ss << "varbit<" << sz << ">";
       type = ss.str();
     }
   };
@@ -84,12 +94,15 @@ private:
           fields(_fields) {
       assert(!chunk.isNull());
 
+      bool size_check = true;
+
       unsigned total_sz = 0;
       for (auto field : fields) {
         total_sz += field.sz;
+        size_check &= field.var_length.isNull();
       }
 
-      assert(total_sz <= chunk->getWidth());
+      assert(!size_check || total_sz <= chunk->getWidth());
     }
   };
 
@@ -284,91 +297,209 @@ private:
   };
 
   struct parser_t : stage_t {
+    enum stage_type {
+      CONDITIONAL,
+      EXTRACTOR,
+      TERMINATOR
+    };
+
     struct parsing_stage {
+      stage_type type;
       std::string label;
+
+      parsing_stage(stage_type _type, const std::string &_label)
+          : type(_type), label(_label) {}
+    };
+
+    struct conditional_stage : parsing_stage {
       std::string condition;
+      bool transition_value;
+
       std::shared_ptr<parsing_stage> next_on_true;
       std::shared_ptr<parsing_stage> next_on_false;
 
-      parsing_stage() : next_on_true(nullptr), next_on_false(nullptr) {}
+      conditional_stage(const std::string &_label,
+                        const std::string &_condition)
+          : parsing_stage(CONDITIONAL, _label), condition(_condition) {}
     };
+
+    struct extractor_stage : parsing_stage {
+      std::string hdr;
+      std::string dynamic_length;
+      std::shared_ptr<parsing_stage> next;
+
+      extractor_stage(const std::string &_label, const std::string &_hdr,
+                      const std::string &_dynamic_length)
+          : parsing_stage(EXTRACTOR, _label), hdr(_hdr),
+            dynamic_length(_dynamic_length) {}
+    };
+
+    std::shared_ptr<parsing_stage> accept_stage;
+    std::shared_ptr<parsing_stage> reject_stage;
 
     std::stack<std::shared_ptr<parsing_stage>> stages_stack;
     std::vector<std::shared_ptr<parsing_stage>> stages;
+    int stage_id = 0;
 
-    parser_t() : stage_t("SyNAPSE_Parser") {}
+    parser_t()
+        : stage_t("SyNAPSE_Parser"),
+          accept_stage(std::shared_ptr<parsing_stage>(
+              new parsing_stage(TERMINATOR, "accept"))),
+          reject_stage(std::shared_ptr<parsing_stage>(
+              new parsing_stage(TERMINATOR, "reject"))) {}
 
     void dump(code_builder_t &code_builder) override;
 
-    void add(std::string label) {
-      if (label != "accept" && label != "reject") {
-        label = "parse_" + label;
-      }
+    void transition(std::shared_ptr<parsing_stage> new_stage) {
+      assert(stages_stack.size());
+      auto current = stages_stack.top();
 
-      if (stages_stack.size() && stages_stack.top()->label.size() == 0) {
-        stages_stack.top()->label = label;
+      if (current->type == CONDITIONAL) {
+        auto conditional = static_cast<conditional_stage *>(current.get());
+
+        if (conditional->transition_value && !conditional->next_on_true) {
+          conditional->next_on_true = new_stage;
+        } else if (!conditional->next_on_false) {
+          conditional->next_on_false = new_stage;
+        }
+      } else if (current->type == EXTRACTOR) {
+        auto extractor = static_cast<extractor_stage *>(current.get());
+
+        if (!extractor->next) {
+          extractor->next = new_stage;
+        }
       } else {
-        auto new_stage = std::shared_ptr<parsing_stage>(new parsing_stage());
-        new_stage->label = label;
-
-        stages.push_back(new_stage);
-
-        if (stages_stack.size() && stages_stack.top()->label != "accept" &&
-            stages_stack.top()->label != "reject") {
-          auto current = stages_stack.top();
-          current->next_on_true = new_stage;
-        }
-
-        stages_stack.push(new_stage);
-        assert(stages_stack.top());
+        assert(false &&
+               "Should not transition from an already terminated stage");
       }
-
-      std::cerr << "=== STAGES ===\n";
-      for (auto stage : stages) {
-        std::cerr << "stage " << stage->label << "\n";
-        if (stage->next_on_true) {
-          std::cerr << "   true:  " << stage->next_on_true->label << "\n";
-        }
-        if (stage->next_on_false) {
-          std::cerr << "   false: " << stage->next_on_false->label << "\n";
-        }
-      }
-      std::cerr << "============\n\n";
     }
 
-    void accept() { add("accept"); }
-    void reject() { add("reject"); }
+    void accept() { transition(accept_stage); }
+    void reject() { transition(reject_stage); }
 
     void push_on_true() {
       assert(stages_stack.size());
+      auto current = stages_stack.top();
 
-      auto &current = stages_stack.top();
-      stages.emplace_back(new parsing_stage());
-
-      current->next_on_true = stages.back();
-      stages_stack.push(stages.back());
+      assert(current->type == CONDITIONAL);
+      auto conditional = static_cast<conditional_stage *>(current.get());
+      conditional->transition_value = true;
     }
 
     void push_on_false() {
       assert(stages_stack.size());
+      auto current = stages_stack.top();
 
-      auto &current = stages_stack.top();
-      stages.emplace_back(new parsing_stage());
-
-      current->next_on_false = stages.back();
-      stages_stack.push(stages.back());
+      assert(current->type == CONDITIONAL);
+      auto conditional = static_cast<conditional_stage *>(current.get());
+      conditional->transition_value = false;
     }
 
     void pop() {
       assert(stages_stack.size());
+
+      if (stages_stack.top()->type == CONDITIONAL) {
+        auto conditional =
+            static_cast<conditional_stage *>(stages_stack.top().get());
+        if (conditional->transition_value) {
+          return;
+        }
+      }
+
       stages_stack.pop();
     }
 
     void add_condition(const std::string &condition) {
-      assert(stages_stack.size());
+      std::stringstream conditional_label;
 
-      auto &current = stages_stack.top();
-      current->condition = condition;
+      conditional_label << "conditional_stage_";
+      conditional_label << stage_id;
+
+      stage_id++;
+
+      auto new_stage = std::shared_ptr<parsing_stage>(
+          new conditional_stage(conditional_label.str(), condition));
+
+      transition(new_stage);
+
+      stages.push_back(new_stage);
+      stages_stack.push(new_stage);
+    }
+
+    void add_extractor(std::string label) {
+      add_extractor(label, std::string());
+    }
+
+    void add_extractor(std::string hdr, std::string dynamic_length) {
+      std::stringstream label_stream;
+      label_stream << "parse_";
+      label_stream << hdr;
+      label_stream << "_";
+      label_stream << stage_id;
+
+      stage_id++;
+
+      auto new_stage = std::shared_ptr<parsing_stage>(
+          new extractor_stage(label_stream.str(), hdr, dynamic_length));
+
+      if (stages_stack.size()) {
+        transition(new_stage);
+      }
+
+      stages.push_back(new_stage);
+      stages_stack.push(new_stage);
+    }
+
+    void print() {
+      if (!stages.size()) {
+        return;
+      }
+
+      std::cerr << "====== STAGES ======\n";
+      std::cerr << "current " << stages_stack.top()->label << "\n";
+      print(stages[0]);
+      std::cerr << "====================\n\n";
+    }
+
+    void print(std::shared_ptr<parsing_stage> stage) {
+      if (!stage) {
+        return;
+      }
+
+      if (stage->type == CONDITIONAL) {
+        std::cerr << "stage " << stage->label;
+        std::cerr << "\n";
+
+        auto conditional = static_cast<conditional_stage *>(stage.get());
+
+        std::cerr << "   true:   ";
+        if (conditional->next_on_true) {
+          std::cerr << conditional->next_on_true->label;
+        }
+        std::cerr << "\n";
+
+        std::cerr << "   false:  ";
+        if (conditional->next_on_false) {
+          std::cerr << conditional->next_on_false->label;
+        }
+        std::cerr << "\n";
+
+        print(conditional->next_on_true);
+        print(conditional->next_on_false);
+      } else if (stage->type == EXTRACTOR) {
+        std::cerr << "stage " << stage->label;
+        std::cerr << "\n";
+
+        auto extractor = static_cast<extractor_stage *>(stage.get());
+
+        std::cerr << "   next:   ";
+        if (extractor->next) {
+          std::cerr << extractor->next->label;
+        }
+        std::cerr << "\n";
+
+        print(extractor->next);
+      }
     }
   };
 
