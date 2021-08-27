@@ -92,6 +92,29 @@ public:
   std::string get_code() { return code.str(); }
 
   klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    klee::ref<klee::Expr> eref = const_cast<klee::ReadExpr *>(&e);
+
+    RetrieveSymbols retriever;
+    retriever.visit(eref);
+
+    auto symbols = retriever.get_retrieved_strings();
+    assert(symbols.size() == 1);
+    auto symbol = *symbols.begin();
+
+    if (stack.has_label(symbol)) {
+      auto value = stack.get_value(symbol);
+      auto offset = e.index;
+
+      assert(offset->getKind() == klee::Expr::Kind::Constant);
+      auto offset_value = BDD::solver_toolbox.value_from_expr(offset);
+
+      auto extracted = BDD::solver_toolbox.exprBuilder->Extract(
+          value, offset_value, eref->getWidth());
+      code << transpile(extracted, stack);
+
+      return klee::ExprVisitor::Action::skipChildren();
+    }
+
     e.dump();
     std::cerr << "\n";
     assert(false && "TODO");
@@ -1982,17 +2005,70 @@ void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {
 }
 
 void x86_Generator::visit(const targets::x86::SetIpv4UdpTcpChecksum *node) {
+  auto ip_header_addr = node->get_ip_header_addr();
+  auto l4_header_addr = node->get_l4_header_addr();
+  auto p_addr = node->get_p_addr();
+  auto generated_symbols = node->get_generated_symbols();
+
+  assert(!ip_header_addr.isNull());
+  assert(!l4_header_addr.isNull());
+  assert(!p_addr.isNull());
+
+  auto ip_header_label = stack.get_label(ip_header_addr);
+  auto l4_header_label = stack.get_label(l4_header_addr);
+  auto p_label = stack.get_label(p_addr);
+
+  assert(generated_symbols.size() == 1);
+  auto checksum_label = get_label(generated_symbols, "checksum");
+  auto ip_hdr = stack.get_value(ip_header_addr);
+  auto checksum_expr = BDD::solver_toolbox.exprBuilder->Extract(ip_hdr, 80, 16);
+
+  pad(nf_process_stream);
+  nf_process_stream << "uint16_t " << checksum_label;
+  nf_process_stream << " = " << transpile(checksum_expr, stack);
+  nf_process_stream << ";\n";
+
+  stack.add(checksum_label, checksum_expr);
+
   pad(nf_process_stream);
   nf_process_stream << "rte_ipv4_udptcp_cksum(";
+  nf_process_stream << ip_header_label;
+  nf_process_stream << ", " << l4_header_label;
+  nf_process_stream << ", " << p_label;
   nf_process_stream << ");\n";
-  assert(false && "TODO");
 }
 
 void x86_Generator::visit(const targets::x86::DchainIsIndexAllocated *node) {
+  auto dchain_addr = node->get_dchain_addr();
+  auto index = node->get_index();
+  auto is_allocated = node->get_is_allocated();
+
+  auto generated_symbols = node->get_generated_symbols();
+
+  assert(!dchain_addr.isNull());
+  assert(!index.isNull());
+  assert(!is_allocated.isNull());
+
+  auto dchain = stack.get_label(dchain_addr);
+  if (!dchain.size()) {
+    stack.err_dump();
+    assert(false && "Not found in stack");
+  }
+
+  assert(generated_symbols.size() == 1);
+
+  auto is_allocated_label =
+      get_label(generated_symbols, "dchain_is_index_allocated");
+
+  stack.add(is_allocated_label, is_allocated);
+
   pad(nf_process_stream);
+  nf_process_stream << "int " << is_allocated_label;
+  nf_process_stream << " = ";
   nf_process_stream << "dchain_is_index_allocated(";
+  nf_process_stream << dchain;
+  nf_process_stream << ", " << transpile(index, stack);
   nf_process_stream << ");\n";
-  assert(false && "TODO");
 }
 
 } // namespace synapse

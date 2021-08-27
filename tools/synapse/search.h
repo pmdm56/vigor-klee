@@ -56,7 +56,7 @@ public:
       auto next_node = next_ep.get_next_node();
       assert(next_node);
 
-      // Graphviz::visualize(next_ep, search_space);
+      // Graphviz::visualize(next_ep);
 
       struct report_t {
         std::vector<std::string> target_name;
@@ -76,10 +76,6 @@ public:
 
           h.add(result.next_eps);
           search_space.add_leaves(next_ep, result.module, result.next_eps);
-
-          // for (auto result : result.next_eps) {
-          //   Graphviz::visualize(result);
-          // }
         }
       }
 
