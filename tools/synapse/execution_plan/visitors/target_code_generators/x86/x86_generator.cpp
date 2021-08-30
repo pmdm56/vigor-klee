@@ -1665,6 +1665,34 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   expiration_times.emplace_back(vector_addr, expiration_time);
   expiration_times.emplace_back(map_addr, expiration_time);
 
+  assert(generated_symbols.size() == 1);
+
+  auto number_of_freed_flows_label =
+      get_label(generated_symbols, "number_of_freed_flows");
+
+  stack.add(number_of_freed_flows_label, number_of_freed_flows);
+
+  // Kind of a hack: symbolic execution tells us that
+  // the success of a dchain_allocate_new_index is
+  // related to both out_of_space symbol and
+  // number_of_freed_flows symbol.
+  // However, the dchain_allocate_new_index returns
+  // a bool that tells if the function was able to allocate.
+  // So we just ignore this symbol.
+  pad(nf_process_stream);
+  nf_process_stream << "// hack\n";
+  pad(nf_process_stream);
+  nf_process_stream << "int " << number_of_freed_flows_label;
+  nf_process_stream << " = 0;\n";
+
+  // expiration is controlled by the switch
+  // TODO: if a specific object is not on the switch, its expiration time
+  // must be controlled by the controller
+  if (is_controller.first &&
+      is_controller.second == Target::BMv2SimpleSwitchgRPC) {
+    return;
+  }
+
   auto dchain = stack.get_label(dchain_addr);
   if (!dchain.size()) {
     stack.err_dump();
@@ -1683,16 +1711,7 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
     assert(false && "Not found in stack");
   }
 
-  assert(generated_symbols.size() == 1);
-
-  auto number_of_freed_flows_label =
-      get_label(generated_symbols, "number_of_freed_flows");
-
-  stack.add(number_of_freed_flows_label, number_of_freed_flows);
-
   pad(nf_process_stream);
-  nf_process_stream << "int " << number_of_freed_flows_label;
-  nf_process_stream << " = ";
   nf_process_stream << "expire_items_single_map(";
   nf_process_stream << dchain;
   nf_process_stream << ", " << vector;
