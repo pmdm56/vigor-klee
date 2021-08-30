@@ -88,6 +88,9 @@ public:
       if (i < node->get_call_paths_filenames().size() - 1) {
         os << ",";
       }
+      if (i > 0 && i % 10 == 0) {
+        os << "\\n";
+      }
       i++;
     }
     os << "}";
@@ -191,6 +194,9 @@ public:
       os << call_path_id;
       if (i < node->get_call_paths_filenames().size() - 1) {
         os << ",";
+      }
+      if (i > 0 && i % 10 == 0) {
+        os << "\\l          ";
       }
       i++;
     }
