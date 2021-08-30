@@ -75,8 +75,23 @@ public:
 
     os << "\t\t" << get_gv_name(node);
     os << " [shape=Mdiamond, label=\"";
+
     os << node->get_id() << ":";
     os << pretty_print_expr(condition);
+
+    auto i = 0u;
+    os << "\\ncps={";
+    for (auto cp : node->get_call_paths_filenames()) {
+      int call_path_id;
+      sscanf(cp.c_str(), "test%d", &call_path_id);
+      os << call_path_id;
+      if (i < node->get_call_paths_filenames().size() - 1) {
+        os << ",";
+      }
+      i++;
+    }
+    os << "}";
+
     os << "\"";
 
     if (processed.find(node->get_id()) != processed.end()) {
@@ -118,11 +133,13 @@ public:
 
     os << "\t\t" << get_gv_name(node);
     os << " [label=\"";
+    auto i = 0u;
+
     os << node->get_id() << ":";
     os << call.function_name;
     os << "(";
 
-    unsigned i = 0;
+    i = 0;
     for (const auto &pair : call.args) {
       if (call.args.size() > 1) {
         os << "\\l";
@@ -164,7 +181,22 @@ public:
       i++;
     }
 
-    os << ")\\l\", ";
+    os << ")\\l";
+
+    i = 0;
+    os << " cps={";
+    for (auto cp : node->get_call_paths_filenames()) {
+      int call_path_id;
+      sscanf(cp.c_str(), "test%d", &call_path_id);
+      os << call_path_id;
+      if (i < node->get_call_paths_filenames().size() - 1) {
+        os << ",";
+      }
+      i++;
+    }
+    os << "}\\l";
+
+    os << "\", ";
 
     if (processed.find(node->get_id()) != processed.end()) {
       os << "color=" << COLOR_PROCESSED;
@@ -226,12 +258,28 @@ public:
     auto value = node->get_return_value();
     auto operation = node->get_return_operation();
 
+    auto i = 0u;
+    std::stringstream cps;
+    cps << "\\lcps={";
+    for (auto cp : node->get_call_paths_filenames()) {
+      int call_path_id;
+      sscanf(cp.c_str(), "test%d", &call_path_id);
+      cps << call_path_id;
+      if (i < node->get_call_paths_filenames().size() - 1) {
+        cps << ",";
+      }
+      i++;
+    }
+    cps << "}\\l";
+
     os << "\t\t" << get_gv_name(node);
     os << " [label=\"";
     os << node->get_id() << ":";
     switch (operation) {
     case ReturnProcess::Operation::FWD: {
-      os << "fwd(" << value << ")\", ";
+      os << "fwd(" << value << ")";
+      os << cps.str();
+      os << "\", ";
 
       if (processed.find(node->get_id()) != processed.end()) {
         os << " color=" << COLOR_PROCESSED << "]";
@@ -244,7 +292,9 @@ public:
       break;
     }
     case ReturnProcess::Operation::DROP: {
-      os << "drop()\",";
+      os << "drop()";
+      os << cps.str();
+      os << "\", ";
 
       if (processed.find(node->get_id()) != processed.end()) {
         os << " color=" << COLOR_PROCESSED << "]";
@@ -257,7 +307,9 @@ public:
       break;
     }
     case ReturnProcess::Operation::BCAST: {
-      os << "bcast()\", ";
+      os << "bcast()";
+      os << cps.str();
+      os << "\", ";
 
       if (processed.find(node->get_id()) != processed.end()) {
         os << " color=" << COLOR_PROCESSED << "]";
