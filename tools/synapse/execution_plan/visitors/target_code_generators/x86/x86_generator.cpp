@@ -1222,7 +1222,7 @@ void x86_Generator::build_runtime_configure() {
 
   pad(runtime_configure_stream);
   runtime_configure_stream
-      << "bool synapse_runtime_configure(synapse_config_t *config) {\n";
+      << "bool synapse_runtime_config(synapse_config_t *config) {\n";
   lvl++;
 
   pad(runtime_configure_stream);
@@ -1269,51 +1269,42 @@ void x86_Generator::build_runtime_configure() {
   for (auto table : tables) {
     pad(runtime_configure_stream);
     runtime_configure_stream << "config->bmv2_tables[" << i << "]";
-    runtime_configure_stream << " = ";
-    runtime_configure_stream << "{\n";
-
-    lvl++;
-    pad(runtime_configure_stream);
-    runtime_configure_stream << ".name = {\n";
-
-    lvl++;
-    pad(runtime_configure_stream);
-    runtime_configure_stream << ".str = \"" << table.name << "\",\n";
-    pad(runtime_configure_stream);
-    runtime_configure_stream << ".sz = " << table.name.size() << "\n";
-
-    lvl--;
-    pad(runtime_configure_stream);
-    runtime_configure_stream << "},\n";
+    runtime_configure_stream << ".name";
+    runtime_configure_stream << ".str = \"" << table.name << "\";\n";
 
     pad(runtime_configure_stream);
-    runtime_configure_stream << ".tag = 0,\n";
+    runtime_configure_stream << "config->bmv2_tables[" << i << "]";
+    runtime_configure_stream << ".name";
+    runtime_configure_stream << ".sz = " << table.name.size() << ";\n";
 
     pad(runtime_configure_stream);
+    runtime_configure_stream << "config->bmv2_tables[" << i << "]";
+    runtime_configure_stream << ".tag = 0;\n";
+
+    pad(runtime_configure_stream);
+    runtime_configure_stream << "config->bmv2_tables[" << i << "]";
     runtime_configure_stream << ".libvig_objs = ";
     runtime_configure_stream << "(libvig_obj_t*) malloc(";
     runtime_configure_stream << "sizeof(libvig_obj_t) * " << table.objs.size();
-    runtime_configure_stream << "),\n";
+    runtime_configure_stream << ");\n";
 
     pad(runtime_configure_stream);
+    runtime_configure_stream << "config->bmv2_tables[" << i << "]";
     runtime_configure_stream << ".libvig_objs_sz = " << table.objs.size()
-                             << "\n";
-
-    lvl--;
-    pad(runtime_configure_stream);
-    runtime_configure_stream << "};\n";
+                             << ";\n";
 
     auto j = 0u;
     for (auto obj : table.objs) {
       pad(runtime_configure_stream);
       runtime_configure_stream << "config->bmv2_tables[" << i << "]";
-      runtime_configure_stream << ".libvig_objs[" << j << "] = {\n";
+      runtime_configure_stream << ".libvig_objs[" << j << "]";
+      runtime_configure_stream << ".ptr = (void*) " << obj.obj_label << ";\n";
 
-      lvl++;
       pad(runtime_configure_stream);
-      runtime_configure_stream << ".ptr = (void*) " << obj.obj_label << ",\n";
-      pad(runtime_configure_stream);
+      runtime_configure_stream << "config->bmv2_tables[" << i << "]";
+      runtime_configure_stream << ".libvig_objs[" << j << "]";
       runtime_configure_stream << ".type = ";
+      runtime_configure_stream << "LIBVIG_";
       switch (obj.obj_type) {
       case table_t::libvig_obj_t::MAP:
         runtime_configure_stream << "MAP";
@@ -1325,11 +1316,7 @@ void x86_Generator::build_runtime_configure() {
         runtime_configure_stream << "DCHAIN";
         break;
       }
-      runtime_configure_stream << "\n";
-
-      lvl--;
-      pad(runtime_configure_stream);
-      runtime_configure_stream << "};\n";
+      runtime_configure_stream << ";\n";
 
       j++;
     }
@@ -1512,10 +1499,8 @@ void x86_Generator::visit(const targets::x86::PacketGetMetadata *node) {
   nf_process_stream << "string_ptr_t " << code_id_metadata_label << "_str;\n";
 
   pad(nf_process_stream);
-  nf_process_stream << "synapse_get_packet_in_metadata(";
-  nf_process_stream << "meta_in";
-  nf_process_stream << ", meta_in_size";
-  nf_process_stream << ", " << metadata_key_label;
+  nf_process_stream << "synapse_runtime_pkt_in_get_meta_by_name(";
+  nf_process_stream << metadata_key_label;
   nf_process_stream << ", &" << code_id_metadata_label << "_str";
   nf_process_stream << ");\n";
 
@@ -1906,9 +1891,18 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
   auto tables = get_associated_p4_tables(libvig_obj);
 
   for (auto table : tables) {
+    pad(nf_process_stream);
+    nf_process_stream << "{\n";
+    lvl++;
+
     assert(table.n_params == 1 && "TODO table merging");
 
-    nf_process_stream << "\n";
+    pad(nf_process_stream);
+    nf_process_stream << "string_t table_name";
+    nf_process_stream << " = { ";
+    nf_process_stream << ".str = \"" << table.name << "\"";
+    nf_process_stream << ", .sz = " << table.name.size();
+    nf_process_stream << " };\n";
 
     for (auto byte = 0u; byte < key->getWidth() / 8; byte++) {
       std::stringstream key_byte_name;
@@ -1931,7 +1925,7 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
       nf_process_stream << "synapse_runtime_wrappers_p4_uint32_new(";
       nf_process_stream << "(uint32_t) (";
       nf_process_stream << key_byte_expr_transpiled;
-      nf_process_stream << "))";
+      nf_process_stream << "))->bytes";
       nf_process_stream << ";\n";
     }
 
@@ -1951,7 +1945,7 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
       nf_process_stream << " .left = (void*) &" << key_byte_name.str()
                         << "_name";
       nf_process_stream << ", .right = (void*) " << key_byte_name.str()
-                        << "_value->bytes";
+                        << "_value";
       nf_process_stream << " }";
 
       if (byte != (key->getWidth() / 8) - 1) {
@@ -2034,7 +2028,7 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
       nf_process_stream << ".left = (void*) &" << param_name.str() << "_name";
       nf_process_stream << ", .right = (void*) &" << param_name.str()
                         << "_value";
-      nf_process_stream << " };";
+      nf_process_stream << " }";
 
       if (i != table.n_params - 1) {
         nf_process_stream << ", ";
@@ -2052,9 +2046,8 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
     auto expiration_time = get_expiration_time(libvig_obj);
 
     pad(nf_process_stream);
-    nf_process_stream << "synapse_queue_insert_table_entry(";
-    nf_process_stream << "env";
-    nf_process_stream << ", " << table.name;
+    nf_process_stream << "synapse_environment_queue_insert_table_entry(";
+    nf_process_stream << "table_name";
     nf_process_stream << ", keys";
     nf_process_stream << ", " << key->getWidth() / 8;
     nf_process_stream << ", action_name";
@@ -2070,6 +2063,10 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
     }
 
     nf_process_stream << ");\n";
+
+    lvl--;
+    pad(nf_process_stream);
+    nf_process_stream << "}\n";
   }
 }
 
