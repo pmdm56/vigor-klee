@@ -2025,9 +2025,12 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
     nf_process_stream << ", action_params";
     nf_process_stream << ", " << table.n_params;
     nf_process_stream << ", 0";
+    nf_process_stream << ", ";
 
     if (expiration_time.first) {
-      nf_process_stream << ", " << expiration_time.second;
+      nf_process_stream << expiration_time.second;
+    } else {
+      nf_process_stream << "0";
     }
 
     nf_process_stream << ");\n";
