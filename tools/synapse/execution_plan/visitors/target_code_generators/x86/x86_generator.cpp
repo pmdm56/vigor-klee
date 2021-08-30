@@ -1137,8 +1137,20 @@ void x86_Generator::build_runtime_configure() {
   assert(original_ep->get_root());
 
   std::unordered_set<uint64_t> devices;
-  std::unordered_set<std::string> tags;
-  unsigned i = 0;
+
+  struct table_t {
+    struct libvig_obj_t {
+      enum obj_type_t { MAP, VECTOR, DCHAIN };
+
+      std::string obj_label;
+      obj_type_t obj_type;
+    };
+
+    std::string name;
+    std::vector<libvig_obj_t> objs;
+  };
+
+  std::vector<table_t> tables;
 
   std::vector<ExecutionPlanNode_ptr> nodes = {original_ep->get_root()};
 
@@ -1175,14 +1187,33 @@ void x86_Generator::build_runtime_configure() {
 
       auto bdd_function = table_lookup->get_bdd_function();
       auto table_id = table_lookup->get_table_id();
+      auto obj = table_lookup->get_obj();
 
-      std::stringstream tag_name;
-      tag_name << bdd_function;
-      tag_name << "_";
-      tag_name << table_id;
-      tag_name << "_tag";
+      auto obj_label = stack.get_label(obj);
 
-      tags.insert(tag_name.str());
+      std::stringstream table_name;
+      table_name << bdd_function;
+      table_name << "_";
+      table_name << table_id;
+
+      table_t::libvig_obj_t::obj_type_t type;
+
+      if (bdd_function == "map_get") {
+        type = table_t::libvig_obj_t::MAP;
+      } else if (bdd_function == "vector_borrow" ||
+                 bdd_function == "vector_return") {
+        type = table_t::libvig_obj_t::VECTOR;
+      } else if (bdd_function == "dchain_is_index_allocated") {
+        type = table_t::libvig_obj_t::DCHAIN;
+      } else {
+        assert(false && "TODO");
+      }
+
+      table_t table{table_name.str(),
+                    std::vector<table_t::libvig_obj_t>{
+                        table_t::libvig_obj_t{obj_label, type}}};
+
+      tables.push_back(table);
     }
 
     auto next = node->get_next();
@@ -1190,7 +1221,7 @@ void x86_Generator::build_runtime_configure() {
   }
 
   pad(runtime_configure_stream);
-  runtime_configure_stream << "config->devices_size";
+  runtime_configure_stream << "config->devices_sz";
   runtime_configure_stream << " = ";
   runtime_configure_stream << devices.size();
   runtime_configure_stream << ";\n";
@@ -1199,11 +1230,11 @@ void x86_Generator::build_runtime_configure() {
   runtime_configure_stream << "config->devices";
   runtime_configure_stream << " = ";
   runtime_configure_stream << "(uint32_t*) malloc(";
-  runtime_configure_stream << "sizeof(uint32_t) * config->devices_size";
+  runtime_configure_stream << "sizeof(uint32_t) * config->devices_sz";
   runtime_configure_stream << ")";
   runtime_configure_stream << ";\n";
 
-  i = 0;
+  auto i = 0u;
   for (auto device : devices) {
     pad(runtime_configure_stream);
     runtime_configure_stream << "config->devices[" << i << "]";
@@ -1215,28 +1246,88 @@ void x86_Generator::build_runtime_configure() {
   }
 
   pad(runtime_configure_stream);
-  runtime_configure_stream << "config->tags_size";
+  runtime_configure_stream << "config->bmv2_tables_sz";
   runtime_configure_stream << " = ";
-  runtime_configure_stream << tags.size();
+  runtime_configure_stream << tables.size();
   runtime_configure_stream << ";\n";
 
   pad(runtime_configure_stream);
-  runtime_configure_stream << "config->tags_names";
+  runtime_configure_stream << "config->bmv2_tables";
   runtime_configure_stream << " = ";
-  runtime_configure_stream << "(string_t*) malloc(";
-  runtime_configure_stream << "sizeof(string_t) * config->tags_size";
+  runtime_configure_stream << "(synapse_bmv2_table_t*) malloc(";
+  runtime_configure_stream << "sizeof(synapse_bmv2_table_t) * ";
+  runtime_configure_stream << "config->bmv2_tables_sz";
   runtime_configure_stream << ")";
   runtime_configure_stream << ";\n";
 
   i = 0;
-  for (auto tag : tags) {
+  for (auto table : tables) {
     pad(runtime_configure_stream);
-    runtime_configure_stream << "config->tags_names[" << i << "]";
-    runtime_configure_stream << " = { ";
-    runtime_configure_stream << ".str = \"" << tag << "\"";
-    runtime_configure_stream << ", .sz = " << tag.size() << "";
-    runtime_configure_stream << " }";
-    runtime_configure_stream << ";\n";
+    runtime_configure_stream << "config->bmv2_tables[" << i << "]";
+    runtime_configure_stream << " = ";
+    runtime_configure_stream << "{\n";
+
+    lvl++;
+    pad(runtime_configure_stream);
+    runtime_configure_stream << ".name = {\n";
+
+    lvl++;
+    pad(runtime_configure_stream);
+    runtime_configure_stream << ".str = \"" << table.name << "\",\n";
+    pad(runtime_configure_stream);
+    runtime_configure_stream << ".sz = " << table.name.size() << "\n";
+
+    lvl--;
+    pad(runtime_configure_stream);
+    runtime_configure_stream << "},\n";
+
+    pad(runtime_configure_stream);
+    runtime_configure_stream << ".tag = 0,\n";
+
+    pad(runtime_configure_stream);
+    runtime_configure_stream << ".libvig_objs = ";
+    runtime_configure_stream << "(libvig_obj_t*) malloc(";
+    runtime_configure_stream << "sizeof(libvig_obj_t) * " << table.objs.size();
+    runtime_configure_stream << "),\n";
+
+    pad(runtime_configure_stream);
+    runtime_configure_stream << ".libvig_objs_sz = " << table.objs.size()
+                             << "\n";
+
+    lvl--;
+    pad(runtime_configure_stream);
+    runtime_configure_stream << "};\n";
+
+    auto j = 0u;
+    for (auto obj : table.objs) {
+      pad(runtime_configure_stream);
+      runtime_configure_stream << "config->bmv2_tables[" << i << "]";
+      runtime_configure_stream << ".libvig_objs[" << j << "] = {\n";
+
+      lvl++;
+      pad(runtime_configure_stream);
+      runtime_configure_stream << ".ptr = (void*) " << obj.obj_label << ",\n";
+      pad(runtime_configure_stream);
+      runtime_configure_stream << ".type = ";
+      switch (obj.obj_type) {
+      case table_t::libvig_obj_t::MAP:
+        runtime_configure_stream << "MAP";
+        break;
+      case table_t::libvig_obj_t::VECTOR:
+        runtime_configure_stream << "VECTOR";
+        break;
+      case table_t::libvig_obj_t::DCHAIN:
+        runtime_configure_stream << "DCHAIN";
+        break;
+      }
+      runtime_configure_stream << "\n";
+
+      lvl--;
+      pad(runtime_configure_stream);
+      runtime_configure_stream << "};\n";
+
+      j++;
+    }
 
     i++;
   }
