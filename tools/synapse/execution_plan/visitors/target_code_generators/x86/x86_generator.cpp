@@ -2009,8 +2009,19 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
 
     nf_process_stream << "\n";
 
+    std::stringstream action_name;
+    action_name << table.name;
+    action_name << "_populate";
+
     pad(nf_process_stream);
-    nf_process_stream << "pair_t params[" << table.n_params << "] = {\n";
+    nf_process_stream << "string_t action_name";
+    nf_process_stream << " = { ";
+    nf_process_stream << ".str = \"" << action_name.str() << "\"";
+    nf_process_stream << ", .sz = " << action_name.str().size();
+    nf_process_stream << " };\n";
+
+    pad(nf_process_stream);
+    nf_process_stream << "pair_t action_params[" << table.n_params << "] = {\n";
     lvl++;
 
     for (auto i = 0u; i < table.n_params; i++) {
