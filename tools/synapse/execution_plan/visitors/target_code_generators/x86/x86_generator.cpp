@@ -1221,6 +1221,11 @@ void x86_Generator::build_runtime_configure() {
   }
 
   pad(runtime_configure_stream);
+  runtime_configure_stream
+      << "bool synapse_runtime_configure(synapse_config_t *config) {\n";
+  lvl++;
+
+  pad(runtime_configure_stream);
   runtime_configure_stream << "config->devices_sz";
   runtime_configure_stream << " = ";
   runtime_configure_stream << devices.size();
@@ -1331,6 +1336,10 @@ void x86_Generator::build_runtime_configure() {
 
     i++;
   }
+
+  lvl--;
+  pad(runtime_configure_stream);
+  runtime_configure_stream << "}";
 }
 
 void x86_Generator::visit(ExecutionPlan ep) {
@@ -1366,11 +1375,8 @@ void x86_Generator::visit(ExecutionPlan ep) {
 
   code_builder.fill_mark(MARKER_GLOBAL_STATE, global_state_stream.str());
 
-  if (is_controller.first &&
-      is_controller.second == Target::BMv2SimpleSwitchgRPC) {
-    code_builder.fill_mark(MARKER_RUNTIME_CONFIGURE,
-                           runtime_configure_stream.str());
-  }
+  code_builder.fill_mark(MARKER_RUNTIME_CONFIGURE,
+                         runtime_configure_stream.str());
 
   code_builder.fill_mark(MARKER_NF_INIT, nf_init_stream.str());
   code_builder.fill_mark(MARKER_NF_PROCESS, nf_process_stream.str());
