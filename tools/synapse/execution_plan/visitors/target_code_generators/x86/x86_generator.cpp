@@ -207,10 +207,13 @@ public:
       if (offset > 0) {
         code << "(";
       }
+
       code << transpile(expr, stack);
+
       if (offset > 0) {
         code << " >> " << offset << ")";
       }
+
       code << " & " << mask << "u";
 
       return klee::ExprVisitor::Action::skipChildren();

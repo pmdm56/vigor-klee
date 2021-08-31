@@ -204,7 +204,23 @@ struct stack_t {
 
         if (var_size == value_size &&
             BDD::solver_toolbox.are_exprs_always_equal(var.value, value)) {
-          return var.label;
+          if (!var.addr.isNull()) {
+            assert(value_size % 8 == 0 && value_size <= 64);
+
+            label_stream << "*(";
+
+            label_stream << "(uint";
+            label_stream << value_size;
+            label_stream << "_t*)";
+
+            label_stream << var.label;
+
+            label_stream << ")";
+          } else {
+            label_stream << var.label;
+          }
+
+          return label_stream.str();
         }
 
         for (unsigned b = 0; b + value_size <= var_size; b += 8) {
@@ -212,6 +228,7 @@ struct stack_t {
               var.value, b, value_size);
 
           if (BDD::solver_toolbox.are_exprs_always_equal(var_extract, value)) {
+
             if (!var.addr.isNull() && value_size == 8) {
               label_stream << var.label << "[" << b / 8 << "]";
             } else if (!var.addr.isNull()) {
@@ -241,6 +258,7 @@ struct stack_t {
               }
               label_stream << " & " << mask;
             }
+
             return label_stream.str();
           }
         }
