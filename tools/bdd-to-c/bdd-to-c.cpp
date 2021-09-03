@@ -256,9 +256,10 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
       auto renamed = Variable::build("_" + name, type);
       auto ret = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
 
-      std::vector<ExpressionType_ptr> args = {type, renamed};
+      std::vector<ExpressionType_ptr> define_args = {type, renamed};
+      std::vector<ExpressionType_ptr> args = {renamed};
 
-      auto def = FunctionCall::build("RTE_DEFINE_PER_LCORE", args, ret);
+      auto def = FunctionCall::build("RTE_DEFINE_PER_LCORE", define_args, ret);
       def->set_terminate_line(true);
       ast.push_global_code(def);
 
