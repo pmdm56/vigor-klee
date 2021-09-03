@@ -261,11 +261,11 @@ KleeExprToASTNodeConverter::visitRead(const klee::ReadExpr &e) {
     symbol = "src_devices";
   }
 
-  else if (symbol == "next_time") {
+  else if (symbol.find("next_time") != std::string::npos) {
     symbol = "now";
   }
 
-  else if (symbol == "data_len") {
+  else if (symbol.find("data_len") != std::string::npos) {
     symbol = "pkt_len";
   }
 

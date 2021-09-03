@@ -82,8 +82,10 @@ private:
                                    unsigned int counter_begins);
   Variable_ptr generate_new_symbol(const std::string &symbol, Type_ptr type);
 
-  Node_ptr init_state_node_from_call(call_t call, TargetOption target);
-  Node_ptr process_state_node_from_call(call_t call, TargetOption target);
+  Node_ptr init_state_node_from_call(call_t call, TargetOption target,
+                                     const BDD::symbols_t &symbols);
+  Node_ptr process_state_node_from_call(call_t call, TargetOption target,
+                                        const BDD::symbols_t &symbols);
 
   std::string translate_fname(std::string fname, TargetOption target) {
     if (fname_translation.count(std::make_pair(fname, target))) {
@@ -199,7 +201,8 @@ public:
   void push_to_local(Variable_ptr var);
   void push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr);
 
-  Node_ptr node_from_call(call_t call, TargetOption target);
+  Node_ptr node_from_call(call_t call, TargetOption target,
+                          const BDD::symbols_t &symbols);
 
   bool is_done() { return context == DONE; }
 

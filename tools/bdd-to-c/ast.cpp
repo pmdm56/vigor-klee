@@ -5,6 +5,18 @@ constexpr char AST::CHUNK_LAYER_2[];
 constexpr char AST::CHUNK_LAYER_3[];
 constexpr char AST::CHUNK_LAYER_4[];
 
+std::string get_symbol_label(const std::string &wanted,
+                             const BDD::symbols_t &symbols) {
+  for (auto symbol : symbols) {
+    if (symbol.label_base == wanted) {
+      return symbol.label;
+    }
+  }
+
+  std::cerr << "wanted: " << wanted << "\n";
+  assert(false && "Symbol not found");
+}
+
 Variable_ptr AST::generate_new_symbol(klee::ref<klee::Expr> expr) {
   Type_ptr type = type_from_size(expr->getWidth());
 
@@ -410,7 +422,8 @@ void AST::push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr) {
   local_variables.back().push_back(std::make_pair(var, expr));
 }
 
-Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
+Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target,
+                                        const BDD::symbols_t &symbols) {
   auto fname = call.function_name;
   std::vector<ExpressionType_ptr> args;
 
@@ -427,7 +440,6 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
     assert(call.args["khash"].fn_ptr_name.first);
     Type_ptr void_type =
         PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
-    std::cerr << "before\n";
     Expr_ptr keq =
         Variable::build(call.args["keq"].fn_ptr_name.second, void_type);
     assert(keq);
@@ -471,7 +483,7 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
                                            AddressOf::build(new_map)};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    ret_symbol = "map_allocation_succeeded";
+    ret_symbol = get_symbol_label("map_allocation_succeeded", symbols);
   }
 
   else if (fname == "vector_allocate") {
@@ -514,7 +526,7 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
                                            AddressOf::build(new_vector)};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    ret_symbol = "vector_alloc_success";
+    ret_symbol = get_symbol_label("vector_alloc_success", symbols);
   }
 
   else if (fname == "dchain_allocate") {
@@ -537,7 +549,7 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
                                            AddressOf::build(new_dchain)};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    ret_symbol = "is_dchain_allocated";
+    ret_symbol = get_symbol_label("is_dchain_allocated", symbols);
   }
 
   else if (fname == "cht_fill_cht") {
@@ -557,7 +569,7 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
         std::vector<ExpressionType_ptr>{vector, cht_height, backend_capacity};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    ret_symbol = "cht_fill_cht_successful";
+    ret_symbol = get_symbol_label("cht_fill_cht_successful", symbols);
   }
 
   else {
@@ -606,7 +618,8 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target) {
   return fcall;
 }
 
-Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
+Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target,
+                                           const BDD::symbols_t &symbols) {
   auto fname = call.function_name;
 
   std::vector<Expr_ptr> exprs;
@@ -746,7 +759,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
 
     args = std::vector<ExpressionType_ptr>{p};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT16_T);
-    ret_symbol = "unread_len";
+    ret_symbol = get_symbol_label("unread_len", symbols);
     ret_expr = call.ret;
   }
 
@@ -775,7 +788,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
 
     args = std::vector<ExpressionType_ptr>{chain, vector, map, now};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    ret_symbol = "unmber_of_freed_flows";
+    ret_symbol = get_symbol_label("number_of_freed_flows", symbols);
     ret_expr = call.ret;
   }
 
@@ -810,7 +823,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     args = std::vector<ExpressionType_ptr>{map, AddressOf::build(key),
                                            AddressOf::build(value_out)};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    ret_symbol = "map_has_this_key";
+    ret_symbol = get_symbol_label("map_has_this_key", symbols);
     ret_expr = call.ret;
   }
 
@@ -835,18 +848,10 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     VariableDecl_ptr index_out_decl = VariableDecl::build(index_out);
     exprs.push_back(index_out_decl);
 
-    std::string suffix;
-
-    if (index_out->get_symbol().find_last_of("_") != std::string::npos) {
-      std::string counter = index_out->get_symbol().substr(
-          index_out->get_symbol().find_last_of("_") + 1);
-      suffix = "_" + counter;
-    }
-
     args = std::vector<ExpressionType_ptr>{chain, AddressOf::build(index_out),
                                            now};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    ret_symbol = "out_of_space" + suffix;
+    ret_symbol = get_symbol_label("out_of_space", symbols);
     ret_expr = call.ret;
     counter_begins = -1;
   }
@@ -1012,7 +1017,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     args = std::vector<ExpressionType_ptr>{chain, index};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
-    ret_symbol = "is_index_allocated";
+    ret_symbol = get_symbol_label("dchain_is_index_allocated", symbols);
     ret_expr = call.ret;
   }
 
@@ -1023,7 +1028,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     args = std::vector<ExpressionType_ptr>{obj};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
-    ret_symbol = "load_balanced_flow_hash";
+    ret_symbol = get_symbol_label("LoadBalancedFlow_hash", symbols);
     ret_expr = call.ret;
   }
 
@@ -1077,7 +1082,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
                                            AddressOf::build(chosen_backend)};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
-    ret_symbol = "prefered_backend_found";
+    ret_symbol = get_symbol_label("prefered_backend_found", symbols);
     ret_expr = call.ret;
   }
 
@@ -1102,7 +1107,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target) {
     fname = "rte_ipv4_udptcp_cksum";
     args = std::vector<ExpressionType_ptr>{ip_header, l4_header};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    ret_symbol = "checksum";
+    ret_symbol = get_symbol_label("checksum", symbols);
   }
 
   else if (fname == "map_erase") {
@@ -1264,12 +1269,13 @@ void AST::pop() {
   layer.pop_back();
 }
 
-Node_ptr AST::node_from_call(call_t call, TargetOption target) {
+Node_ptr AST::node_from_call(call_t call, TargetOption target,
+                             const BDD::symbols_t &symbols) {
   switch (context) {
   case INIT:
-    return init_state_node_from_call(call, target);
+    return init_state_node_from_call(call, target, symbols);
   case PROCESS:
-    return process_state_node_from_call(call, target);
+    return process_state_node_from_call(call, target, symbols);
   case DONE:
     assert(false);
   }
