@@ -114,7 +114,7 @@ public:
                                  { "unmber_of_freed_flows",
                                    "number_of_freed_flows" },
                                  { "value_out", "map_value_out" },
-                                 { "val_out", "vector_value_out" } };
+                                 { "val_out", "vector_value_out" }, };
 
     fname_translation = {
 

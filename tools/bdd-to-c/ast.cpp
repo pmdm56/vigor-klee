@@ -870,6 +870,7 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target,
                                            now};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = get_symbol_label("out_of_space", symbols);
+
     ret_expr = call.ret;
     counter_begins = -1;
   }
@@ -1240,7 +1241,14 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target,
       }
 
       VariableDecl_ptr ret = VariableDecl::build(ret_var);
-      Assignment_ptr assignment = Assignment::build(ret, fcall);
+      Assignment_ptr assignment;
+
+      // hack!
+      if (ret_symbol.find("out_of_space") != std::string::npos) {
+        assignment = Assignment::build(ret, Not::build(fcall));
+      } else {
+        assignment = Assignment::build(ret, fcall);
+      }
 
       exprs.push_back(assignment);
     }
