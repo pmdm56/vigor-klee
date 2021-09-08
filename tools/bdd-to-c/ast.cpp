@@ -479,6 +479,12 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target,
 
     push_to_state(new_map);
 
+    // hack
+    if (target == TargetOption::SHARED_NOTHING) {
+      new_map = generate_new_symbol("(*" + new_map->get_symbol() + "_ptr)",
+                                    map_type, 1, 0);
+    }
+
     args = std::vector<ExpressionType_ptr>{keq, khash, capacity,
                                            AddressOf::build(new_map)};
 
@@ -522,6 +528,12 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target,
 
     push_to_state(new_vector);
 
+    // hack
+    if (target == TargetOption::SHARED_NOTHING) {
+      new_vector = generate_new_symbol(
+          "(*" + new_vector->get_symbol() + "_ptr)", vector_type, 1, 0);
+    }
+
     args = std::vector<ExpressionType_ptr>{elem_size, capacity, init_elem,
                                            AddressOf::build(new_vector)};
 
@@ -544,6 +556,12 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target,
     new_dchain->set_addr(dchain_addr);
 
     push_to_state(new_dchain);
+
+    // hack
+    if (target == TargetOption::SHARED_NOTHING) {
+      new_dchain = generate_new_symbol(
+          "(*" + new_dchain->get_symbol() + "_ptr)", dchain_type, 1, 0);
+    }
 
     args = std::vector<ExpressionType_ptr>{index_range,
                                            AddressOf::build(new_dchain)};

@@ -2180,6 +2180,8 @@ public:
     addr = _addr;
   }
 
+  void change_symbol(const std::string &new_symbol) { symbol = new_symbol; }
+
   Expr_ptr simplify(AST *ast) const override { return clone(); }
 
   void set_wrap(bool _wrap) override {

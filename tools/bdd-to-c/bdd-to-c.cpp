@@ -248,7 +248,7 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
   }
   case SHARED_NOTHING: {
     auto state = ast.get_state();
-    for (const auto &var : state) {
+    for (auto &var : state) {
       // global
       std::string name = var->get_symbol();
 
@@ -267,9 +267,13 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
       auto grab = FunctionCall::build("RTE_PER_LCORE", args, ret);
       grab->set_terminate_line(true);
 
-      auto decl = VariableDecl::build(var);
-      auto assignment = Assignment::build(decl, grab);
+      auto var_ptr = Variable::build(name + "_ptr", Pointer::build(type));
+      auto decl = VariableDecl::build(var_ptr);
+      auto assignment = Assignment::build(decl, AddressOf::build(grab));
       assignment->set_terminate_line(true);
+
+      // hack
+      var->change_symbol("(*" + name + "_ptr)");
 
       intro_nodes.push_back(assignment);
     }
