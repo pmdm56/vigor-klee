@@ -1051,8 +1051,7 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr value = transpile(this, call.args["value"].expr);
     assert(value);
 
-    args = std::vector<ExpressionType_ptr>{
-        map, AddressOf::build(vector_return_value), value};
+    args = std::vector<ExpressionType_ptr>{map, vector_return_value, value};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
