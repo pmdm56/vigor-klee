@@ -422,8 +422,11 @@ void AST::push_to_local(Variable_ptr var, klee::ref<klee::Expr> expr) {
   local_variables.back().push_back(std::make_pair(var, expr));
 }
 
-Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target,
-                                        const BDD::symbols_t &symbols) {
+Node_ptr AST::init_state_node_from_call(const BDD::Call *bdd_call,
+                                        TargetOption target) {
+  auto call = bdd_call->get_call();
+  auto symbols = bdd_call->get_generated_symbols();
+
   auto fname = call.function_name;
   std::vector<ExpressionType_ptr> args;
 
@@ -636,11 +639,103 @@ Node_ptr AST::init_state_node_from_call(call_t call, TargetOption target,
   return fcall;
 }
 
-Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target,
-                                           const BDD::symbols_t &symbols) {
+const BDD::Call *find_vector_return_with_obj(const BDD::Node *root,
+                                             klee::ref<klee::Expr> obj) {
+  assert(root && "Root is null");
+  std::vector<const BDD::Node *> nodes{root};
+
+  while (nodes.size()) {
+    auto node = nodes[0];
+    nodes.erase(nodes.begin());
+
+    if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto node_branch = static_cast<const BDD::Branch *>(node);
+
+      nodes.push_back(node_branch->get_on_true().get());
+      nodes.push_back(node_branch->get_on_false().get());
+
+      continue;
+    }
+
+    if (node->get_type() != BDD::Node::NodeType::CALL) {
+      continue;
+    }
+
+    nodes.push_back(node->get_next().get());
+
+    auto node_call = static_cast<const BDD::Call *>(node);
+    auto call = node_call->get_call();
+
+    if (call.function_name != "vector_return") {
+      continue;
+    }
+
+    auto this_obj = call.args["vector"].expr;
+    auto extracted =
+        BDD::solver_toolbox.exprBuilder->Extract(this_obj, 0, obj->getWidth());
+    auto eq = BDD::solver_toolbox.are_exprs_always_equal(obj, extracted);
+
+    if (eq) {
+      return node_call;
+    }
+  }
+
+  return nullptr;
+}
+
+const BDD::Call *find_vector_return_with_value(const BDD::Node *root,
+                                               klee::ref<klee::Expr> value) {
+  assert(root && "Root is null");
+  std::vector<const BDD::Node *> nodes{root};
+
+  while (nodes.size()) {
+    auto node = nodes[0];
+    nodes.erase(nodes.begin());
+
+    if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto node_branch = static_cast<const BDD::Branch *>(node);
+
+      nodes.push_back(node_branch->get_on_true().get());
+      nodes.push_back(node_branch->get_on_false().get());
+
+      continue;
+    }
+
+    if (node->get_type() != BDD::Node::NodeType::CALL) {
+      continue;
+    }
+
+    nodes.push_back(node->get_next().get());
+
+    auto node_call = static_cast<const BDD::Call *>(node);
+    auto call = node_call->get_call();
+
+    if (call.function_name != "vector_return") {
+      continue;
+    }
+
+    auto this_vector_value = call.args["value"].in.get();
+    auto extracted = BDD::solver_toolbox.exprBuilder->Extract(
+        this_vector_value, 0, value->getWidth());
+    auto eq = BDD::solver_toolbox.are_exprs_always_equal(value, extracted);
+
+    if (eq) {
+      return node_call;
+    }
+  }
+
+  return nullptr;
+}
+
+Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
+                                           TargetOption target) {
+  auto call = bdd_call->get_call();
+  auto symbols = bdd_call->get_generated_symbols();
+
   auto fname = call.function_name;
 
   std::vector<Expr_ptr> exprs;
+  std::vector<Expr_ptr> after_call_exprs;
   std::vector<ExpressionType_ptr> args;
 
   Type_ptr ret_type;
@@ -911,6 +1006,22 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target,
 
     args = std::vector<ExpressionType_ptr>{vector, index, val_out_cast};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+
+    // preemptive write
+
+    auto vector_return =
+        find_vector_return_with_obj(bdd_call, call.args["vector"].expr);
+    assert(vector_return && "vector_return not found after vector_borrow");
+
+    auto vector_return_call = vector_return->get_call();
+    auto before_value = call.extra_vars["borrowed_cell"].second;
+    auto after_value = vector_return_call.args["value"].in;
+
+    auto changes = apply_changes(this, val_out, before_value, after_value);
+
+    write_attempt = changes.size();
+    after_call_exprs.insert(after_call_exprs.end(), changes.begin(),
+                            changes.end());
   }
 
   else if (fname == "map_put") {
@@ -922,21 +1033,26 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target,
 
     Expr_ptr map = get_from_state(map_addr);
 
-    Type_ptr key_type = type_from_klee_expr(call.args["key"].in, true);
-    Variable_ptr key = generate_new_symbol("map_key", key_type);
-    push_to_local(key);
+    auto vector_return =
+        find_vector_return_with_value(bdd_call, call.args["key"].in);
+    assert(vector_return &&
+           "couldn't find vector_return with a key to this map_put");
 
-    VariableDecl_ptr key_decl = VariableDecl::build(key);
-    exprs.push_back(key_decl);
-
-    auto statements = build_and_fill_byte_array(this, key, call.args["key"].in);
-    assert(statements.size());
-    exprs.insert(exprs.end(), statements.begin(), statements.end());
+    auto vector_return_call = vector_return->get_call();
+    Expr_ptr vector_return_value_expr =
+        transpile(this, vector_return_call.args["value"].expr);
+    assert(vector_return_value_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t vector_return_value_addr =
+        (static_cast<Constant *>(vector_return_value_expr.get()))->get_value();
+    Expr_ptr vector_return_value =
+        get_from_local_by_addr("val_out", vector_return_value_addr);
+    assert(vector_return_value);
 
     Expr_ptr value = transpile(this, call.args["value"].expr);
     assert(value);
 
-    args = std::vector<ExpressionType_ptr>{map, AddressOf::build(key), value};
+    args = std::vector<ExpressionType_ptr>{
+        map, AddressOf::build(vector_return_value), value};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
@@ -956,13 +1072,6 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target,
     assert(index);
     Expr_ptr value = get_from_local_by_addr("val_out", value_addr);
     assert(value);
-    auto before_value = get_expr_from_local_by_addr(value_addr);
-
-    auto changes =
-        apply_changes(this, value, before_value, call.args["value"].in);
-
-    write_attempt = changes.size();
-    exprs.insert(exprs.end(), changes.begin(), changes.end());
 
     args = std::vector<ExpressionType_ptr>{vector, index, value};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
@@ -1258,6 +1367,8 @@ Node_ptr AST::process_state_node_from_call(call_t call, TargetOption target,
     }
   }
 
+  exprs.insert(exprs.end(), after_call_exprs.begin(), after_call_exprs.end());
+
   for (auto expr : exprs) {
     expr->set_terminate_line(true);
     expr->set_wrap(false);
@@ -1295,13 +1406,12 @@ void AST::pop() {
   layer.pop_back();
 }
 
-Node_ptr AST::node_from_call(call_t call, TargetOption target,
-                             const BDD::symbols_t &symbols) {
+Node_ptr AST::node_from_call(const BDD::Call *bdd_call, TargetOption target) {
   switch (context) {
   case INIT:
-    return init_state_node_from_call(call, target, symbols);
+    return init_state_node_from_call(bdd_call, target);
   case PROCESS:
-    return process_state_node_from_call(call, target, symbols);
+    return process_state_node_from_call(bdd_call, target);
   case DONE:
     assert(false);
   }

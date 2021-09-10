@@ -145,11 +145,8 @@ Node_ptr build_ast(AST &ast, const BDD::Node *root, TargetOption target) {
     };
 
     case BDD::Node::NodeType::CALL: {
-      auto call_bdd = static_cast<const BDD::Call *>(root);
-      auto call = call_bdd->get_call();
-      auto symbols = call_bdd->get_generated_symbols();
-
-      auto call_node = ast.node_from_call(call, target, symbols);
+      auto bdd_call = static_cast<const BDD::Call *>(root);
+      auto call_node = ast.node_from_call(bdd_call, target);
 
       if (call_node) {
         nodes.push_back(call_node);
