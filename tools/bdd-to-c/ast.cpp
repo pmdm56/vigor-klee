@@ -17,6 +17,26 @@ std::string get_symbol_label(const std::string &wanted,
   assert(false && "Symbol not found");
 }
 
+Expr_ptr fix_time_32_bits(Expr_ptr now) {
+  if (now->get_kind() != Node::NodeKind::READ) {
+    return now;
+  }
+
+  auto read = static_cast<Read *>(now.get());
+
+  if (read->get_expr()->get_kind() != Node::NodeKind::VARIABLE) {
+    return now;
+  }
+
+  auto variable = static_cast<Variable *>(read->get_expr().get());
+
+  if (variable->get_symbol() != "now" || read->get_type()->get_size() != 32) {
+    return now;
+  }
+
+  return variable->clone();
+}
+
 Variable_ptr AST::generate_new_symbol(klee::ref<klee::Expr> expr) {
   Type_ptr type = type_from_size(expr->getWidth());
 
@@ -958,6 +978,8 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
 
+    now = fix_time_32_bits(now);
+
     VariableDecl_ptr index_out_decl = VariableDecl::build(index_out);
     exprs.push_back(index_out_decl);
 
@@ -1088,6 +1110,8 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     assert(index);
     Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
+
+    now = fix_time_32_bits(now);
 
     args = std::vector<ExpressionType_ptr>{chain, index, now};
 
