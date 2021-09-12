@@ -83,11 +83,13 @@ klee::ref<klee::Expr> fix_key_klee_expr(klee::ref<klee::Expr> key) {
     return key;
   }
 
+  auto current_index = BDD::solver_toolbox.value_from_expr(read->index);
+
   klee::ref<klee::Expr> concat;
 
   for (auto i = 0; i < 6; i++) {
-    auto index =
-        BDD::solver_toolbox.exprBuilder->Constant(i, klee::Expr::Int32);
+    auto index = BDD::solver_toolbox.exprBuilder->Constant(current_index + i,
+                                                           klee::Expr::Int32);
     auto offset = BDD::solver_toolbox.exprBuilder->Read(ul, index);
 
     if (!concat.isNull()) {
