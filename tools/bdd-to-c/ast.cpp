@@ -37,6 +37,33 @@ Expr_ptr fix_time_32_bits(Expr_ptr now) {
   return variable->clone();
 }
 
+Expr_ptr fix_time_expiration(Expr_ptr now) {
+  if (now->get_kind() != Node::NodeKind::ADD) {
+    return now;
+  }
+
+  auto add = static_cast<Add *>(now.get());
+
+  if (add->get_rhs()->get_kind() != Node::NodeKind::VARIABLE ||
+      add->get_lhs()->get_kind() != Node::NodeKind::CONSTANT) {
+    return now;
+  }
+
+  auto variable = static_cast<Variable *>(add->get_rhs().get());
+  auto constant = static_cast<Constant *>(add->get_lhs().get());
+
+  if (variable->get_symbol() != "now" ||
+      constant->get_type()->get_size() != 64) {
+    return now;
+  }
+
+  auto constant_value = constant->get_value();
+  auto new_now = Sub::build(
+      variable->clone(), Constant::build(PrimitiveType::PrimitiveKind::UINT64_T,
+                                         ~constant_value + 1));
+  return new_now;
+}
+
 Variable_ptr AST::generate_new_symbol(klee::ref<klee::Expr> expr) {
   Type_ptr type = type_from_size(expr->getWidth());
 
@@ -918,6 +945,8 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Variable_ptr map = get_from_state(map_addr);
     Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
+
+    now = fix_time_expiration(now);
 
     args = std::vector<ExpressionType_ptr>{chain, vector, map, now};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
