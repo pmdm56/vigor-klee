@@ -64,6 +64,42 @@ Expr_ptr fix_time_expiration(Expr_ptr now) {
   return new_now;
 }
 
+// this is just to fix a bug in the bridge
+klee::ref<klee::Expr> fix_key_klee_expr(klee::ref<klee::Expr> key) {
+  if (key->getWidth() != 8) {
+    return key;
+  }
+
+  if (key->getKind() != klee::Expr::Kind::Read) {
+    return key;
+  }
+
+  auto read = static_cast<klee::ReadExpr *>(key.get());
+
+  auto ul = read->updates;
+  auto root = ul.root;
+
+  if (root->name != "packet_chunks") {
+    return key;
+  }
+
+  klee::ref<klee::Expr> concat;
+
+  for (auto i = 0; i < 6; i++) {
+    auto index =
+        BDD::solver_toolbox.exprBuilder->Constant(i, klee::Expr::Int32);
+    auto offset = BDD::solver_toolbox.exprBuilder->Read(ul, index);
+
+    if (!concat.isNull()) {
+      concat = BDD::solver_toolbox.exprBuilder->Concat(offset, concat);
+    } else {
+      concat = offset;
+    }
+  }
+
+  return concat;
+}
+
 Variable_ptr AST::generate_new_symbol(klee::ref<klee::Expr> expr) {
   Type_ptr type = type_from_size(expr->getWidth());
 
@@ -959,14 +995,17 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t map_addr = (static_cast<Constant *>(map_expr.get()))->get_value();
 
-    Type_ptr key_type = type_from_klee_expr(call.args["key"].in, true);
+    auto key_klee_expr = call.args["key"].in;
+    key_klee_expr = fix_key_klee_expr(key_klee_expr);
+
+    Type_ptr key_type = type_from_klee_expr(key_klee_expr, true);
     Variable_ptr key = generate_new_symbol("map_key", key_type);
     push_to_local(key);
 
     VariableDecl_ptr key_decl = VariableDecl::build(key);
     exprs.push_back(key_decl);
 
-    auto statements = build_and_fill_byte_array(this, key, call.args["key"].in);
+    auto statements = build_and_fill_byte_array(this, key, key_klee_expr);
     assert(statements.size());
     exprs.insert(exprs.end(), statements.begin(), statements.end());
 
