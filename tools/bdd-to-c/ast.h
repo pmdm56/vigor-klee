@@ -165,6 +165,9 @@ public:
       { { "expire_items", TargetOption::LOCKS }, "expire_items_locks" },
       { { "expire_items_single_map", TargetOption::LOCKS },
         "expire_items_single_map_locks" },
+      { { "expire_items", TargetOption::TM }, "expire_items_tm" },
+      { { "expire_items_single_map", TargetOption::TM },
+        "expire_items_single_map_tm" },
 
       /****************************************************************************
        *                                double map
