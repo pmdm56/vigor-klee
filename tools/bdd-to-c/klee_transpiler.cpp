@@ -17,14 +17,28 @@ Type_ptr klee_width_to_type(klee::Expr::Width width) {
 Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
   assert(!e.isNull());
 
-  if (e->getKind() != klee::Expr::Kind::Constant) {
+  klee::ref<klee::Expr> expr = e;
+
+  if (expr->getKind() != klee::Expr::Kind::Constant && e->getWidth() <= 64) {
+    auto value = BDD::solver_toolbox.value_from_expr(expr);
+    auto value_expr =
+        BDD::solver_toolbox.exprBuilder->Constant(value, expr->getWidth());
+    auto always_eq =
+        BDD::solver_toolbox.are_exprs_always_equal(expr, value_expr);
+
+    if (always_eq) {
+      expr = value_expr;
+    }
+  }
+
+  if (expr->getKind() != klee::Expr::Kind::Constant) {
     return nullptr;
   }
 
-  klee::ConstantExpr *constant = static_cast<klee::ConstantExpr *>(e.get());
-  Type_ptr type = klee_width_to_type(constant->getWidth());
+  auto *constant = static_cast<klee::ConstantExpr *>(expr.get());
+  auto type = klee_width_to_type(constant->getWidth());
 
-  Constant_ptr constant_node = Constant::build(type);
+  auto constant_node = Constant::build(type);
 
   if (type->get_type_kind() == Type::TypeKind::ARRAY) {
     Array *array = static_cast<Array *>(type.get());
