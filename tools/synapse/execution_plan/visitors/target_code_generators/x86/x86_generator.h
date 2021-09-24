@@ -232,7 +232,11 @@ struct stack_t {
             if (!var.addr.isNull() && value_size == 8) {
               label_stream << var.label << "[" << b / 8 << "]";
             } else if (!var.addr.isNull()) {
-              assert(value_size % 8 == 0 && value_size <= 64);
+              assert(value_size % 8 == 0);
+
+              if (value_size > 64) {
+                return var.label;
+              }
 
               label_stream << "*(";
 
@@ -244,6 +248,12 @@ struct stack_t {
 
               label_stream << ")";
             } else {
+
+              // time should be 64 bits
+              if (var.label == "now" && value_size == 32 && b == 0) {
+                return var.label;
+              }
+
               uint64_t mask = 0;
               for (unsigned bmask = 0; bmask < value_size; bmask++) {
                 mask <<= 1;

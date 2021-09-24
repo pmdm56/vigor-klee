@@ -27,6 +27,7 @@ class KleeExprToC : public klee::ExprVisitor::ExprVisitor {
 private:
   std::stringstream code;
   stack_t &stack;
+  bool is_signed;
 
   bool is_read_lsb(klee::ref<klee::Expr> e) const {
     RetrieveSymbols retriever;
@@ -87,7 +88,10 @@ private:
   }
 
 public:
-  KleeExprToC(stack_t &_stack) : ExprVisitor(false), stack(_stack) {}
+  KleeExprToC(stack_t &_stack)
+      : ExprVisitor(false), stack(_stack), is_signed(false) {}
+  KleeExprToC(stack_t &_stack, bool _is_signed)
+      : ExprVisitor(false), stack(_stack), is_signed(_is_signed) {}
 
   std::string get_code() { return code.str(); }
 
@@ -110,7 +114,7 @@ public:
 
       auto extracted = BDD::solver_toolbox.exprBuilder->Extract(
           value, offset_value, eref->getWidth());
-      code << transpile(extracted, stack);
+      code << transpile(extracted, stack, is_signed);
 
       return klee::ExprVisitor::Action::skipChildren();
     }
@@ -192,7 +196,7 @@ public:
     }
 
     if (offset == 0 && expr->getWidth() == sz) {
-      code << transpile(expr, stack);
+      code << transpile(expr, stack, is_signed);
       return klee::ExprVisitor::Action::skipChildren();
     }
 
@@ -208,7 +212,7 @@ public:
         code << "(";
       }
 
-      code << transpile(expr, stack);
+      code << transpile(expr, stack, is_signed);
 
       if (offset > 0) {
         code << " >> " << offset << ")";
@@ -265,7 +269,7 @@ public:
 
     code << ")";
     code << "(";
-    code << transpile(expr, stack);
+    code << transpile(expr, stack, is_signed);
     code << ")";
 
     return klee::ExprVisitor::Action::skipChildren();
@@ -297,7 +301,7 @@ public:
 
     code << ")";
     code << "(";
-    code << transpile(expr, stack);
+    code << transpile(expr, stack, is_signed);
     code << ")";
 
     return klee::ExprVisitor::Action::skipChildren();
@@ -309,8 +313,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " + ";
@@ -325,8 +329,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " - ";
@@ -341,8 +345,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " * ";
@@ -357,8 +361,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " / ";
@@ -389,8 +393,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " % ";
@@ -419,7 +423,7 @@ public:
     assert(e.getNumKids() == 1);
 
     auto arg = e.getKid(0);
-    auto arg_parsed = transpile(arg, stack);
+    auto arg_parsed = transpile(arg, stack, is_signed);
     code << "!" << arg_parsed;
 
     return klee::ExprVisitor::Action::skipChildren();
@@ -431,8 +435,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " & ";
@@ -447,8 +451,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " | ";
@@ -463,8 +467,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " ^ ";
@@ -479,8 +483,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " << ";
@@ -495,8 +499,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " >> ";
@@ -514,8 +518,8 @@ public:
     auto sz = e.getWidth();
     assert(sz % 8 == 0);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     std::stringstream sign_bit_stream;
     sign_bit_stream << "(" << lhs_parsed << ")";
@@ -558,8 +562,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " == ";
@@ -574,8 +578,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " != ";
@@ -590,8 +594,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " < ";
@@ -606,8 +610,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " <= ";
@@ -622,8 +626,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " > ";
@@ -638,8 +642,8 @@ public:
     auto lhs = e.getKid(0);
     auto rhs = e.getKid(1);
 
-    auto lhs_parsed = transpile(lhs, stack);
-    auto rhs_parsed = transpile(rhs, stack);
+    auto lhs_parsed = transpile(lhs, stack, is_signed);
+    auto rhs_parsed = transpile(rhs, stack, is_signed);
 
     code << "(" << lhs_parsed << ")";
     code << " >= ";
@@ -775,7 +779,14 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack,
     std::stringstream ss;
     auto constant = static_cast<klee::ConstantExpr *>(e.get());
     assert(constant->getWidth() <= 64);
-    ss << constant->getZExtValue();
+    auto value = constant->getZExtValue();
+
+    if (is_signed && value >> 63) {
+      ss << "-" << ~value + 1;
+    } else {
+      ss << value;
+    }
+
     return ss.str();
   }
 
@@ -784,7 +795,7 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack,
     return stack_label;
   }
 
-  KleeExprToC kleeExprToC(stack);
+  KleeExprToC kleeExprToC(stack, is_signed);
   kleeExprToC.visit(e);
 
   auto code = kleeExprToC.get_code();
@@ -1704,7 +1715,7 @@ void x86_Generator::visit(const targets::x86::ExpireItemsSingleMap *node) {
   nf_process_stream << dchain;
   nf_process_stream << ", " << vector;
   nf_process_stream << ", " << map;
-  nf_process_stream << ", " << transpile(time, stack);
+  nf_process_stream << ", " << transpile(time, stack, true);
   nf_process_stream << ");\n";
 }
 
@@ -1760,6 +1771,47 @@ void x86_Generator::visit(const targets::x86::DchainRejuvenateIndex *node) {
   nf_process_stream << ");\n";
 }
 
+klee::ref<klee::Expr> get_future_vector_value(BDD::BDDNode_ptr root,
+                                              klee::ref<klee::Expr> vector) {
+  std::vector<BDD::BDDNode_ptr> nodes{root};
+
+  while (nodes.size()) {
+    auto node = nodes[0];
+    nodes.erase(nodes.begin());
+
+    if (node->get_type() == BDD::Node::NodeType::BRANCH) {
+      auto branch_node = static_cast<BDD::Branch *>(node.get());
+
+      nodes.push_back(branch_node->get_on_true());
+      nodes.push_back(branch_node->get_on_false());
+
+      continue;
+    }
+
+    else if (node->get_type() == BDD::Node::NodeType::CALL) {
+      auto call_node = static_cast<BDD::Call *>(node.get());
+      auto call = call_node->get_call();
+
+      if (call.function_name != "vector_return") {
+        nodes.push_back(call_node->get_next());
+        continue;
+      }
+
+      auto eq = BDD::solver_toolbox.are_exprs_always_equal(
+          vector, call.args["vector"].expr);
+
+      if (!eq) {
+        nodes.push_back(call_node->get_next());
+        continue;
+      }
+
+      return call.args["value"].in;
+    }
+  }
+
+  assert(false && "vector_return not found");
+}
+
 void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
   auto vector_addr = node->get_vector_addr();
   auto index = node->get_index();
@@ -1786,6 +1838,12 @@ void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
   auto value_out_label = get_label(generated_symbols, "vector_data_reset");
   stack.add(value_out_label, borrowed_cell, value_out);
 
+  auto new_value = get_future_vector_value(node->get_node(), vector_addr);
+
+  std::vector<std::string> assignments;
+  apply_changes(borrowed_cell, new_value, stack, assignments);
+  stack.add(value_out_label, new_value, value_out);
+
   pad(nf_process_stream);
   nf_process_stream << "uint8_t " << value_out_label << "["
                     << borrowed_cell_sz / 8 << "];\n";
@@ -1796,6 +1854,11 @@ void x86_Generator::visit(const targets::x86::VectorBorrow *node) {
   nf_process_stream << ", " << transpile(index, stack);
   nf_process_stream << ", (void **)&" << value_out_label;
   nf_process_stream << ");\n";
+
+  for (auto assignment : assignments) {
+    pad(nf_process_stream);
+    nf_process_stream << assignment << ";\n";
+  }
 }
 
 void x86_Generator::visit(const targets::x86::VectorReturn *node) {
@@ -1825,17 +1888,6 @@ void x86_Generator::visit(const targets::x86::VectorReturn *node) {
     assert(false && "Not found in stack");
   }
 
-  auto old_value = stack.get_value(value_addr);
-  assert(!value.isNull());
-
-  std::vector<std::string> assignments;
-  apply_changes(old_value, value, stack, assignments);
-
-  for (auto assignment : assignments) {
-    pad(nf_process_stream);
-    nf_process_stream << assignment << ";\n";
-  }
-
   pad(nf_process_stream);
   nf_process_stream << "vector_return(";
   nf_process_stream << vector;
@@ -1856,10 +1908,16 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
   auto success = node->get_success();
   auto generated_symbols = node->get_generated_symbols();
 
+  static int success_counter = 0;
+  std::stringstream success_label;
+
   assert(!dchain_addr.isNull());
   assert(!time.isNull());
   assert(!index_out.isNull());
   assert(!success.isNull());
+
+  success_label << "success_" << success_counter;
+  success_counter++;
 
   auto dchain = stack.get_label(dchain_addr);
   if (!dchain.size()) {
@@ -1879,13 +1937,18 @@ void x86_Generator::visit(const targets::x86::DchainAllocateNewIndex *node) {
   nf_process_stream << "int " << new_index_label << ";\n";
 
   pad(nf_process_stream);
-  nf_process_stream << "int " << out_of_space_label;
+  nf_process_stream << "int " << success_label.str();
   nf_process_stream << " = ";
   nf_process_stream << "dchain_allocate_new_index(";
   nf_process_stream << dchain;
   nf_process_stream << ", &" << new_index_label;
   nf_process_stream << ", " << transpile(time, stack);
   nf_process_stream << ");\n";
+
+  pad(nf_process_stream);
+  nf_process_stream << "int " << out_of_space_label;
+  nf_process_stream << " = !" << success_label.str();
+  nf_process_stream << ";\n";
 }
 
 void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
@@ -2090,12 +2153,12 @@ void x86_Generator::visit(const targets::x86::MapPut *node) {
     assert(false && "Not found in stack");
   }
 
-  std::vector<std::string> key_assignments;
-  auto key_label = build(key, stack, key_assignments);
+  auto key_label = stack.get_by_value(key);
 
-  for (auto key_assignment : key_assignments) {
-    pad(nf_process_stream);
-    nf_process_stream << key_assignment << "\n";
+  if (key_label.size() == 0) {
+    std::cerr << "key " << expr_to_string(key, true) << "\n";
+    stack.err_dump();
+    exit(1);
   }
 
   auto transpiled_value = transpile(value, stack);
@@ -2103,7 +2166,7 @@ void x86_Generator::visit(const targets::x86::MapPut *node) {
   pad(nf_process_stream);
   nf_process_stream << "map_put(";
   nf_process_stream << map;
-  nf_process_stream << ", (void*)" << key_label;
+  nf_process_stream << ", (void*) &" << key_label;
   nf_process_stream << ", " << transpiled_value;
   nf_process_stream << ");\n";
 
