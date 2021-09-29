@@ -311,6 +311,7 @@ class x86_Generator : public TargetCodeGenerator {
 private:
   struct p4_table {
     std::string name;
+    std::string label;
     std::string tag;
     unsigned n_keys;
     unsigned n_params;

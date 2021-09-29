@@ -290,6 +290,9 @@ private:
       pad(os, lvl);
       os << "size = " << size << ";\n";
 
+      pad(os, lvl);
+      os << "support_timeout = true;\n";
+
       lvl--;
       pad(os, lvl);
       os << "}\n";

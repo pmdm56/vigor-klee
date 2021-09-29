@@ -10,6 +10,25 @@
 
 namespace synapse {
 
+std::string build_table_label(std::string bdd_function, uint64_t table_id){
+  std::stringstream table_label;
+
+  table_label << bdd_function;
+  table_label << "_";
+  table_label << table_id;
+
+  return table_label.str();
+}
+
+std::string build_table_name(std::string bdd_function, uint64_t table_id){
+  std::stringstream table_name;
+
+  table_name << "SyNAPSE_Ingress.";
+  table_name << build_table_label(bdd_function, table_id);
+
+  return table_name.str();
+}
+
 std::string get_label(BDD::symbols_t symbols, std::string base) {
   auto found_it = std::find_if(
       symbols.begin(), symbols.end(),
@@ -1067,18 +1086,16 @@ std::vector<x86_Generator::p4_table> x86_Generator::get_associated_p4_tables(
       auto keys = table_lookup->get_keys();
       auto params = table_lookup->get_params();
 
-      std::stringstream table_name;
-      table_name << bdd_function;
-      table_name << "_";
-      table_name << table_id;
+      auto table_name = build_table_name(bdd_function, table_id);
+      auto table_label = build_table_label(bdd_function, table_id);
 
       std::stringstream tag_name;
-      tag_name << table_name.str();
+      tag_name << table_label;
       tag_name << "_tag";
 
       auto found_it = std::find_if(tables.begin(), tables.end(),
                                    [&](x86_Generator::p4_table table) {
-                                     return table.name == table_name.str();
+                                     return table.name == table_label;
                                    });
 
       if (found_it != tables.end()) {
@@ -1086,7 +1103,8 @@ std::vector<x86_Generator::p4_table> x86_Generator::get_associated_p4_tables(
       }
 
       x86_Generator::p4_table table;
-      table.name = table_name.str();
+      table.name = table_name;
+      table.label = table_label;
       table.tag = tag_name.str();
       table.n_keys = keys.size();
       table.n_params = params.size();
@@ -1205,10 +1223,7 @@ void x86_Generator::build_runtime_configure() {
 
       auto obj_label = stack.get_label(obj);
 
-      std::stringstream table_name;
-      table_name << bdd_function;
-      table_name << "_";
-      table_name << table_id;
+      auto table_name = build_table_name(bdd_function, table_id);
 
       table_t::libvig_obj_t::obj_type_t type;
 
@@ -1223,7 +1238,7 @@ void x86_Generator::build_runtime_configure() {
         assert(false && "TODO");
       }
 
-      table_t table{table_name.str(),
+      table_t table{table_name,
                     std::vector<table_t::libvig_obj_t>{
                         table_t::libvig_obj_t{obj_label, type}}};
 
@@ -1337,7 +1352,10 @@ void x86_Generator::build_runtime_configure() {
 
     i++;
   }
-
+  
+  pad(runtime_configure_stream);
+  runtime_configure_stream << "return true;\n";
+  
   lvl--;
   pad(runtime_configure_stream);
   runtime_configure_stream << "}";
@@ -2119,7 +2137,7 @@ void x86_Generator::issue_write_to_switch(klee::ref<klee::Expr> libvig_obj,
     nf_process_stream << ", action_name";
     nf_process_stream << ", action_params";
     nf_process_stream << ", " << table.n_params;
-    nf_process_stream << ", 0";
+    nf_process_stream << ", 1";
     nf_process_stream << ", ";
 
     if (expiration_time.first) {
