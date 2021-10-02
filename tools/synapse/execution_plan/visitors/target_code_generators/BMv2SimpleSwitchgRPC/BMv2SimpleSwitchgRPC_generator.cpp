@@ -319,7 +319,7 @@ void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
       auto conditional = static_cast<conditional_stage *>(stage.get());
 
       pad(parser_states_stream, lvl);
-      parser_states_stream << "select(";
+      parser_states_stream << "transition select(";
       parser_states_stream << conditional->condition;
       parser_states_stream << ") {\n";
 

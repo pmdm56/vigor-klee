@@ -219,7 +219,7 @@ private:
             std::vector<std::string> _params_type,
             std::vector<metadata_t> _meta_params)
         : label(_label), keys(_keys), params_type(_params_type),
-          meta_params(_meta_params), size(256) {}
+          meta_params(_meta_params), size(1024) {}
 
     void dump(std::ostream &os, unsigned lvl) {
       // ============== Action ==============
