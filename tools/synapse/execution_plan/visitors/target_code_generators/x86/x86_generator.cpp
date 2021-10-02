@@ -10,7 +10,7 @@
 
 namespace synapse {
 
-std::string build_table_label(std::string bdd_function, uint64_t table_id){
+std::string build_table_label(std::string bdd_function, uint64_t table_id) {
   std::stringstream table_label;
 
   table_label << bdd_function;
@@ -20,7 +20,7 @@ std::string build_table_label(std::string bdd_function, uint64_t table_id){
   return table_label.str();
 }
 
-std::string build_table_name(std::string bdd_function, uint64_t table_id){
+std::string build_table_name(std::string bdd_function, uint64_t table_id) {
   std::stringstream table_name;
 
   table_name << "SyNAPSE_Ingress.";
@@ -1238,9 +1238,8 @@ void x86_Generator::build_runtime_configure() {
         assert(false && "TODO");
       }
 
-      table_t table{table_name,
-                    std::vector<table_t::libvig_obj_t>{
-                        table_t::libvig_obj_t{obj_label, type}}};
+      table_t table{table_name, std::vector<table_t::libvig_obj_t>{
+                                    table_t::libvig_obj_t{obj_label, type}}};
 
       tables.push_back(table);
     }
@@ -1352,10 +1351,10 @@ void x86_Generator::build_runtime_configure() {
 
     i++;
   }
-  
+
   pad(runtime_configure_stream);
   runtime_configure_stream << "return true;\n";
-  
+
   lvl--;
   pad(runtime_configure_stream);
   runtime_configure_stream << "}";

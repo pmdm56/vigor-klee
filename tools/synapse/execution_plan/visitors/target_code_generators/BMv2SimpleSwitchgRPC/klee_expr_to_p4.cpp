@@ -410,22 +410,24 @@ klee::ExprVisitor::Action KleeExprToP4::visitAnd(const klee::AndExpr &e) {
   return klee::ExprVisitor::Action::skipChildren();
 }
 
-bool is_bool(klee::ref<klee::Expr> expr){
-  if(expr->getKind() == klee::Expr::Eq || 
-    expr->getKind() == klee::Expr::Not ||
-    expr->getKind() == klee::Expr::Uge ||
-    expr->getKind() == klee::Expr::Ugt ||
-    expr->getKind() == klee::Expr::Ule ||
-    expr->getKind() == klee::Expr::Ult ||
-    expr->getKind() == klee::Expr::Sge ||
-    expr->getKind() == klee::Expr::Sgt ||
-    expr->getKind() == klee::Expr::Sle ||
-    expr->getKind() == klee::Expr::Slt ){
-    return true;
-  } 
+bool is_bool(klee::ref<klee::Expr> expr) {
+  assert(!expr.isNull());
 
-  return false;
-   
+  if (expr->getKind() == klee::Expr::ZExt ||
+      expr->getKind() == klee::Expr::SExt) {
+    return is_bool(expr->getKid(0));
+  }
+
+  return expr->getKind() == klee::Expr::Eq ||
+         expr->getKind() == klee::Expr::Not ||
+         expr->getKind() == klee::Expr::Uge ||
+         expr->getKind() == klee::Expr::Ugt ||
+         expr->getKind() == klee::Expr::Ule ||
+         expr->getKind() == klee::Expr::Ult ||
+         expr->getKind() == klee::Expr::Sge ||
+         expr->getKind() == klee::Expr::Sgt ||
+         expr->getKind() == klee::Expr::Sle ||
+         expr->getKind() == klee::Expr::Slt;
 }
 
 klee::ExprVisitor::Action KleeExprToP4::visitOr(const klee::OrExpr &e) {
@@ -437,22 +439,16 @@ klee::ExprVisitor::Action KleeExprToP4::visitOr(const klee::OrExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, is_signed);
   auto rhs_parsed = generator.transpile(rhs, is_signed);
 
-  // if(lhs_parsed == "false == ((8) == (hdr.ethernet.etherType))"){
-  //   std::cerr << lhs->getWidth() << "\n";
-  //   std::cerr << lhs->getKind() << "\n";
-
-  //   char c;
-  //   std::cin >> c;
-  // }
-
   auto isBool = is_bool(lhs) || is_bool(rhs);
 
   code << "(" << lhs_parsed << ")";
-  if(isBool){
+
+  if (isBool) {
     code << " || ";
   } else {
     code << " | ";
   }
+
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();

@@ -421,11 +421,19 @@ void BMv2SimpleSwitchgRPC_Generator::compute_checksum_t::dump(
 
 void BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(
     code_builder_t &code_builder) {
+  std::unordered_set<std::string> defined_hdrs;
+
   std::stringstream deparser_apply_stream;
 
   for (auto header_label : headers_labels) {
+    if (defined_hdrs.find(header_label) != defined_hdrs.end()) {
+      continue;
+    }
+
     pad(deparser_apply_stream, lvl + 1);
     deparser_apply_stream << "packet.emit(hdr." << header_label << ");\n";
+
+    defined_hdrs.insert(header_label);
   }
 
   code_builder.fill_mark(MARKER_DEPARSER_APPLY, deparser_apply_stream.str());
@@ -435,7 +443,13 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
   std::stringstream headers_definitions_stream;
   auto lvl = code_builder.get_indentation_level(MARKER_HEADERS_DEFINITIONS);
 
+  std::unordered_set<std::string> defined_hdrs;
+
   for (auto header : headers) {
+    if (defined_hdrs.find(header.type_label) != defined_hdrs.end()) {
+      continue;
+    }
+
     pad(headers_definitions_stream, lvl);
     headers_definitions_stream << "header " << header.type_label << " {\n";
     lvl++;
@@ -447,6 +461,8 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
 
     lvl--;
     headers_definitions_stream << "}\n\n";
+
+    defined_hdrs.insert(header.type_label);
   }
 
   code_builder.fill_mark(MARKER_HEADERS_DEFINITIONS,
@@ -455,10 +471,18 @@ void BMv2SimpleSwitchgRPC_Generator::dump() {
   lvl = code_builder.get_indentation_level(MARKER_HEADERS_DECLARATIONS);
   std::stringstream headers_declarations_stream;
 
+  defined_hdrs.clear();
+
   for (auto header : headers) {
+    if (defined_hdrs.find(header.type_label) != defined_hdrs.end()) {
+      continue;
+    }
+
     pad(headers_declarations_stream, lvl);
     headers_declarations_stream << header.type_label << " " << header.label
                                 << ";\n";
+
+    defined_hdrs.insert(header.type_label);
   }
 
   code_builder.fill_mark(MARKER_HEADERS_DECLARATIONS,

@@ -33,11 +33,15 @@ private:
 
     stage_t(std::string _label) : label(_label), lvl(1) {}
     stage_t(std::string _label, unsigned _lvl) : label(_label), lvl(_lvl) {}
+
     virtual void dump(code_builder_t &code_builder) = 0;
 
     int close_if_clauses(std::ostream &os) {
-      assert(pending_ifs.size());
       int closed = 0;
+
+      if (!pending_ifs.size()) {
+        return closed;
+      }
 
       while (pending_ifs.size()) {
         lvl--;
