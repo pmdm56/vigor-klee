@@ -185,6 +185,8 @@ public:
        ****************************************************************************/
       { { "cht_fill_cht", TargetOption::LOCKS }, "cht_locks_fill_cht" },
       { { "cht_find_preferred_available_backend", TargetOption::LOCKS }, "cht_locks_find_preferred_available_backend" },
+      { { "cht_fill_cht", TargetOption::TM }, "cht_tm_fill_cht" },
+      { { "cht_find_preferred_available_backend", TargetOption::TM }, "cht_tm_find_preferred_available_backend" },
     };
 
     struct_translation = {
