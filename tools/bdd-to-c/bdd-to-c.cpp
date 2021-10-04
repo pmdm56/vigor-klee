@@ -32,6 +32,10 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 llvm::cl::OptionCategory SynthesizerCat("Synthesizer specific options");
 
 llvm::cl::opt<std::string>
+    InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
+                 llvm::cl::cat(SynthesizerCat));
+
+llvm::cl::opt<std::string>
     Out("out",
         llvm::cl::desc("Output file of the syntethized code. If omited, code "
                        "will be dumped to stdout."),
@@ -377,8 +381,14 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
   ast.commit(process_root);
 }
 
-int main(int argc, char **argv) {
-  llvm::cl::ParseCommandLineOptions(argc, argv);
+BDD::BDD build_bdd() {
+  assert((InputBDDFile.size() != 0 || InputCallPathFiles.size() != 0) &&
+         "Please provide either at least 1 call path file, or a bdd file");
+
+  if (InputBDDFile.size() > 0) {
+    return BDD::BDD::deserialize(InputBDDFile);
+  }
+
   std::vector<call_path_t *> call_paths;
 
   for (auto file : InputCallPathFiles) {
@@ -391,9 +401,13 @@ int main(int argc, char **argv) {
     call_paths.push_back(call_path);
   }
 
-  std::cerr << "Building the BDD...\n";
-  BDD::BDD bdd(call_paths);
-  std::cerr << "Done!\n";
+  return BDD::BDD(call_paths);
+}
+
+int main(int argc, char **argv) {
+  llvm::cl::ParseCommandLineOptions(argc, argv);
+
+  auto bdd = build_bdd();
 
   AST ast;
 
@@ -411,10 +425,6 @@ int main(int argc, char **argv) {
     auto file = std::ofstream(XML);
     assert(file.is_open());
     ast.print_xml(file);
-  }
-
-  for (auto call_path : call_paths) {
-    delete call_path;
   }
 
   return 0;
