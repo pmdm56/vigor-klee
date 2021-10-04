@@ -1243,10 +1243,21 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
   }
 
   else if (fname == "LoadBalancedFlow_hash") {
-    Expr_ptr obj = transpile(this, call.args["obj"].in);
-    assert(obj);
+    auto obj = call.args["obj"].in;
+    assert(!obj.isNull());
 
-    args = std::vector<ExpressionType_ptr>{obj};
+    Type_ptr obj_type = type_from_klee_expr(obj, true);
+    Variable_ptr hashed_obj = generate_new_symbol("hashed_obj", obj_type);
+    push_to_local(hashed_obj);
+
+    VariableDecl_ptr hashed_obj_decl = VariableDecl::build(hashed_obj);
+    exprs.push_back(hashed_obj_decl);
+
+    auto statements = build_and_fill_byte_array(this, hashed_obj, obj);
+    assert(statements.size());
+    exprs.insert(exprs.end(), statements.begin(), statements.end());
+
+    args = std::vector<ExpressionType_ptr>{hashed_obj};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
     ret_symbol = get_symbol_label("LoadBalancedFlow_hash", symbols);
