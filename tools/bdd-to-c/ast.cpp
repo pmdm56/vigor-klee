@@ -13,8 +13,7 @@ std::string get_symbol_label(const std::string &wanted,
     }
   }
 
-  std::cerr << "wanted: " << wanted << "\n";
-  assert(false && "Symbol not found");
+  return "";
 }
 
 Expr_ptr fix_time_32_bits(Expr_ptr now) {
@@ -1432,9 +1431,7 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
           primitive->get_primitive_kind() == PrimitiveType::PrimitiveKind::VOID;
     }
 
-    if (!is_void) {
-      assert(ret_symbol.size());
-
+    if (!is_void && ret_symbol.size()) {
       Variable_ptr ret_var;
 
       if (counter_begins >= 0) {
