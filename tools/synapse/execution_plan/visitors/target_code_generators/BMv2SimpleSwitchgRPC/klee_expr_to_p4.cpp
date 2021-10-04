@@ -237,9 +237,17 @@ KleeExprToP4::visitExtract(const klee::ExtractExpr &e) {
       code << " >> " << offset << ")";
     }
 
+    code << " & ";
+
+    code << "(bit<";
+    code << expr->getWidth();
+    code << ">)";
+    code << "(";
+
     code << std::hex;
-    code << " & 0x" << mask;
+    code << "0x" << mask;
     code << std::dec;
+    code << ")";
 
     return klee::ExprVisitor::Action::skipChildren();
   }
