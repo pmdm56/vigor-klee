@@ -157,7 +157,8 @@ private:
     } else if (counter >= (int)options.size() && options.size() > 0) {
       label = options.back();
     } else {
-      assert(false);
+      // I am unsure about this...
+      label = base;
     }
 
     if (save) {
@@ -357,7 +358,7 @@ private:
 
     assert(!call.ret.isNull());
     auto hash = call.ret;
-    symbols.emplace(build_label("hash", save, constraint_managers), "hash",
+    symbols.emplace(build_label("rte_ether_addr_hash", save, constraint_managers), "rte_ether_addr_hash",
                     hash);
 
     return symbols;
