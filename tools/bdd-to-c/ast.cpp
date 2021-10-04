@@ -1078,6 +1078,16 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
 
+    Expr_ptr index_arg = index;
+
+    if (index->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
+      Type_ptr int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+      Type_ptr index_type = Pointer::build(int_type);
+      Cast_ptr index_cast = Cast::build(index, index_type);
+      Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+      index_arg = Read::build(index_cast, int_type, zero);
+    }
+
     Type_ptr val_out_type =
         PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
     Variable_ptr val_out = generate_new_symbol("val_out", val_out_type, 1, 0);
@@ -1095,7 +1105,7 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr val_out_arg = AddressOf::build(val_out);
     Cast_ptr val_out_cast = Cast::build(val_out_arg, val_out_type_arg);
 
-    args = std::vector<ExpressionType_ptr>{vector, index, val_out_cast};
+    args = std::vector<ExpressionType_ptr>{vector, index_arg, val_out_cast};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
 
     // preemptive write
