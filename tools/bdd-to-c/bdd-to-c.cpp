@@ -26,8 +26,7 @@
 
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
-                                               llvm::cl::Positional,
-                                               llvm::cl::OneOrMore);
+                                               llvm::cl::Positional);
 
 llvm::cl::OptionCategory SynthesizerCat("Synthesizer specific options");
 
