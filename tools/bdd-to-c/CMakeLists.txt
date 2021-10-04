@@ -13,6 +13,7 @@ add_executable(bdd-to-c
   klee_transpiler.cpp
   ../load-call-paths/load-call-paths.cpp
   ../call-paths-to-bdd/call-paths-to-bdd.cpp
+  ../call-paths-to-bdd/bdd-io.cpp
   ../printer/printer.cpp
 )
 
