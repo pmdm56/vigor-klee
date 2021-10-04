@@ -1361,8 +1361,11 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     assert(statements.size());
     exprs.insert(exprs.end(), statements.begin(), statements.end());
 
-    Expr_ptr trash = transpile(this, call.args["trash"].expr);
-    assert(trash);
+    Variable_ptr trash = generate_new_symbol("trash", key_type);
+    push_to_local(trash);
+
+    VariableDecl_ptr trash_decl = VariableDecl::build(trash);
+    exprs.push_back(trash_decl);
 
     Type_ptr trash_type_arg = Pointer::build(Pointer::build(
         PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID)));
