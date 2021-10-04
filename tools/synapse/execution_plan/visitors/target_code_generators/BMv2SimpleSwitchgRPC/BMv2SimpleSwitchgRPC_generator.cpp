@@ -253,11 +253,22 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
     assert(constant->getWidth() <= 64);
 
     if (is_signed) {
+      ss << "(int<";
+      ss << constant->getWidth();
+      ss << ">)";
+      ss << "(";
       int64_t value = (int64_t)constant->getZExtValue();
       ss << value;
+      ss << ")";
     } else {
+      ss << "(bit<";
+      ss << constant->getWidth();
+      ss << ">)";
+      ss << "(";
       ss << constant->getZExtValue();
+      ss << ")";
     }
+
 
     return ss.str();
   }

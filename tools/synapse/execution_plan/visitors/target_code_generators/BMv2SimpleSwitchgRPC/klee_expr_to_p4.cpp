@@ -237,9 +237,17 @@ KleeExprToP4::visitExtract(const klee::ExtractExpr &e) {
       code << " >> " << offset << ")";
     }
 
+    code << " & ";
+
+    code << "(bit<";
+    code << expr->getWidth();
+    code << ">)";
+    code << "(";
+
     code << std::hex;
-    code << " & 0x" << mask;
+    code << "0x" << mask;
     code << std::dec;
+    code << ")";
 
     return klee::ExprVisitor::Action::skipChildren();
   }
@@ -420,6 +428,8 @@ bool is_bool(klee::ref<klee::Expr> expr) {
 
   return expr->getKind() == klee::Expr::Eq ||
          expr->getKind() == klee::Expr::Not ||
+         expr->getKind() == klee::Expr::Or ||
+         expr->getKind() == klee::Expr::And ||
          expr->getKind() == klee::Expr::Uge ||
          expr->getKind() == klee::Expr::Ugt ||
          expr->getKind() == klee::Expr::Ule ||
@@ -575,6 +585,7 @@ klee::ExprVisitor::Action KleeExprToP4::visitEq(const klee::EqExpr &e) {
   }
 
   convert_to_bool |= (lhs->getWidth() == 1);
+  convert_to_bool |= (is_bool(lhs) || is_bool(rhs));
 
   if (convert_to_bool) {
     if (lhs->getKind() == klee::Expr::Constant) {
