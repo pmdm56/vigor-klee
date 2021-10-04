@@ -27,7 +27,9 @@ private:
 
   std::vector<std::vector<label_t>> stack;
 
-  typedef symbols_t (SymbolFactory::*CallProcessorPtr)(call_t call, bool save);
+  typedef symbols_t (SymbolFactory::*CallProcessorPtr)(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers);
   std::map<std::string, CallProcessorPtr> call_processor_lookup_table;
 
 private:
@@ -41,8 +43,8 @@ private:
     return found != call.extra_vars.end();
   }
 
-  int count_labels(std::string base, int start = 0) {
-    int counter = start;
+  int count_labels(std::string base) {
+    int counter = 0;
 
     for (auto frame : stack) {
       for (auto label : frame) {
@@ -55,21 +57,115 @@ private:
     return counter;
   }
 
-  std::string build_label(std::string base, bool save, int start = 0) {
-    std::stringstream label;
-    label << base;
+  bool
+  has_symbol(const std::vector<klee::ConstraintManager> &constraint_managers,
+             const std::string &base) {
+    for (auto manager : constraint_managers) {
+      for (auto constraint : manager) {
+        RetrieveSymbols retriever;
+        retriever.visit(constraint);
 
-    auto counter = count_labels(base, start);
+        auto symbols = retriever.get_retrieved_strings();
+        for (auto s : symbols) {
+          if (s.find(base) == std::string::npos) {
+            continue;
+          }
 
-    if (counter > 0) {
-      label << "_" << counter;
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  std::string
+  build_label(std::string base, bool save,
+              const std::vector<klee::ConstraintManager> &constraint_managers) {
+    std::vector<std::string> options;
+
+    for (auto manager : constraint_managers) {
+      for (auto constraint : manager) {
+        RetrieveSymbols retriever;
+        retriever.visit(constraint);
+
+        auto symbols = retriever.get_retrieved_strings();
+        for (auto s : symbols) {
+          if (s.find(base) == std::string::npos) {
+            continue;
+          }
+
+          auto found_it = std::find(options.begin(), options.end(), s);
+
+          if (found_it == options.end()) {
+            options.push_back(s);
+          }
+        }
+      }
+    }
+
+    std::sort(options.begin(), options.end(),
+              [&](const std::string & a, const std::string & b)->bool {
+      auto a_pos = a.find(base);
+      auto b_pos = b.find(base);
+
+      assert(a_pos != std::string::npos);
+      assert(b_pos != std::string::npos);
+
+      auto a_counter = a.substr(a_pos + base.size());
+      auto b_counter = b.substr(b_pos + base.size());
+
+      int a_counter_int = 0;
+      int b_counter_int = 0;
+
+      if (a_counter.size() > 1) {
+        if (a_counter.find("__") != std::string::npos) {
+          a_counter_int = -1;
+        } else {
+          a_counter = a_counter.substr(1);
+          a_counter_int = std::stoi(a_counter);
+        }
+      }
+
+      if (b_counter.size() > 1) {
+        if (b_counter.find("__") != std::string::npos) {
+          b_counter_int = -1;
+        } else {
+          b_counter = b_counter.substr(1);
+          b_counter_int = std::stoi(b_counter);
+        }
+      }
+
+      return a_counter_int < b_counter_int;
+    });
+
+    auto counter = count_labels(base);
+
+    if (counter == 0 && options.size() == 0 && !save) {
+      return base;
+    }
+
+    // hack
+    if (options.size() == 0 && save && base == "checksum") {
+      return base;
+    }
+
+    std::string label;
+
+    if (counter < (int)options.size()) {
+      label = options[counter];
+    } else if (counter >= (int)options.size() && options.size() > 0) {
+      label = options.back();
+    } else {
+      // I am unsure about this...
+      label = base;
     }
 
     if (save) {
-      stack.back().emplace_back(base, label.str());
+      stack.back().emplace_back(base, label);
     }
 
-    return label.str();
+    return label;
   }
 
   std::string build_label(klee::ref<klee::Expr> expr, std::string base,
@@ -96,12 +192,16 @@ private:
     assert(false && "Symbol not found");
   }
 
-  symbols_t no_process(call_t call, bool save) {
+  symbols_t
+  no_process(call_t call, bool save,
+             const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
     return symbols;
   }
 
-  symbols_t cht_fill_cht(call_t call, bool save) {
+  symbols_t cht_fill_cht(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
@@ -115,7 +215,9 @@ private:
     return symbols;
   }
 
-  symbols_t LoadBalancedFlow_hash(call_t call, bool save) {
+  symbols_t LoadBalancedFlow_hash(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
@@ -128,7 +230,9 @@ private:
     return symbols;
   }
 
-  symbols_t cht_find_preferred_available_backend(call_t call, bool save) {
+  symbols_t cht_find_preferred_available_backend(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
@@ -137,15 +241,18 @@ private:
     auto prefered_backend_found = call.ret;
     auto chosen_backend = call.args["chosen_backend"].out;
 
-    symbols.emplace(build_label("prefered_backend_found", save),
-                    "prefered_backend_found", prefered_backend_found);
+    symbols.emplace(
+        build_label("prefered_backend_found", save, constraint_managers),
+        "prefered_backend_found", prefered_backend_found);
     symbols.emplace(build_label(chosen_backend, "chosen_backend", save),
                     "chosen_backend", chosen_backend);
 
     return symbols;
   }
 
-  symbols_t map_get(call_t call, bool save) {
+  symbols_t
+  map_get(call_t call, bool save,
+          const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(has_arg(call, "value_out"));
@@ -156,8 +263,8 @@ private:
     auto map_has_this_key = call.ret;
     auto value_out = call.args["value_out"].out;
 
-    symbols.emplace(build_label("map_has_this_key", save), "map_has_this_key",
-                    map_has_this_key);
+    symbols.emplace(build_label("map_has_this_key", save, constraint_managers),
+                    "map_has_this_key", map_has_this_key);
 
     auto has_this_key =
         solver_toolbox.exprBuilder->Constant(1, map_has_this_key->getWidth());
@@ -169,19 +276,24 @@ private:
     return symbols;
   }
 
-  symbols_t dchain_is_index_allocated(call_t call, bool save) {
+  symbols_t dchain_is_index_allocated(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
     auto is_index_allocated = call.ret;
 
-    symbols.emplace(build_label("dchain_is_index_allocated", save),
-                    "dchain_is_index_allocated", is_index_allocated);
+    symbols.emplace(
+        build_label("dchain_is_index_allocated", save, constraint_managers),
+        "dchain_is_index_allocated", is_index_allocated);
 
     return symbols;
   }
 
-  symbols_t dchain_allocate_new_index(call_t call, bool save) {
+  symbols_t dchain_allocate_new_index(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(has_arg(call, "index_out"));
@@ -192,15 +304,22 @@ private:
     auto index_out = call.args["index_out"].out;
     auto success = call.ret;
 
-    symbols.emplace(build_label("out_of_space", save, 1), "out_of_space",
-                    success);
+    auto has_out_of_space = has_symbol(constraint_managers, "out_of_space");
+
+    if (has_out_of_space) {
+      symbols.emplace(build_label("out_of_space", save, constraint_managers),
+                      "out_of_space", success);
+    }
+
     symbols.emplace(build_label(index_out, "new_index", save), "new_index",
                     index_out);
 
     return symbols;
   }
 
-  symbols_t packet_borrow_next_chunk(call_t call, bool save) {
+  symbols_t packet_borrow_next_chunk(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(has_arg(call, "chunk"));
@@ -217,29 +336,37 @@ private:
     return symbols;
   }
 
-  symbols_t expire_items_single_map(call_t call, bool save) {
+  symbols_t expire_items_single_map(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
     auto number_of_freed_flows = call.ret;
 
-    symbols.emplace(build_label("number_of_freed_flows", save),
-                    "number_of_freed_flows", number_of_freed_flows);
+    symbols.emplace(
+        build_label("number_of_freed_flows", save, constraint_managers),
+        "number_of_freed_flows", number_of_freed_flows);
 
     return symbols;
   }
 
-  symbols_t rte_ether_addr_hash(call_t call, bool save) {
+  symbols_t rte_ether_addr_hash(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
     auto hash = call.ret;
-    symbols.emplace(build_label("hash", save), "hash", hash);
+    symbols.emplace(build_label("rte_ether_addr_hash", save, constraint_managers), "rte_ether_addr_hash",
+                    hash);
 
     return symbols;
   }
 
-  symbols_t vector_borrow(call_t call, bool save) {
+  symbols_t vector_borrow(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(has_arg(call, "val_out"));
@@ -257,54 +384,69 @@ private:
     return symbols;
   }
 
-  symbols_t map_allocate(call_t call, bool save) {
+  symbols_t map_allocate(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
     auto map_allocation_succeeded = call.ret;
-    symbols.emplace(build_label("map_allocation_succeeded", save),
-                    "map_allocation_succeeded", map_allocation_succeeded);
+    symbols.emplace(
+        build_label("map_allocation_succeeded", save, constraint_managers),
+        "map_allocation_succeeded", map_allocation_succeeded);
 
     return symbols;
   }
 
-  symbols_t vector_allocate(call_t call, bool save) {
+  symbols_t vector_allocate(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
     auto vector_alloc_success = call.ret;
-    symbols.emplace(build_label("vector_alloc_success", save),
-                    "vector_alloc_success", vector_alloc_success);
+    symbols.emplace(
+        build_label("vector_alloc_success", save, constraint_managers),
+        "vector_alloc_success", vector_alloc_success);
 
     return symbols;
   }
 
-  symbols_t current_time(call_t call, bool save) {
+  symbols_t current_time(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
     auto next_time = call.ret;
-    symbols.emplace(build_label("next_time", save), "next_time", next_time);
+    symbols.emplace(build_label("next_time", save, constraint_managers),
+                    "next_time", next_time);
 
     return symbols;
   }
 
-  symbols_t nf_set_rte_ipv4_udptcp_checksum(call_t call, bool save) {
+  symbols_t nf_set_rte_ipv4_udptcp_checksum(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     klee::ref<klee::Expr> none;
-    symbols.emplace(build_label("checksum", save), "checksum", none);
+    symbols.emplace(build_label("checksum", save, constraint_managers),
+                    "checksum", none);
 
     return symbols;
   }
 
-  symbols_t dchain_allocate(call_t call, bool save) {
+  symbols_t dchain_allocate(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
     auto is_dchain_allocated = call.ret;
-    symbols.emplace(build_label("is_dchain_allocated", save),
-                    "is_dchain_allocated", is_dchain_allocated);
+    symbols.emplace(
+        build_label("is_dchain_allocated", save, constraint_managers),
+        "is_dchain_allocated", is_dchain_allocated);
 
     return symbols;
   }
@@ -312,41 +454,41 @@ private:
 public:
   SymbolFactory() {
     call_processor_lookup_table = {
-        {"start_time", &SymbolFactory::no_process},
-        {"current_time", &SymbolFactory::current_time},
-        {"loop_invariant_consume", &SymbolFactory::no_process},
-        {"loop_invariant_produce", &SymbolFactory::no_process},
-        {"packet_receive", &SymbolFactory::no_process},
-        {"packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk},
-        {"packet_insert_new_chunk", &SymbolFactory::no_process},
-        {"packet_shrink_chunk", &SymbolFactory::no_process},
-        {"packet_get_unread_length", &SymbolFactory::no_process},
-        {"packet_state_total_length", &SymbolFactory::no_process},
-        {"packet_return_chunk", &SymbolFactory::no_process},
-        {"packet_send", &SymbolFactory::no_process},
-        {"packet_free", &SymbolFactory::no_process},
-        {"map_allocate", &SymbolFactory::map_allocate},
-        {"map_get", &SymbolFactory::map_get},
-        {"map_put", &SymbolFactory::no_process},
-        {"vector_allocate", &SymbolFactory::vector_allocate},
-        {"vector_borrow", &SymbolFactory::vector_borrow},
-        {"vector_return", &SymbolFactory::no_process},
-        {"map_erase", &SymbolFactory::no_process},
-        {"dchain_allocate", &SymbolFactory::dchain_allocate},
-        {"dchain_allocate_new_index",
-         &SymbolFactory::dchain_allocate_new_index},
-        {"dchain_is_index_allocated",
-         &SymbolFactory::dchain_is_index_allocated},
-        {"dchain_rejuvenate_index", &SymbolFactory::no_process},
-        {"dchain_free_index", &SymbolFactory::no_process},
-        {"expire_items_single_map", &SymbolFactory::expire_items_single_map},
-        {"cht_fill_cht", &SymbolFactory::cht_fill_cht},
-        {"LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash},
-        {"cht_find_preferred_available_backend",
-         &SymbolFactory::cht_find_preferred_available_backend},
-        {"rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash},
-        {"nf_set_rte_ipv4_udptcp_checksum",
-         &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum},
+      { "start_time", &SymbolFactory::no_process },
+      { "current_time", &SymbolFactory::current_time },
+      { "loop_invariant_consume", &SymbolFactory::no_process },
+      { "loop_invariant_produce", &SymbolFactory::no_process },
+      { "packet_receive", &SymbolFactory::no_process },
+      { "packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk },
+      { "packet_insert_new_chunk", &SymbolFactory::no_process },
+      { "packet_shrink_chunk", &SymbolFactory::no_process },
+      { "packet_get_unread_length", &SymbolFactory::no_process },
+      { "packet_state_total_length", &SymbolFactory::no_process },
+      { "packet_return_chunk", &SymbolFactory::no_process },
+      { "packet_send", &SymbolFactory::no_process },
+      { "packet_free", &SymbolFactory::no_process },
+      { "map_allocate", &SymbolFactory::map_allocate },
+      { "map_get", &SymbolFactory::map_get },
+      { "map_put", &SymbolFactory::no_process },
+      { "vector_allocate", &SymbolFactory::vector_allocate },
+      { "vector_borrow", &SymbolFactory::vector_borrow },
+      { "vector_return", &SymbolFactory::no_process },
+      { "map_erase", &SymbolFactory::no_process },
+      { "dchain_allocate", &SymbolFactory::dchain_allocate },
+      { "dchain_allocate_new_index",
+        &SymbolFactory::dchain_allocate_new_index },
+      { "dchain_is_index_allocated",
+        &SymbolFactory::dchain_is_index_allocated },
+      { "dchain_rejuvenate_index", &SymbolFactory::no_process },
+      { "dchain_free_index", &SymbolFactory::no_process },
+      { "expire_items_single_map", &SymbolFactory::expire_items_single_map },
+      { "cht_fill_cht", &SymbolFactory::cht_fill_cht },
+      { "LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash },
+      { "cht_find_preferred_available_backend",
+        &SymbolFactory::cht_find_preferred_available_backend },
+      { "rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash },
+      { "nf_set_rte_ipv4_udptcp_checksum",
+        &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum },
     };
 
     stack.emplace_back();
@@ -369,7 +511,7 @@ public:
 
   void translate(Node *current, Node *translation_source,
                  RenameSymbols renamer) {
-    std::vector<Node *> nodes{current};
+    std::vector<Node *> nodes{ current };
 
     while (nodes.size()) {
       auto node = nodes[0];
@@ -398,7 +540,8 @@ public:
         }
 
         auto call_processor = found_it->second;
-        auto call_symbols = (this->*call_processor)(call, false);
+        auto call_symbols =
+            (this->*call_processor)(call, false, node->get_constraints());
 
         RenameSymbols renamer_modified = renamer;
         bool modified_renamer = false;
@@ -455,7 +598,7 @@ public:
     }
 
     auto call_processor = found_it->second;
-    auto symbols = (this->*call_processor)(call, true);
+    auto symbols = (this->*call_processor)(call, true, node->get_constraints());
 
     RenameSymbols renamer;
 
@@ -504,7 +647,8 @@ public:
     }
 
     auto call_processor = found_it->second;
-    auto symbols = (this->*call_processor)(call, false);
+    auto symbols =
+        (this->*call_processor)(call, false, node->get_constraints());
 
     auto translated_symbols = symbols_t();
 

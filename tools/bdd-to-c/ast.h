@@ -178,7 +178,13 @@ public:
       { { "dmap_put", TargetOption::LOCKS }, "dmap_locks_put" },
       { { "dmap_get_value", TargetOption::LOCKS }, "dmap_locks_get_value" },
       { { "dmap_erase", TargetOption::LOCKS }, "dmap_locks_erase" },
-      { { "dmap_size", TargetOption::LOCKS }, "dmap_locks_size" }
+      { { "dmap_size", TargetOption::LOCKS }, "dmap_locks_size" },
+
+      /****************************************************************************
+       *                                cht
+       ****************************************************************************/
+      { { "cht_fill_cht", TargetOption::LOCKS }, "cht_locks_fill_cht" },
+      { { "cht_find_preferred_available_backend", TargetOption::LOCKS }, "cht_locks_find_preferred_available_backend" },
     };
 
     struct_translation = {

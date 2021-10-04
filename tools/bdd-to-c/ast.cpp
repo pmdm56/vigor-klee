@@ -13,8 +13,7 @@ std::string get_symbol_label(const std::string &wanted,
     }
   }
 
-  std::cerr << "wanted: " << wanted << "\n";
-  assert(false && "Symbol not found");
+  return "";
 }
 
 Expr_ptr fix_time_32_bits(Expr_ptr now) {
@@ -1079,6 +1078,16 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
 
+    Expr_ptr index_arg = index;
+
+    if (index->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
+      Type_ptr int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+      Type_ptr index_type = Pointer::build(int_type);
+      Cast_ptr index_cast = Cast::build(index, index_type);
+      Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+      index_arg = Read::build(index_cast, int_type, zero);
+    }
+
     Type_ptr val_out_type =
         PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
     Variable_ptr val_out = generate_new_symbol("val_out", val_out_type, 1, 0);
@@ -1096,7 +1105,7 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr val_out_arg = AddressOf::build(val_out);
     Cast_ptr val_out_cast = Cast::build(val_out_arg, val_out_type_arg);
 
-    args = std::vector<ExpressionType_ptr>{vector, index, val_out_cast};
+    args = std::vector<ExpressionType_ptr>{vector, index_arg, val_out_cast};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
 
     // preemptive write
@@ -1164,7 +1173,17 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr value = get_from_local_by_addr("val_out", value_addr);
     assert(value);
 
-    args = std::vector<ExpressionType_ptr>{vector, index, value};
+    Expr_ptr index_arg = index;
+
+    if (index->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
+      Type_ptr int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+      Type_ptr index_type = Pointer::build(int_type);
+      Cast_ptr index_cast = Cast::build(index, index_type);
+      Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+      index_arg = Read::build(index_cast, int_type, zero);
+    }
+
+    args = std::vector<ExpressionType_ptr>{vector, index_arg, value};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
@@ -1235,7 +1254,17 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
 
-    args = std::vector<ExpressionType_ptr>{chain, index};
+    Expr_ptr index_arg = index;
+
+    if (index->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
+      Type_ptr int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+      Type_ptr index_type = Pointer::build(int_type);
+      Cast_ptr index_cast = Cast::build(index, index_type);
+      Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+      index_arg = Read::build(index_cast, int_type, zero);
+    }
+
+    args = std::vector<ExpressionType_ptr>{chain, index_arg};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
     ret_symbol = get_symbol_label("dchain_is_index_allocated", symbols);
@@ -1243,10 +1272,21 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
   }
 
   else if (fname == "LoadBalancedFlow_hash") {
-    Expr_ptr obj = transpile(this, call.args["obj"].in);
-    assert(obj);
+    auto obj = call.args["obj"].in;
+    assert(!obj.isNull());
 
-    args = std::vector<ExpressionType_ptr>{obj};
+    Type_ptr obj_type = type_from_klee_expr(obj, true);
+    Variable_ptr hashed_obj = generate_new_symbol("hashed_obj", obj_type);
+    push_to_local(hashed_obj);
+
+    VariableDecl_ptr hashed_obj_decl = VariableDecl::build(hashed_obj);
+    exprs.push_back(hashed_obj_decl);
+
+    auto statements = build_and_fill_byte_array(this, hashed_obj, obj);
+    assert(statements.size());
+    exprs.insert(exprs.end(), statements.begin(), statements.end());
+
+    args = std::vector<ExpressionType_ptr>{hashed_obj};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
     ret_symbol = get_symbol_label("LoadBalancedFlow_hash", symbols);
@@ -1351,8 +1391,11 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     assert(statements.size());
     exprs.insert(exprs.end(), statements.begin(), statements.end());
 
-    Expr_ptr trash = transpile(this, call.args["trash"].expr);
-    assert(trash);
+    Variable_ptr trash = generate_new_symbol("trash", key_type);
+    push_to_local(trash);
+
+    VariableDecl_ptr trash_decl = VariableDecl::build(trash);
+    exprs.push_back(trash_decl);
 
     Type_ptr trash_type_arg = Pointer::build(Pointer::build(
         PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID)));
@@ -1421,9 +1464,7 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
           primitive->get_primitive_kind() == PrimitiveType::PrimitiveKind::VOID;
     }
 
-    if (!is_void) {
-      assert(ret_symbol.size());
-
+    if (!is_void && ret_symbol.size()) {
       Variable_ptr ret_var;
 
       if (counter_begins >= 0) {
