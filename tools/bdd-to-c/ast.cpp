@@ -1163,7 +1163,17 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr value = get_from_local_by_addr("val_out", value_addr);
     assert(value);
 
-    args = std::vector<ExpressionType_ptr>{vector, index, value};
+    Expr_ptr index_arg = index;
+
+    if (index->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
+      Type_ptr int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+      Type_ptr index_type = Pointer::build(int_type);
+      Cast_ptr index_cast = Cast::build(index, index_type);
+      Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+      index_arg = Read::build(index_cast, int_type, zero);
+    }
+
+    args = std::vector<ExpressionType_ptr>{vector, index_arg, value};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
@@ -1234,7 +1244,17 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr index = transpile(this, call.args["index"].expr);
     assert(index);
 
-    args = std::vector<ExpressionType_ptr>{chain, index};
+    Expr_ptr index_arg = index;
+
+    if (index->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
+      Type_ptr int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+      Type_ptr index_type = Pointer::build(int_type);
+      Cast_ptr index_cast = Cast::build(index, index_type);
+      Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+      index_arg = Read::build(index_cast, int_type, zero);
+    }
+
+    args = std::vector<ExpressionType_ptr>{chain, index_arg};
 
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT32_T);
     ret_symbol = get_symbol_label("dchain_is_index_allocated", symbols);
