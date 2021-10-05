@@ -2,6 +2,28 @@
 
 namespace synapse {
 
+bool is_bool(klee::ref<klee::Expr> expr) {
+  assert(!expr.isNull());
+
+  if (expr->getKind() == klee::Expr::ZExt ||
+      expr->getKind() == klee::Expr::SExt) {
+    return is_bool(expr->getKid(0));
+  }
+
+  return expr->getKind() == klee::Expr::Eq ||
+         expr->getKind() == klee::Expr::Not ||
+         expr->getKind() == klee::Expr::Or ||
+         expr->getKind() == klee::Expr::And ||
+         expr->getKind() == klee::Expr::Uge ||
+         expr->getKind() == klee::Expr::Ugt ||
+         expr->getKind() == klee::Expr::Ule ||
+         expr->getKind() == klee::Expr::Ult ||
+         expr->getKind() == klee::Expr::Sge ||
+         expr->getKind() == klee::Expr::Sgt ||
+         expr->getKind() == klee::Expr::Sle ||
+         expr->getKind() == klee::Expr::Slt;
+}
+
 bool KleeExprToP4::is_read_lsb(klee::ref<klee::Expr> e) const {
   RetrieveSymbols retriever;
   retriever.visit(e);
@@ -264,7 +286,14 @@ klee::ExprVisitor::Action KleeExprToP4::visitZExt(const klee::ZExtExpr &e) {
   auto expr = e.getKid(0);
   assert(sz % 8 == 0);
 
-  code << generator.transpile(expr, is_signed);
+  klee::ref<klee::Expr> eref = const_cast<klee::ZExtExpr *>(&e);
+
+  if (is_bool(eref)) {
+    code << generator.transpile(expr, is_signed);
+  } else {
+    code << "(" << generator.p4_type_from_expr(eref) << ") ";
+    code << "(" << generator.transpile(expr, is_signed) << ")";
+  }
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -274,8 +303,20 @@ klee::ExprVisitor::Action KleeExprToP4::visitSExt(const klee::SExtExpr &e) {
   auto expr = e.getKid(0);
   assert(sz % 8 == 0);
 
-  is_signed = true;
-  code << generator.transpile(expr, is_signed);
+  klee::ref<klee::Expr> eref = const_cast<klee::SExtExpr *>(&e);
+
+  if (is_bool(eref)) {
+    is_signed = true;
+    code << generator.transpile(expr, is_signed);
+  } else {
+    if (expr->getKind() == klee::Expr::ZExt) {
+      code << "(" << generator.p4_type_from_expr(eref, true) << ") ";
+      code << generator.transpile(expr->getKid(0), is_signed);
+    } else {
+      code << "(" << generator.p4_type_from_expr(eref, true) << ") ";
+      code << generator.transpile(expr, is_signed);
+    }
+  }
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -286,12 +327,31 @@ klee::ExprVisitor::Action KleeExprToP4::visitAdd(const klee::AddExpr &e) {
   auto lhs = e.getKid(0);
   auto rhs = e.getKid(1);
 
-  auto lhs_parsed = generator.transpile(lhs, is_signed);
-  auto rhs_parsed = generator.transpile(rhs, is_signed);
+  if (generator.is_constant_signed(lhs) && !generator.is_constant_signed(rhs)) {
+    auto constant_signed = generator.get_constant_signed(lhs);
+    auto rhs_parsed = generator.transpile(rhs, is_signed);
 
-  code << "(" << lhs_parsed << ")";
-  code << " + ";
-  code << "(" << rhs_parsed << ")";
+    code << "(" << rhs_parsed << ") ";
+    code << constant_signed;
+  }
+
+  else if (generator.is_constant_signed(rhs) &&
+           !generator.is_constant_signed(lhs)) {
+    auto constant_signed = generator.get_constant_signed(rhs);
+    auto lhs_parsed = generator.transpile(lhs, is_signed);
+
+    code << "(" << lhs_parsed << ") ";
+    code << constant_signed;
+  }
+
+  else {
+    auto lhs_parsed = generator.transpile(lhs, is_signed);
+    auto rhs_parsed = generator.transpile(rhs, is_signed);
+
+    code << "(" << lhs_parsed << ")";
+    code << " + ";
+    code << "(" << rhs_parsed << ")";
+  }
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -411,33 +471,21 @@ klee::ExprVisitor::Action KleeExprToP4::visitAnd(const klee::AndExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, is_signed);
   auto rhs_parsed = generator.transpile(rhs, is_signed);
 
-  code << "(" << lhs_parsed << ")";
-  code << " & ";
-  code << "(" << rhs_parsed << ")";
+  auto isBool = is_bool(lhs) || is_bool(rhs);
 
-  return klee::ExprVisitor::Action::skipChildren();
-}
-
-bool is_bool(klee::ref<klee::Expr> expr) {
-  assert(!expr.isNull());
-
-  if (expr->getKind() == klee::Expr::ZExt ||
-      expr->getKind() == klee::Expr::SExt) {
-    return is_bool(expr->getKid(0));
+  if (isBool) {
+    code << "(" << lhs_parsed << ")";
+    code << " && ";
+    code << "(" << rhs_parsed << ")";
+  } else {
+    code << "(" << generator.p4_type_from_expr(lhs) << ")";
+    code << "(" << lhs_parsed << ")";
+    code << " & ";
+    code << "(" << generator.p4_type_from_expr(rhs) << ")";
+    code << "(" << rhs_parsed << ")";
   }
 
-  return expr->getKind() == klee::Expr::Eq ||
-         expr->getKind() == klee::Expr::Not ||
-         expr->getKind() == klee::Expr::Or ||
-         expr->getKind() == klee::Expr::And ||
-         expr->getKind() == klee::Expr::Uge ||
-         expr->getKind() == klee::Expr::Ugt ||
-         expr->getKind() == klee::Expr::Ule ||
-         expr->getKind() == klee::Expr::Ult ||
-         expr->getKind() == klee::Expr::Sge ||
-         expr->getKind() == klee::Expr::Sgt ||
-         expr->getKind() == klee::Expr::Sle ||
-         expr->getKind() == klee::Expr::Slt;
+  return klee::ExprVisitor::Action::skipChildren();
 }
 
 klee::ExprVisitor::Action KleeExprToP4::visitOr(const klee::OrExpr &e) {
@@ -451,15 +499,17 @@ klee::ExprVisitor::Action KleeExprToP4::visitOr(const klee::OrExpr &e) {
 
   auto isBool = is_bool(lhs) || is_bool(rhs);
 
-  code << "(" << lhs_parsed << ")";
-
   if (isBool) {
+    code << "(" << lhs_parsed << ")";
     code << " || ";
+    code << "(" << rhs_parsed << ")";
   } else {
+    code << "(" << generator.p4_type_from_expr(lhs) << ")";
+    code << "(" << lhs_parsed << ")";
     code << " | ";
+    code << "(" << generator.p4_type_from_expr(rhs) << ")";
+    code << "(" << rhs_parsed << ")";
   }
-
-  code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
 }
@@ -473,8 +523,11 @@ klee::ExprVisitor::Action KleeExprToP4::visitXor(const klee::XorExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, is_signed);
   auto rhs_parsed = generator.transpile(rhs, is_signed);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " ^ ";
+
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -487,10 +540,14 @@ klee::ExprVisitor::Action KleeExprToP4::visitShl(const klee::ShlExpr &e) {
   auto rhs = e.getKid(1);
 
   auto lhs_parsed = generator.transpile(lhs, is_signed);
-  auto rhs_parsed = generator.transpile(rhs, is_signed);
+  auto rhs_parsed = generator.transpile(rhs, false);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
+
   code << " << ";
+
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -503,10 +560,14 @@ klee::ExprVisitor::Action KleeExprToP4::visitLShr(const klee::LShrExpr &e) {
   auto rhs = e.getKid(1);
 
   auto lhs_parsed = generator.transpile(lhs, is_signed);
-  auto rhs_parsed = generator.transpile(rhs, is_signed);
+  auto rhs_parsed = generator.transpile(rhs, false);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
+
   code << " >> ";
+
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -522,7 +583,7 @@ klee::ExprVisitor::Action KleeExprToP4::visitAShr(const klee::AShrExpr &e) {
   assert(sz % 8 == 0);
 
   auto lhs_parsed = generator.transpile(lhs, is_signed);
-  auto rhs_parsed = generator.transpile(rhs, is_signed);
+  auto rhs_parsed = generator.transpile(rhs, false);
 
   std::stringstream sign_bit_stream;
   sign_bit_stream << "(" << lhs_parsed << ")";
@@ -599,12 +660,18 @@ klee::ExprVisitor::Action KleeExprToP4::visitEq(const klee::EqExpr &e) {
     }
   } else {
     auto lhs_parsed = generator.transpile(lhs, is_signed);
+    code << "(" << generator.p4_type_from_expr(lhs) << ")";
     code << "(" << lhs_parsed << ")";
   }
 
   auto rhs_parsed = generator.transpile(rhs, is_signed);
 
   code << " == ";
+
+  if (!convert_to_bool) {
+    code << "(" << generator.p4_type_from_expr(rhs) << ")";
+  }
+
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -619,8 +686,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitNe(const klee::NeExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, is_signed);
   auto rhs_parsed = generator.transpile(rhs, is_signed);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " != ";
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -635,8 +704,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitUlt(const klee::UltExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, is_signed);
   auto rhs_parsed = generator.transpile(rhs, is_signed);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " < ";
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -651,8 +722,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitUle(const klee::UleExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, is_signed);
   auto rhs_parsed = generator.transpile(rhs, is_signed);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " <= ";
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -667,8 +740,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitUgt(const klee::UgtExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, is_signed);
   auto rhs_parsed = generator.transpile(rhs, is_signed);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " > ";
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -683,8 +758,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitUge(const klee::UgeExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, is_signed);
   auto rhs_parsed = generator.transpile(rhs, is_signed);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " >= ";
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -699,8 +776,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitSlt(const klee::SltExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, true);
   auto rhs_parsed = generator.transpile(rhs, true);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " < ";
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -717,8 +796,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitSle(const klee::SleExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, true);
   auto rhs_parsed = generator.transpile(rhs, true);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " <= ";
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -735,8 +816,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitSgt(const klee::SgtExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, true);
   auto rhs_parsed = generator.transpile(rhs, true);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " > ";
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -753,8 +836,10 @@ klee::ExprVisitor::Action KleeExprToP4::visitSge(const klee::SgeExpr &e) {
   auto lhs_parsed = generator.transpile(lhs, true);
   auto rhs_parsed = generator.transpile(rhs, true);
 
+  code << "(" << generator.p4_type_from_expr(lhs) << ")";
   code << "(" << lhs_parsed << ")";
   code << " >= ";
+  code << "(" << generator.p4_type_from_expr(rhs) << ")";
   code << "(" << rhs_parsed << ")";
 
   return klee::ExprVisitor::Action::skipChildren();

@@ -55,11 +55,16 @@ void BMv2SimpleSwitchgRPC_Generator::err_label_from_vars(
   assert(false);
 }
 
-std::string BMv2SimpleSwitchgRPC_Generator::p4_type_from_expr(
-    klee::ref<klee::Expr> expr) const {
+std::string
+BMv2SimpleSwitchgRPC_Generator::p4_type_from_expr(klee::ref<klee::Expr> expr,
+                                                  bool _signed) const {
   auto sz = expr->getWidth();
   std::stringstream label;
-  label << "bit<" << sz << ">";
+  if (_signed) {
+    label << "int<" << sz << ">";
+  } else {
+    label << "bit<" << sz << ">";
+  }
   return label.str();
 }
 
@@ -244,42 +249,73 @@ BMv2SimpleSwitchgRPC_Generator::assign_key_bytes(klee::ref<klee::Expr> expr) {
   return assignments;
 }
 
+bool BMv2SimpleSwitchgRPC_Generator::is_constant(
+    klee::ref<klee::Expr> expr) const {
+  if (expr->getKind() == klee::Expr::Kind::Constant) {
+    return true;
+  }
+
+  return false;
+}
+
+bool BMv2SimpleSwitchgRPC_Generator::is_constant_signed(
+    klee::ref<klee::Expr> expr) const {
+  if (!is_constant(expr)) {
+    return false;
+  }
+
+  auto constant = static_cast<klee::ConstantExpr *>(expr.get());
+  assert(constant->getWidth() <= 64);
+
+  auto value = constant->getZExtValue(constant->getWidth());
+  auto sign_bit = value >> (constant->getWidth() - 1);
+
+  return sign_bit == 1;
+}
+
+int64_t BMv2SimpleSwitchgRPC_Generator::get_constant_signed(
+    klee::ref<klee::Expr> expr) const {
+  if (!is_constant_signed(expr)) {
+    return false;
+  }
+
+  auto constant = static_cast<klee::ConstantExpr *>(expr.get());
+  assert(constant->getWidth() <= 64);
+  auto value = constant->getZExtValue(constant->getWidth());
+
+  uint64_t mask = 0;
+  for (uint64_t i = 0u; i < constant->getWidth(); i++) {
+    mask <<= 1;
+    mask |= 1;
+  }
+
+  return -((~value + 1) & mask);
+}
+
 std::string
 BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
                                           bool is_signed) const {
-  if (e->getKind() == klee::Expr::Kind::Constant) {
+  if (is_constant(e)) {
     std::stringstream ss;
     auto constant = static_cast<klee::ConstantExpr *>(e.get());
     assert(constant->getWidth() <= 64);
+    auto value = constant->getZExtValue(constant->getWidth());
 
     if (is_signed) {
       ss << "(int<";
       ss << constant->getWidth();
       ss << ">)";
       ss << "(";
-      switch (constant->getWidth()) {
-      case klee::Expr::Int8: {
-        int8_t value = (int8_t)constant->getZExtValue();
+
+      auto is_neg = is_constant_signed(e);
+
+      if (is_neg) {
+        auto constant_signed = get_constant_signed(e);
+        ss << constant_signed;
+      } else {
         ss << value;
-        break;
       }
-      case klee::Expr::Int16: {
-        int16_t value = (int16_t)constant->getZExtValue();
-        ss << value;
-        break;
-      }
-      case klee::Expr::Int32: {
-        int32_t value = (int32_t)constant->getZExtValue();
-        ss << value;
-        break;
-      }
-      case klee::Expr::Int64:
-      default: {
-        int64_t value = (int64_t)constant->getZExtValue();
-        ss << value;
-        break;
-      }
-      }
+
       ss << ")";
     } else {
       ss << "(bit<";

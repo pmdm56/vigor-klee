@@ -565,7 +565,12 @@ private:
 private:
   void dump();
 
-  std::string p4_type_from_expr(klee::ref<klee::Expr> expr) const;
+  bool is_constant(klee::ref<klee::Expr> expr) const;
+  bool is_constant_signed(klee::ref<klee::Expr> expr) const;
+  int64_t get_constant_signed(klee::ref<klee::Expr> expr) const;
+
+  std::string p4_type_from_expr(klee::ref<klee::Expr> expr,
+                                bool _signed = false) const;
   void field_header_from_packet_chunk(klee::ref<klee::Expr> expr,
                                       std::string &field,
                                       unsigned &bit_offset) const;
