@@ -257,8 +257,29 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
       ss << constant->getWidth();
       ss << ">)";
       ss << "(";
-      int64_t value = (int64_t)constant->getZExtValue();
-      ss << value;
+      switch (constant->getWidth()) {
+      case klee::Expr::Int8: {
+        int8_t value = (int8_t)constant->getZExtValue();
+        ss << value;
+        break;
+      }
+      case klee::Expr::Int16: {
+        int16_t value = (int16_t)constant->getZExtValue();
+        ss << value;
+        break;
+      }
+      case klee::Expr::Int32: {
+        int32_t value = (int32_t)constant->getZExtValue();
+        ss << value;
+        break;
+      }
+      case klee::Expr::Int64:
+      default: {
+        int64_t value = (int64_t)constant->getZExtValue();
+        ss << value;
+        break;
+      }
+      }
       ss << ")";
     } else {
       ss << "(bit<";
@@ -268,7 +289,6 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
       ss << constant->getZExtValue();
       ss << ")";
     }
-
 
     return ss.str();
   }
