@@ -55,16 +55,11 @@ void BMv2SimpleSwitchgRPC_Generator::err_label_from_vars(
   assert(false);
 }
 
-std::string
-BMv2SimpleSwitchgRPC_Generator::p4_type_from_expr(klee::ref<klee::Expr> expr,
-                                                  bool _signed) const {
+std::string BMv2SimpleSwitchgRPC_Generator::p4_type_from_expr(
+    klee::ref<klee::Expr> expr) const {
   auto sz = expr->getWidth();
   std::stringstream label;
-  if (_signed) {
-    label << "int<" << sz << ">";
-  } else {
-    label << "bit<" << sz << ">";
-  }
+  label << "bit<" << sz << ">";
   return label.str();
 }
 
@@ -299,32 +294,17 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
     std::stringstream ss;
     auto constant = static_cast<klee::ConstantExpr *>(e.get());
     assert(constant->getWidth() <= 64);
-    auto value = constant->getZExtValue(constant->getWidth());
 
     if (is_signed) {
-      ss << "(int<";
-      ss << constant->getWidth();
-      ss << ">)";
-      ss << "(";
-
-      auto is_neg = is_constant_signed(e);
-
-      if (is_neg) {
-        auto constant_signed = get_constant_signed(e);
-        ss << constant_signed;
-      } else {
-        ss << value;
-      }
-
-      ss << ")";
-    } else {
-      ss << "(bit<";
-      ss << constant->getWidth();
-      ss << ">)";
-      ss << "(";
-      ss << constant->getZExtValue();
-      ss << ")";
+      assert(!is_constant_signed(e) && "Be careful with negative numbers...");
     }
+
+    ss << "(";
+    ss << "(bit<";
+    ss << constant->getWidth();
+    ss << ">) ";
+    ss << constant->getZExtValue();
+    ss << ")";
 
     return ss.str();
   }
@@ -397,20 +377,19 @@ void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
       if (conditional->next_on_true) {
         parser_states_stream << conditional->next_on_true->label;
         built_stages.push_back(conditional->next_on_false);
-      } else {
-        parser_states_stream << "reject";
       }
       parser_states_stream << ";\n";
 
-      pad(parser_states_stream, lvl);
-      parser_states_stream << "false: ";
       if (conditional->next_on_false) {
-        parser_states_stream << conditional->next_on_false->label;
+        if (conditional->next_on_false->label != "reject") {
+          pad(parser_states_stream, lvl);
+          parser_states_stream << "false: ";
+          parser_states_stream << conditional->next_on_false->label;
+          parser_states_stream << ";\n";
+        }
+
         built_stages.push_back(conditional->next_on_true);
-      } else {
-        parser_states_stream << "reject";
       }
-      parser_states_stream << ";\n";
 
       lvl--;
 
@@ -861,8 +840,19 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   headers.emplace_back(chunk, label, fields);
 
+  klee::ref<klee::Expr> length32 = length;
+
+  // this is ok because we don't expect the length of an ipv4 packet
+  // to not fit in 32 bits
+  if (length->getWidth() < klee::Expr::Int32) {
+    length32 = BDD::solver_toolbox.exprBuilder->ZExt(length, klee::Expr::Int32);
+  } else if (length->getWidth() > klee::Expr::Int32) {
+    length32 =
+        BDD::solver_toolbox.exprBuilder->Extract(length, 0, klee::Expr::Int32);
+  }
+
   assert(parsing_headers);
-  parser.add_extractor(label, transpile(length));
+  parser.add_extractor(label, transpile(length32));
 
   deparser.headers_labels.push_back(label);
 }
