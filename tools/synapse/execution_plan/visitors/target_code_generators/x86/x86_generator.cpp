@@ -237,7 +237,10 @@ public:
         code << " >> " << offset << ")";
       }
 
-      code << " & " << mask << "u";
+      code << " & 0x";
+      code << std::hex;
+      code << mask;
+      code << std::dec;
 
       return klee::ExprVisitor::Action::skipChildren();
     }
@@ -798,12 +801,30 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack,
     std::stringstream ss;
     auto constant = static_cast<klee::ConstantExpr *>(e.get());
     assert(constant->getWidth() <= 64);
+    auto width = constant->getWidth();
     auto value = constant->getZExtValue();
 
-    if (is_signed && value >> 63) {
-      ss << "-" << ~value + 1;
+    auto sign_bit = value >> (width - 1);
+
+    if (is_signed && sign_bit) {
+      uint64_t mask = 0;
+
+      for (uint64_t i = 0u; i < width; i++) {
+        mask <<= 1;
+        mask |= 1;
+      }
+
+      ss << -((~value + 1) & mask);
+
+      if (width > 32) {
+        ss << "LL";
+      }
     } else {
       ss << value;
+
+      if (width > 32) {
+        ss << "ULL";
+      }
     }
 
     return ss.str();
@@ -2201,7 +2222,8 @@ void x86_Generator::visit(const targets::x86::PacketGetUnreadLength *node) {
   assert(!p_addr.isNull());
   assert(!unread_length.isNull());
 
-  auto p_label = stack.get_label(p_addr);
+  auto p_label = "*p";
+  stack.set_addr(p_label, p_addr);
 
   assert(generated_symbols.size() == 1);
   auto unread_len_label = get_label(generated_symbols, "unread_len");
@@ -2226,7 +2248,8 @@ void x86_Generator::visit(const targets::x86::SetIpv4UdpTcpChecksum *node) {
 
   auto ip_header_label = stack.get_label(ip_header_addr);
   auto l4_header_label = stack.get_label(l4_header_addr);
-  auto p_label = stack.get_label(p_addr);
+
+  stack.set_value("p", p_addr);
 
   assert(generated_symbols.size() == 1);
   auto checksum_label = get_label(generated_symbols, "checksum");
@@ -2241,10 +2264,10 @@ void x86_Generator::visit(const targets::x86::SetIpv4UdpTcpChecksum *node) {
   stack.add(checksum_label, checksum_expr);
 
   pad(nf_process_stream);
-  nf_process_stream << "rte_ipv4_udptcp_cksum(";
-  nf_process_stream << ip_header_label;
-  nf_process_stream << ", " << l4_header_label;
-  nf_process_stream << ", " << p_label;
+  nf_process_stream << "nf_set_rte_ipv4_udptcp_checksum(";
+  nf_process_stream << "(struct rte_ipv4_hdr *) " << ip_header_label;
+  nf_process_stream << ", (struct tcpudp_hdr *) " << l4_header_label;
+  nf_process_stream << ", *p";
   nf_process_stream << ");\n";
 }
 
