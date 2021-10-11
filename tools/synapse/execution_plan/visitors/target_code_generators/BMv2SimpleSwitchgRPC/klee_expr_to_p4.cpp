@@ -678,7 +678,21 @@ klee::ExprVisitor::Action KleeExprToP4::visitEq(const klee::EqExpr &e) {
     } else {
       assert(false && "TODO");
     }
-  } else {
+  }
+
+  else if (generator.transpile(rhs).find("etherType") != std::string::npos) {
+    // be careful with endianess
+    assert(lhs->getKind() == klee::Expr::Constant);
+    auto etherType_val = BDD::solver_toolbox.value_from_expr(lhs);
+    auto new_val = ((((etherType_val & 0xff) << 8) | ((etherType_val & 0xff00) >> 8)) & 0xffff);
+
+    code << std::hex;
+    code << "0x";
+    code << new_val;
+    code << std::dec;
+  }
+
+  else {
     auto lhs_parsed = generator.transpile(lhs, is_signed);
     code << "(";
     code << "(" << generator.p4_type_from_expr(lhs) << ")";
