@@ -129,6 +129,46 @@ struct solver_toolbox_t {
 
 extern solver_toolbox_t solver_toolbox;
 
+class ReplaceExpression : public klee::ExprVisitor::ExprVisitor {
+private:
+  klee::ref<klee::Expr> before;
+  klee::ref<klee::Expr> after;
+
+  std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
+
+public:
+  ReplaceExpression(klee::ref<klee::Expr> _before, klee::ref<klee::Expr> _after)
+      : ExprVisitor(true), before(_before), after(_after) {}
+
+  klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
+    auto eref = klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e));
+    auto it = replacements.find(eref);
+
+    if (it != replacements.end()) {
+      return Action::changeTo(it->second);
+    } else {
+      return Action::doChildren();
+    }
+  }
+
+  klee::ExprVisitor::Action visitExpr(const klee::Expr &e) {
+    auto eref = klee::expr::ExprHandle(const_cast<klee::Expr *>(&e));
+    auto eq = solver_toolbox.are_exprs_always_equal(before, eref);
+
+    if (eq) {
+      auto it = replacements.find(eref);
+
+      if (it != replacements.end()) {
+        replacements.insert({ eref, after });
+      }
+
+      return Action::changeTo(after);
+    }
+
+    return Action::doChildren();
+  }
+};
+
 class RenameSymbols : public klee::ExprVisitor::ExprVisitor {
 private:
   std::map<std::string, std::string> translations;

@@ -309,15 +309,18 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
     return ss.str();
   }
 
+  auto expr = e;
+
   KleeExprToP4 kleeExprToP4(*this, is_signed);
-  kleeExprToP4.visit(e);
+  KleeExprToP4::swap_endianness(expr);
+  kleeExprToP4.visit(expr);
 
   auto code = kleeExprToP4.get_code();
 
   if (!code.size()) {
     // error
     Log::err() << "Unable to generator.transpile expression:\n";
-    Log::err() << expr_to_string(e, true);
+    Log::err() << expr_to_string(expr, true);
     exit(1);
   }
 

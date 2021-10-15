@@ -16,6 +16,7 @@ public:
       : ExprVisitor(false), generator(_generator), is_signed(_is_signed) {}
 
   std::string get_code() { return code.str(); }
+  static void swap_endianness(klee::ref<klee::Expr>& expr);
 
   klee::ExprVisitor::Action visitRead(const klee::ReadExpr &);
   klee::ExprVisitor::Action visitSelect(const klee::SelectExpr &);
