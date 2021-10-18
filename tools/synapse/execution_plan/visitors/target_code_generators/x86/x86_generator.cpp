@@ -1767,7 +1767,7 @@ void x86_Generator::visit(const targets::x86::RteEtherAddrHash *node) {
 
   assert(generated_symbols.size() == 1);
 
-  auto hash_label = get_label(generated_symbols, "hash");
+  auto hash_label = get_label(generated_symbols, "rte_ether_addr_hash");
   stack.add(hash_label, hash);
 
   std::vector<std::string> obj_assignments;
