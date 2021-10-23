@@ -118,122 +118,60 @@ klee::ExprVisitor::Action KleeExprToP4::visitRead(const klee::ReadExpr &e) {
   return klee::ExprVisitor::Action::skipChildren();
 }
 
-bool try_swap_16bit_endianness(klee::ref<klee::Expr>& expr) {
-  if (expr->getWidth() != klee::Expr::Int16) {
+bool try_swap_packet_endianness(klee::ref<klee::Expr> &expr) {
+  if (expr->getKind() != klee::Expr::Read) {
     return false;
   }
 
-  if (expr->getKind() != klee::Expr::Extract) {
-    return false;
+  auto read = static_cast<klee::ReadExpr*>(expr.get());
+
+  auto updates = read->updates;
+  auto index = read->index;
+  
+  assert(index->getKind() == klee::Expr::Constant);
+  auto index_const = static_cast<klee::ConstantExpr*>(index.get());
+  
+  auto index_value = index_const->getZExtValue();
+  auto new_index_value = index_value;
+
+  switch (index_value) {
+    case 0: case 1: case 2:
+    case 3: case 4: case 5:
+      new_index_value = 5 - index_value;
+      break;
+    case 6: case 7: case 8:
+    case 9: case 10: case 11:
+      new_index_value = 17 - index_value;
+      break;
+    default:
+      break;
   }
 
-  auto extracted = expr->getKid(0);
+  if (new_index_value != index_value) {
+    auto new_index = BDD::solver_toolbox.exprBuilder->Constant(new_index_value, index->getWidth());
+    auto new_read = BDD::solver_toolbox.exprBuilder->Read(updates, new_index);
 
-  if (extracted->getKind() != klee::Expr::Or) {
-    return false;
+    std::cerr << "*** " << expr_to_string(expr) << " => " << expr_to_string(new_read) << "\n";
+
+    expr = new_read;
+
+    return true;
   }
 
-  auto or_lhs = extracted->getKid(0);
-  auto or_rhs = extracted->getKid(1);
-
-  if (or_lhs->getKind() != klee::Expr::Shl || or_rhs->getKind() != klee::Expr::AShr) {
-    return false;
-  }
-
-  auto shl_lhs = or_lhs->getKid(0);
-  auto shl_rhs = or_lhs->getKid(1);
-
-  auto shr_lhs = or_rhs->getKid(0);
-  auto shr_rhs = or_rhs->getKid(1);
-
-  if (shl_lhs->getKind() != klee::Expr::And ||
-    shl_rhs->getKind() != klee::Expr::Constant ||
-    shr_lhs->getKind() != klee::Expr::And ||
-    shr_rhs->getKind() != klee::Expr::Constant) {
-    return false;
-  }
-
-  auto shl_rhs_const = static_cast<klee::ConstantExpr *>(shl_rhs.get());
-  auto shr_rhs_const = static_cast<klee::ConstantExpr *>(shr_rhs.get());
-
-  if (shl_rhs_const->getZExtValue() != 8 || shr_rhs_const->getZExtValue() != 8) {
-    return false;
-  }
-
-  if (shl_lhs->getKind() != klee::Expr::And || shr_lhs->getKind() != klee::Expr::And) {
-    return false;
-  }
-
-  auto shl_and_lhs = shl_lhs->getKid(0);
-  auto shl_and_rhs = shl_lhs->getKid(1);
-
-  auto shr_and_lhs = shr_lhs->getKid(0);
-  auto shr_and_rhs = shr_lhs->getKid(1);
-
-  if (shl_and_lhs->getKind() != klee::Expr::ZExt ||
-    shl_and_rhs->getKind() != klee::Expr::Constant ||
-    shr_and_lhs->getKind() != klee::Expr::ZExt ||
-    shr_and_rhs->getKind() != klee::Expr::Constant) {
-    return false;
-  }
-
-  auto shl_and_rhs_const = static_cast<klee::ConstantExpr *>(shl_and_rhs.get());
-  auto shr_and_rhs_const = static_cast<klee::ConstantExpr *>(shr_and_rhs.get());
-
-  if (shl_and_rhs_const->getZExtValue() != 0xff || shr_and_rhs_const->getZExtValue() != 0xff00) {
-    return false;
-  }
-
-  auto shl_chunk = shl_and_lhs->getKid(0);
-  auto shr_chunk = shr_and_lhs->getKid(0);
-
-  auto eq = BDD::solver_toolbox.are_exprs_always_equal(shl_chunk, shr_chunk);
-
-  if (!eq) {
-    return false;
-  }
-
-  expr = shl_chunk;
-
-  return true;
+  return false;
 }
 
 void KleeExprToP4::swap_endianness(klee::ref<klee::Expr> &expr) {
-  std::vector<klee::ref<klee::Expr>> exprs { expr };
+  BDD::SwapPacketEndianness swapper;
+  auto after = swapper.swap(expr);
 
-  while (exprs.size()) {
-    auto e = *exprs.begin();
-    exprs.erase(exprs.begin());
-
-    RetrieveSymbols retriever;
-    retriever.visit(e);
-
-    auto symbols = retriever.get_retrieved_strings();
-    auto found_it = symbols.find("packet_chunks");
-
-    if (found_it == symbols.end()) {
-      continue;
-    }
-
-    if (symbols.size() == 1) {
-      // pattern: ((chunk & 0xff) << 8) | ((chunks & 0xff00) >> 8)
-      auto before = e;
-      auto success = try_swap_16bit_endianness(e);
-
-      if (success) {
-        BDD::ReplaceExpression replacer(before, e);
-        auto modified = replacer.visit(expr);
-
-        expr = modified;
-
-        continue;
-      }
-    }
-
-    for (auto i = 0u; i < e->getNumKids(); i++) {
-      exprs.push_back(e->getKid(i));
-    }
+  if (swapper.has_swapped()) {
+    std::cerr << "before   " << expr_to_string(expr) << "\n";
+    std::cerr << "after    " << expr_to_string(after) << "\n";
+    { char c; std::cin >> c; }
   }
+  
+  expr = after;
 }
 
 klee::ExprVisitor::Action KleeExprToP4::visitSelect(const klee::SelectExpr &e) {

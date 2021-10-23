@@ -129,40 +129,102 @@ struct solver_toolbox_t {
 
 extern solver_toolbox_t solver_toolbox;
 
-class ReplaceExpression : public klee::ExprVisitor::ExprVisitor {
+class SwapPacketEndianness : public klee::ExprVisitor::ExprVisitor {
 private:
-  klee::ref<klee::Expr> before;
-  klee::ref<klee::Expr> after;
-
   std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
 
 public:
-  ReplaceExpression(klee::ref<klee::Expr> _before, klee::ref<klee::Expr> _after)
-      : ExprVisitor(true), before(_before), after(_after) {}
+  SwapPacketEndianness() : klee::ExprVisitor::ExprVisitor(true) {}
+
+  void clear_replacements() {
+    replacements.clear();
+  }
+
+  bool has_swapped() const { return replacements.size(); }
+
+  klee::ref<klee::Expr> swap(klee::ref<klee::Expr> expr) {
+    if (expr.isNull()) {
+      return expr;
+    }
+
+    std::cerr << "[swap] original " << expr_to_string(expr) << "\n";
+
+    clear_replacements();
+
+    return visit(expr);
+  }
 
   klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
     auto eref = klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e));
+
+    if (has_swapped()) {
+      std::cerr << "[visitPost] finding " << expr_to_string(eref) << "...\n";
+    }
+
     auto it = replacements.find(eref);
 
     if (it != replacements.end()) {
+      if (has_swapped()) {
+        std::cerr << "[visitPost] changing to " << expr_to_string(it->second) << "\n";
+      }
       return Action::changeTo(it->second);
-    } else {
-      return Action::doChildren();
     }
+    
+    return Action::doChildren();
   }
 
-  klee::ExprVisitor::Action visitExpr(const klee::Expr &e) {
-    auto eref = klee::expr::ExprHandle(const_cast<klee::Expr *>(&e));
-    auto eq = solver_toolbox.are_exprs_always_equal(before, eref);
+  klee::ExprVisitor::Action visitRead(const klee::ReadExpr &e) {
+    auto ul = e.updates;
+    auto index = e.index;
+    auto root = ul.root;
+    auto symbol = root->getName();
 
-    if (eq) {
-      auto it = replacements.find(eref);
+    if (symbol != "packet_chunks") {
+      return Action::doChildren();
+    }
 
-      if (it != replacements.end()) {
-        replacements.insert({ eref, after });
-      }
+    auto replaced = klee::expr::ExprHandle(const_cast<klee::ReadExpr *>(&e));
+    auto it = replacements.find(replaced);
 
-      return Action::changeTo(after);
+    if (it != replacements.end()) {
+      return Action::doChildren();
+    }
+
+    assert(index->getKind() == klee::Expr::Constant);
+    auto index_const = static_cast<klee::ConstantExpr*>(index.get());
+    
+    auto index_value = index_const->getZExtValue();
+    auto new_index_value = index_value;
+
+    switch (index_value) {
+      case 0: case 1: case 2:
+      case 3: case 4: case 5:
+        new_index_value = 5 - index_value;
+        break;
+      case 6: case 7: case 8:
+      case 9: case 10: case 11:
+        new_index_value = 17 - index_value;
+        break;
+      default:
+        break;
+    }
+
+    if (new_index_value != index_value) {
+      auto new_root = solver_toolbox.arr_cache.CreateArray(
+            symbol, root->getSize(),
+            root->constantValues.begin().base(),
+            root->constantValues.end().base(), root->getDomain(),
+            root->getRange());
+
+      auto new_ul = klee::UpdateList(new_root, ul.head);
+      auto new_index = solver_toolbox.exprBuilder->Constant(new_index_value, index->getWidth());
+      auto replacement = solver_toolbox.exprBuilder->Read(new_ul, new_index);
+
+      std::cerr << "[visit] " << expr_to_string(replaced) << " => " << expr_to_string(replacement) << "\n";
+
+      replacements.insert({ replaced, replacement });
+
+      return Action::changeTo(replacement);
     }
 
     return Action::doChildren();
@@ -229,6 +291,7 @@ public:
   }
 
   klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
+    auto eref = klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e));
     auto it =
         replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e)));
 
