@@ -290,13 +290,17 @@ int64_t BMv2SimpleSwitchgRPC_Generator::get_constant_signed(
 std::string
 BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
                                           bool is_signed) const {
-  if (is_constant(e)) {
+  auto expr = e;
+  KleeExprToP4::swap_endianness(expr);
+
+  if (is_constant(expr)) {
     std::stringstream ss;
-    auto constant = static_cast<klee::ConstantExpr *>(e.get());
+    auto constant = static_cast<klee::ConstantExpr *>(expr.get());
     assert(constant->getWidth() <= 64);
 
     if (is_signed) {
-      assert(!is_constant_signed(e) && "Be careful with negative numbers...");
+      assert(!is_constant_signed(expr) &&
+             "Be careful with negative numbers...");
     }
 
     ss << "(";
@@ -309,18 +313,22 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
     return ss.str();
   }
 
-  auto expr = e;
-
   KleeExprToP4 kleeExprToP4(*this, is_signed);
-  KleeExprToP4::swap_endianness(expr);
   kleeExprToP4.visit(expr);
 
   auto code = kleeExprToP4.get_code();
 
   if (!code.size()) {
     // error
-    Log::err() << "Unable to generator.transpile expression:\n";
-    Log::err() << expr_to_string(expr, true);
+    std::stringstream error;
+    error << "Unable to generator.transpile expression: ";
+    error << expr_to_string(expr, true);
+    error << "\n";
+    error << "Kind: ";
+    error << expr->getKind();
+    error << "\n";
+
+    Log::err() << error.str();
     exit(1);
   }
 

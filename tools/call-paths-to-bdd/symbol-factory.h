@@ -358,8 +358,9 @@ private:
 
     assert(!call.ret.isNull());
     auto hash = call.ret;
-    symbols.emplace(build_label("rte_ether_addr_hash", save, constraint_managers), "rte_ether_addr_hash",
-                    hash);
+    symbols.emplace(
+        build_label("rte_ether_addr_hash", save, constraint_managers),
+        "rte_ether_addr_hash", hash);
 
     return symbols;
   }

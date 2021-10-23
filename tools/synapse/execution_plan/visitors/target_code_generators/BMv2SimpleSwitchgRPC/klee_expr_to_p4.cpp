@@ -123,38 +123,44 @@ bool try_swap_packet_endianness(klee::ref<klee::Expr> &expr) {
     return false;
   }
 
-  auto read = static_cast<klee::ReadExpr*>(expr.get());
+  auto read = static_cast<klee::ReadExpr *>(expr.get());
 
   auto updates = read->updates;
   auto index = read->index;
-  
+
   assert(index->getKind() == klee::Expr::Constant);
-  auto index_const = static_cast<klee::ConstantExpr*>(index.get());
-  
+  auto index_const = static_cast<klee::ConstantExpr *>(index.get());
+
   auto index_value = index_const->getZExtValue();
   auto new_index_value = index_value;
 
   switch (index_value) {
-    case 0: case 1: case 2:
-    case 3: case 4: case 5:
-      new_index_value = 5 - index_value;
-      break;
-    case 6: case 7: case 8:
-    case 9: case 10: case 11:
-      new_index_value = 17 - index_value;
-      break;
-    default:
-      break;
+  case 0:
+  case 1:
+  case 2:
+  case 3:
+  case 4:
+  case 5:
+    new_index_value = 5 - index_value;
+    break;
+  case 6:
+  case 7:
+  case 8:
+  case 9:
+  case 10:
+  case 11:
+    new_index_value = 17 - index_value;
+    break;
+  default:
+    break;
   }
 
   if (new_index_value != index_value) {
-    auto new_index = BDD::solver_toolbox.exprBuilder->Constant(new_index_value, index->getWidth());
+    auto new_index = BDD::solver_toolbox.exprBuilder->Constant(
+        new_index_value, index->getWidth());
     auto new_read = BDD::solver_toolbox.exprBuilder->Read(updates, new_index);
 
-    std::cerr << "*** " << expr_to_string(expr) << " => " << expr_to_string(new_read) << "\n";
-
     expr = new_read;
-
     return true;
   }
 
@@ -162,15 +168,17 @@ bool try_swap_packet_endianness(klee::ref<klee::Expr> &expr) {
 }
 
 void KleeExprToP4::swap_endianness(klee::ref<klee::Expr> &expr) {
+  RetrieveSymbols retriever;
+  retriever.visit(expr);
+  auto symbols = retriever.get_retrieved_strings();
+
+  if (symbols.size() != 1 || *symbols.begin() != "packet_chunks") {
+    return;
+  }
+
   BDD::SwapPacketEndianness swapper;
   auto after = swapper.swap(expr);
 
-  if (swapper.has_swapped()) {
-    std::cerr << "before   " << expr_to_string(expr) << "\n";
-    std::cerr << "after    " << expr_to_string(after) << "\n";
-    { char c; std::cin >> c; }
-  }
-  
   expr = after;
 }
 
@@ -740,7 +748,9 @@ klee::ExprVisitor::Action KleeExprToP4::visitEq(const klee::EqExpr &e) {
     // be careful with endianess
     assert(lhs->getKind() == klee::Expr::Constant);
     auto etherType_val = BDD::solver_toolbox.value_from_expr(lhs);
-    auto new_val = ((((etherType_val & 0xff) << 8) | ((etherType_val & 0xff00) >> 8)) & 0xffff);
+    auto new_val =
+        ((((etherType_val & 0xff) << 8) | ((etherType_val & 0xff00) >> 8)) &
+         0xffff);
 
     code << std::hex;
     code << "0x";
