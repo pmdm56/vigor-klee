@@ -320,6 +320,26 @@ public:
     case 11:
       new_index_value = 17 - index_value;
       break;
+    case 53:
+    case 54:
+    case 55:
+    case 56:
+      new_index_value = 109 - index_value;
+      break;
+    case 57:
+    case 58:
+    case 59:
+    case 60:
+      new_index_value = 117 - index_value;
+      break;
+    case 82:
+    case 83:
+      new_index_value = 165 - index_value;
+      break;
+    case 84:
+    case 85:
+      new_index_value = 169 - index_value;
+      break;
     default:
       break;
     }
