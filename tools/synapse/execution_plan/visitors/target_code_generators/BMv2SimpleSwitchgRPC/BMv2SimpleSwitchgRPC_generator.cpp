@@ -736,7 +736,9 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     ingress.apply_block << "(";
     ingress.apply_block << "(";
     ingress.apply_block << "(";
-    ingress.apply_block << transpile(expr);
+    auto str = transpile(expr);
+    str.erase(1,9); // remove bit<8>...
+    ingress.apply_block << str;
     ingress.apply_block << ")";
     ingress.apply_block << " << ";
     ingress.apply_block << offset;
