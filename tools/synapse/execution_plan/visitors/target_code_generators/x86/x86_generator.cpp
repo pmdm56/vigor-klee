@@ -814,7 +814,7 @@ std::string transpile(const klee::ref<klee::Expr> &e, stack_t &stack,
         mask |= 1;
       }
 
-      ss << -((~value + 1) & mask);
+      ss << "-" << ((~value + 1) & mask);
 
       if (width > 32) {
         ss << "LL";
