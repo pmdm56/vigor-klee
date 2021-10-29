@@ -204,7 +204,7 @@ struct stack_t {
 
         if (var_size == value_size &&
             BDD::solver_toolbox.are_exprs_always_equal(var.value, value)) {
-          if (!var.addr.isNull()) {
+          if (!var.addr.isNull() && (value_size == 8 || value_size == 16 || value_size == 32 || value_size == 64)) {
             assert(value_size % 8 == 0 && value_size <= 64);
 
             label_stream << "*(";
