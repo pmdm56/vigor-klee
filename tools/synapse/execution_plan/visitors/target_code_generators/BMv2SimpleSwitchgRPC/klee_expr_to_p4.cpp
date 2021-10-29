@@ -118,55 +118,6 @@ klee::ExprVisitor::Action KleeExprToP4::visitRead(const klee::ReadExpr &e) {
   return klee::ExprVisitor::Action::skipChildren();
 }
 
-bool try_swap_packet_endianness(klee::ref<klee::Expr> &expr) {
-  if (expr->getKind() != klee::Expr::Read) {
-    return false;
-  }
-
-  auto read = static_cast<klee::ReadExpr *>(expr.get());
-
-  auto updates = read->updates;
-  auto index = read->index;
-
-  assert(index->getKind() == klee::Expr::Constant);
-  auto index_const = static_cast<klee::ConstantExpr *>(index.get());
-
-  auto index_value = index_const->getZExtValue();
-  auto new_index_value = index_value;
-
-  switch (index_value) {
-  case 0:
-  case 1:
-  case 2:
-  case 3:
-  case 4:
-  case 5:
-    new_index_value = 5 - index_value;
-    break;
-  case 6:
-  case 7:
-  case 8:
-  case 9:
-  case 10:
-  case 11:
-    new_index_value = 17 - index_value;
-    break;
-  default:
-    break;
-  }
-
-  if (new_index_value != index_value) {
-    auto new_index = BDD::solver_toolbox.exprBuilder->Constant(
-        new_index_value, index->getWidth());
-    auto new_read = BDD::solver_toolbox.exprBuilder->Read(updates, new_index);
-
-    expr = new_read;
-    return true;
-  }
-
-  return false;
-}
-
 void KleeExprToP4::swap_endianness(klee::ref<klee::Expr> &expr) {
   RetrieveSymbols retriever;
   retriever.visit(expr);
