@@ -17,7 +17,6 @@ add_executable(synapse
   execution_plan/visitors/target_code_generators/x86/x86_generator.cpp
   execution_plan/visitors/target_code_generators/BMv2SimpleSwitchgRPC/BMv2SimpleSwitchgRPC_generator.cpp
   execution_plan/visitors/target_code_generators/BMv2SimpleSwitchgRPC/klee_expr_to_p4.cpp
-  execution_plan/visitors/target_code_generators/BMv2SimpleSwitchgRPC/keys_from_klee_expr.cpp
   log.cpp
   ../load-call-paths/load-call-paths.cpp
   ../call-paths-to-bdd/call-paths-to-bdd.cpp
