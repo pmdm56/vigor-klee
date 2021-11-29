@@ -674,7 +674,6 @@ KleeExprToASTNodeConverter::visitNot(const klee::NotExpr &e) {
   assert(e.getNumKids() == 1);
 
   Expr_ptr arg = transpile(ast, e.getKid(0));
-
   save_result(Not::build(arg));
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -869,6 +868,19 @@ KleeExprToASTNodeConverter::visitUle(const klee::UleExpr &e) {
 
   Expr_ptr right = transpile(ast, e.getKid(1));
   assert(right);
+
+  // major hack!
+  if (right->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
+    Pointer *right_ptr = static_cast<Pointer *>(right->get_type().get());
+    auto type_pointed = right_ptr->get_type();
+    auto left_type = left->get_type();
+    auto left_type_ptr = Pointer::build(left_type);
+    auto left_type_sz = Constant::build(PrimitiveType::PrimitiveKind::INT,
+                                        left_type->get_size());
+    auto zero = Constant::build(PrimitiveType::PrimitiveKind::INT, 0);
+
+    right = Read::build(Cast::build(right, left_type_ptr), left_type, zero);
+  }
 
   LessEq_ptr le = LessEq::build(left, right);
 

@@ -105,39 +105,39 @@ private:
     }
 
     std::sort(options.begin(), options.end(),
-              [&](const std::string & a, const std::string & b)->bool {
-      auto a_pos = a.find(base);
-      auto b_pos = b.find(base);
+              [&](const std::string &a, const std::string &b) -> bool {
+                auto a_pos = a.find(base);
+                auto b_pos = b.find(base);
 
-      assert(a_pos != std::string::npos);
-      assert(b_pos != std::string::npos);
+                assert(a_pos != std::string::npos);
+                assert(b_pos != std::string::npos);
 
-      auto a_counter = a.substr(a_pos + base.size());
-      auto b_counter = b.substr(b_pos + base.size());
+                auto a_counter = a.substr(a_pos + base.size());
+                auto b_counter = b.substr(b_pos + base.size());
 
-      int a_counter_int = 0;
-      int b_counter_int = 0;
+                int a_counter_int = 0;
+                int b_counter_int = 0;
 
-      if (a_counter.size() > 1) {
-        if (a_counter.find("__") != std::string::npos) {
-          a_counter_int = -1;
-        } else {
-          a_counter = a_counter.substr(1);
-          a_counter_int = std::stoi(a_counter);
-        }
-      }
+                if (a_counter.size() > 1) {
+                  if (a_counter.find("__") != std::string::npos) {
+                    a_counter_int = -1;
+                  } else {
+                    a_counter = a_counter.substr(1);
+                    a_counter_int = std::stoi(a_counter);
+                  }
+                }
 
-      if (b_counter.size() > 1) {
-        if (b_counter.find("__") != std::string::npos) {
-          b_counter_int = -1;
-        } else {
-          b_counter = b_counter.substr(1);
-          b_counter_int = std::stoi(b_counter);
-        }
-      }
+                if (b_counter.size() > 1) {
+                  if (b_counter.find("__") != std::string::npos) {
+                    b_counter_int = -1;
+                  } else {
+                    b_counter = b_counter.substr(1);
+                    b_counter_int = std::stoi(b_counter);
+                  }
+                }
 
-      return a_counter_int < b_counter_int;
-    });
+                return a_counter_int < b_counter_int;
+              });
 
     auto counter = count_labels(base);
 
@@ -351,6 +351,21 @@ private:
     return symbols;
   }
 
+  symbols_t expire_items_single_map_iteratively(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
+    symbols_t symbols;
+
+    assert(!call.ret.isNull());
+    auto number_of_freed_flows = call.ret;
+
+    symbols.emplace(
+        build_label("number_of_freed_flows", save, constraint_managers),
+        "number_of_freed_flows", number_of_freed_flows);
+
+    return symbols;
+  }
+
   symbols_t rte_ether_addr_hash(
       call_t call, bool save,
       const std::vector<klee::ConstraintManager> &constraint_managers) {
@@ -455,41 +470,43 @@ private:
 public:
   SymbolFactory() {
     call_processor_lookup_table = {
-      { "start_time", &SymbolFactory::no_process },
-      { "current_time", &SymbolFactory::current_time },
-      { "loop_invariant_consume", &SymbolFactory::no_process },
-      { "loop_invariant_produce", &SymbolFactory::no_process },
-      { "packet_receive", &SymbolFactory::no_process },
-      { "packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk },
-      { "packet_insert_new_chunk", &SymbolFactory::no_process },
-      { "packet_shrink_chunk", &SymbolFactory::no_process },
-      { "packet_get_unread_length", &SymbolFactory::no_process },
-      { "packet_state_total_length", &SymbolFactory::no_process },
-      { "packet_return_chunk", &SymbolFactory::no_process },
-      { "packet_send", &SymbolFactory::no_process },
-      { "packet_free", &SymbolFactory::no_process },
-      { "map_allocate", &SymbolFactory::map_allocate },
-      { "map_get", &SymbolFactory::map_get },
-      { "map_put", &SymbolFactory::no_process },
-      { "vector_allocate", &SymbolFactory::vector_allocate },
-      { "vector_borrow", &SymbolFactory::vector_borrow },
-      { "vector_return", &SymbolFactory::no_process },
-      { "map_erase", &SymbolFactory::no_process },
-      { "dchain_allocate", &SymbolFactory::dchain_allocate },
-      { "dchain_allocate_new_index",
-        &SymbolFactory::dchain_allocate_new_index },
-      { "dchain_is_index_allocated",
-        &SymbolFactory::dchain_is_index_allocated },
-      { "dchain_rejuvenate_index", &SymbolFactory::no_process },
-      { "dchain_free_index", &SymbolFactory::no_process },
-      { "expire_items_single_map", &SymbolFactory::expire_items_single_map },
-      { "cht_fill_cht", &SymbolFactory::cht_fill_cht },
-      { "LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash },
-      { "cht_find_preferred_available_backend",
-        &SymbolFactory::cht_find_preferred_available_backend },
-      { "rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash },
-      { "nf_set_rte_ipv4_udptcp_checksum",
-        &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum },
+        {"start_time", &SymbolFactory::no_process},
+        {"current_time", &SymbolFactory::current_time},
+        {"loop_invariant_consume", &SymbolFactory::no_process},
+        {"loop_invariant_produce", &SymbolFactory::no_process},
+        {"packet_receive", &SymbolFactory::no_process},
+        {"packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk},
+        {"packet_insert_new_chunk", &SymbolFactory::no_process},
+        {"packet_shrink_chunk", &SymbolFactory::no_process},
+        {"packet_get_unread_length", &SymbolFactory::no_process},
+        {"packet_state_total_length", &SymbolFactory::no_process},
+        {"packet_return_chunk", &SymbolFactory::no_process},
+        {"packet_send", &SymbolFactory::no_process},
+        {"packet_free", &SymbolFactory::no_process},
+        {"map_allocate", &SymbolFactory::map_allocate},
+        {"map_get", &SymbolFactory::map_get},
+        {"map_put", &SymbolFactory::no_process},
+        {"vector_allocate", &SymbolFactory::vector_allocate},
+        {"vector_borrow", &SymbolFactory::vector_borrow},
+        {"vector_return", &SymbolFactory::no_process},
+        {"map_erase", &SymbolFactory::no_process},
+        {"dchain_allocate", &SymbolFactory::dchain_allocate},
+        {"dchain_allocate_new_index",
+         &SymbolFactory::dchain_allocate_new_index},
+        {"dchain_is_index_allocated",
+         &SymbolFactory::dchain_is_index_allocated},
+        {"dchain_rejuvenate_index", &SymbolFactory::no_process},
+        {"dchain_free_index", &SymbolFactory::no_process},
+        {"expire_items_single_map", &SymbolFactory::expire_items_single_map},
+        {"expire_items_single_map_iteratively",
+         &SymbolFactory::expire_items_single_map_iteratively},
+        {"cht_fill_cht", &SymbolFactory::cht_fill_cht},
+        {"LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash},
+        {"cht_find_preferred_available_backend",
+         &SymbolFactory::cht_find_preferred_available_backend},
+        {"rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash},
+        {"nf_set_rte_ipv4_udptcp_checksum",
+         &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum},
     };
 
     stack.emplace_back();
@@ -512,7 +529,7 @@ public:
 
   void translate(Node *current, Node *translation_source,
                  RenameSymbols renamer) {
-    std::vector<Node *> nodes{ current };
+    std::vector<Node *> nodes{current};
 
     while (nodes.size()) {
       auto node = nodes[0];

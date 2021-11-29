@@ -5,6 +5,17 @@ constexpr char AST::CHUNK_LAYER_2[];
 constexpr char AST::CHUNK_LAYER_3[];
 constexpr char AST::CHUNK_LAYER_4[];
 
+Expr_ptr pointer_to_int(Expr_ptr ptr) {
+  if (ptr->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
+    auto zero = Constant::build(PrimitiveType::PrimitiveKind::INT, 0);
+    auto int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    auto casted = Cast::build(ptr, Pointer::build(int_type));
+    ptr = Read::build(casted, int_type, zero);
+  }
+
+  return ptr;
+}
+
 std::string get_symbol_label(const std::string &wanted,
                              const BDD::symbols_t &symbols) {
   for (auto symbol : symbols) {
@@ -798,7 +809,12 @@ const BDD::Call *find_vector_return_with_value(const BDD::Node *root,
       continue;
     }
 
-    auto this_vector_value = call.args["value"].in.get();
+    auto this_vector_value = call.args["value"].in;
+
+    if (this_vector_value->getWidth() < value->getWidth()) {
+      continue;
+    }
+
     auto extracted = BDD::solver_toolbox.exprBuilder->Extract(
         this_vector_value, 0, value->getWidth());
     auto eq = BDD::solver_toolbox.are_exprs_always_equal(value, extracted);
@@ -991,6 +1007,31 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     ret_expr = call.ret;
   }
 
+  else if (fname == "expire_items_single_map_iteratively") {
+    check_write_attempt = true;
+
+    Expr_ptr vector_expr = transpile(this, call.args["vector"].expr);
+    assert(vector_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t vector_addr =
+        (static_cast<Constant *>(vector_expr.get()))->get_value();
+
+    Expr_ptr map_expr = transpile(this, call.args["map"].expr);
+    assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t map_addr = (static_cast<Constant *>(map_expr.get()))->get_value();
+
+    Variable_ptr vector = get_from_state(vector_addr);
+    Variable_ptr map = get_from_state(map_addr);
+    Expr_ptr n_elems = transpile(this, call.args["n_elems"].expr);
+    assert(n_elems);
+
+    n_elems = pointer_to_int(n_elems);
+
+    args = std::vector<ExpressionType_ptr>{vector, map, n_elems};
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    ret_symbol = get_symbol_label("number_of_freed_flows", symbols);
+    ret_expr = call.ret;
+  }
+
   else if (fname == "map_get") {
     Expr_ptr map_expr = transpile(this, call.args["map"].expr);
     assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
@@ -1081,10 +1122,12 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr index_arg = index;
 
     if (index->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
-      Type_ptr int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+      Type_ptr int_type =
+          PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
       Type_ptr index_type = Pointer::build(int_type);
       Cast_ptr index_cast = Cast::build(index, index_type);
-      Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+      Expr_ptr zero =
+          Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
       index_arg = Read::build(index_cast, int_type, zero);
     }
 
@@ -1126,8 +1169,6 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
   }
 
   else if (fname == "map_put") {
-    check_write_attempt = true;
-
     Expr_ptr map_expr = transpile(this, call.args["map"].expr);
     assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t map_addr = (static_cast<Constant *>(map_expr.get()))->get_value();
@@ -1140,6 +1181,7 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
            "couldn't find vector_return with a key to this map_put");
 
     auto vector_return_call = vector_return->get_call();
+    check_write_attempt = true;
     Expr_ptr vector_return_value_expr =
         transpile(this, vector_return_call.args["value"].expr);
     assert(vector_return_value_expr->get_kind() == Node::NodeKind::CONSTANT);
@@ -1151,6 +1193,8 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
 
     Expr_ptr value = transpile(this, call.args["value"].expr);
     assert(value);
+
+    value = pointer_to_int(value);
 
     args = std::vector<ExpressionType_ptr>{map, vector_return_value, value};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
@@ -1176,10 +1220,12 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr index_arg = index;
 
     if (index->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
-      Type_ptr int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+      Type_ptr int_type =
+          PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
       Type_ptr index_type = Pointer::build(int_type);
       Cast_ptr index_cast = Cast::build(index, index_type);
-      Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+      Expr_ptr zero =
+          Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
       index_arg = Read::build(index_cast, int_type, zero);
     }
 
@@ -1257,10 +1303,12 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr index_arg = index;
 
     if (index->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
-      Type_ptr int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+      Type_ptr int_type =
+          PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
       Type_ptr index_type = Pointer::build(int_type);
       Cast_ptr index_cast = Cast::build(index, index_type);
-      Expr_ptr zero = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
+      Expr_ptr zero =
+          Constant::build(PrimitiveType::PrimitiveKind::UINT32_T, 0);
       index_arg = Read::build(index_cast, int_type, zero);
     }
 
