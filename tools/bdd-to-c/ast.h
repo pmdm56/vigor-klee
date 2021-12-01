@@ -165,9 +165,13 @@ public:
       { { "expire_items", TargetOption::LOCKS }, "expire_items_locks" },
       { { "expire_items_single_map", TargetOption::LOCKS },
         "expire_items_single_map_locks" },
+      { { "expire_items_single_map_iteratively", TargetOption::LOCKS },
+        "expire_items_single_map_iteratively_locks" },
       { { "expire_items", TargetOption::TM }, "expire_items_tm" },
       { { "expire_items_single_map", TargetOption::TM },
         "expire_items_single_map_tm" },
+      { { "expire_items_single_map_iteratively", TargetOption::TM },
+        "expire_items_single_map_iteratively_tm" },
 
       /****************************************************************************
        *                                double map
@@ -184,9 +188,11 @@ public:
        *                                cht
        ****************************************************************************/
       { { "cht_fill_cht", TargetOption::LOCKS }, "cht_locks_fill_cht" },
-      { { "cht_find_preferred_available_backend", TargetOption::LOCKS }, "cht_locks_find_preferred_available_backend" },
+      { { "cht_find_preferred_available_backend", TargetOption::LOCKS },
+        "cht_locks_find_preferred_available_backend" },
       { { "cht_fill_cht", TargetOption::TM }, "cht_tm_fill_cht" },
-      { { "cht_find_preferred_available_backend", TargetOption::TM }, "cht_tm_find_preferred_available_backend" },
+      { { "cht_find_preferred_available_backend", TargetOption::TM },
+        "cht_tm_find_preferred_available_backend" },
     };
 
     struct_translation = {
