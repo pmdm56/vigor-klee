@@ -1026,6 +1026,7 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr n_elems = transpile(this, call.args["n_elems"].expr);
     assert(n_elems);
 
+    start = pointer_to_int(start);
     n_elems = pointer_to_int(n_elems);
 
     args = std::vector<ExpressionType_ptr>{vector, map, start, n_elems};

@@ -2148,8 +2148,9 @@ public:
   }
 
 private:
-  std::pair<bool, std::string> get_alias(klee::expr::ExprHandle expr) {
-    std::pair<bool, std::string> result;
+  std::pair<bool, std::vector<std::string>>
+  get_alias(klee::expr::ExprHandle expr) {
+    std::pair<bool, std::vector<std::string>> result;
     result.first = false;
 
     RetrieveUniqueSymbolsNames retriever;
@@ -2159,10 +2160,9 @@ private:
     for (auto symbol : symbols) {
       for (auto alias : alias_list) {
         if (symbol.find(alias) != std::string::npos) {
-          assert(symbols.size() == 1);
           result.first = true;
-          result.second = symbol;
-          return result;
+          result.second.push_back(symbol);
+          continue;
         }
       }
     }
@@ -2181,16 +2181,19 @@ private:
     }
 
     auto found_alias = found_alias_pair.second;
-    auto alias_expr_pair = alias_replacements.find(found_alias);
+    for (auto alias : found_alias) {
+      auto alias_expr_pair = alias_replacements.find(alias);
 
-    if (alias_expr_pair == alias_replacements.end()) {
-      find_alias_replacement(found_alias);
+      if (alias_expr_pair == alias_replacements.end()) {
+        find_alias_replacement(alias);
+      }
+
+      replacements.insert(replacements.end(), alias_replacements[alias].begin(),
+                          alias_replacements[alias].end());
+
+      for (auto replacement : replacements)
+        assert(expr->getWidth() == replacement.get_expr()->getWidth());
     }
-
-    replacements = alias_replacements[found_alias];
-
-    for (auto replacement : replacements)
-      assert(expr->getWidth() == replacement.get_expr()->getWidth());
 
     return replacements;
   }
