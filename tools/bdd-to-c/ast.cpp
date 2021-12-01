@@ -1021,12 +1021,14 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
 
     Variable_ptr vector = get_from_state(vector_addr);
     Variable_ptr map = get_from_state(map_addr);
+    Expr_ptr start = transpile(this, call.args["start"].expr);
+    assert(start);
     Expr_ptr n_elems = transpile(this, call.args["n_elems"].expr);
     assert(n_elems);
 
     n_elems = pointer_to_int(n_elems);
 
-    args = std::vector<ExpressionType_ptr>{vector, map, n_elems};
+    args = std::vector<ExpressionType_ptr>{vector, map, start, n_elems};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = get_symbol_label("number_of_freed_flows", symbols);
     ret_expr = call.ret;
