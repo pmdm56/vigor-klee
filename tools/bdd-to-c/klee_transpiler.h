@@ -27,7 +27,8 @@
 
 class AST;
 
-Expr_ptr transpile(AST *ast, const klee::ref<klee::Expr> &e);
+Expr_ptr transpile(AST *ast, const klee::ref<klee::Expr> &e,
+                   bool pointer_to_int = false);
 std::vector<Expr_ptr> apply_changes_to_match(AST *ast,
                                              const klee::ref<klee::Expr> &e1,
                                              const klee::ref<klee::Expr> &e2);
@@ -46,11 +47,15 @@ private:
   AST *ast;
   Expr_ptr result;
   std::pair<bool, unsigned int> symbol_width;
+  bool pointer_to_int;
 
   void save_result(Expr_ptr _result) { result = _result->clone(); }
 
 public:
-  KleeExprToASTNodeConverter(AST *_ast) : ExprVisitor(false), ast(_ast) {}
+  KleeExprToASTNodeConverter(AST *_ast)
+      : ExprVisitor(false), ast(_ast), pointer_to_int(false) {}
+  KleeExprToASTNodeConverter(AST *_ast, bool _pointer_to_int)
+      : ExprVisitor(false), ast(_ast), pointer_to_int(_pointer_to_int) {}
 
   std::pair<bool, unsigned int> get_symbol_width() const {
     return symbol_width;

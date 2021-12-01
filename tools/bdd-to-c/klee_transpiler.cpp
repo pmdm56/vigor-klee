@@ -60,7 +60,19 @@ Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
   return constant_node;
 }
 
-Expr_ptr transpile(AST *ast, const klee::ref<klee::Expr> &e) {
+Expr_ptr ptr_to_int(Expr_ptr ptr) {
+  if (ptr->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
+    auto zero = Constant::build(PrimitiveType::PrimitiveKind::INT, 0);
+    auto int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    auto casted = Cast::build(ptr, Pointer::build(int_type));
+    ptr = Read::build(casted, int_type, zero);
+  }
+
+  return ptr;
+}
+
+Expr_ptr transpile(AST *ast, const klee::ref<klee::Expr> &e,
+                   bool pointer_to_int) {
   Expr_ptr result = const_to_ast_expr(e);
 
   if (result) {
@@ -70,10 +82,29 @@ Expr_ptr transpile(AST *ast, const klee::ref<klee::Expr> &e) {
   result = ast->get_from_local(e);
 
   if (result) {
+    std::stringstream ss;
+    result->simplify(ast)->synthesize(ss);
+
+    if (pointer_to_int && ss.str() == "vector_value_out_1") {
+      std::cerr << "before: ";
+      result->simplify(ast)->synthesize(std::cerr);
+      std::cerr << "\n";
+
+      result = ptr_to_int(result);
+
+      std::cerr << "after: ";
+      result->simplify(ast)->synthesize(std::cerr);
+      std::cerr << "\n";
+      {
+        char c;
+        std::cin >> c;
+      }
+    }
+
     return result;
   }
 
-  KleeExprToASTNodeConverter converter(ast);
+  KleeExprToASTNodeConverter converter(ast, pointer_to_int);
   converter.visit(e);
 
   result = converter.get_result();
@@ -265,7 +296,7 @@ KleeExprToASTNodeConverter::visitRead(const klee::ReadExpr &e) {
   klee::ref<klee::Expr> eref = const_cast<klee::ReadExpr *>(&e);
 
   Type_ptr type = klee_width_to_type(e.getWidth());
-  Expr_ptr idx = transpile(ast, e.index);
+  Expr_ptr idx = transpile(ast, e.index, pointer_to_int);
 
   klee::UpdateList ul = e.updates;
   const klee::Array *root = ul.root;
@@ -338,13 +369,13 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitSelect(const klee::SelectExpr &e) {
   assert(e.getNumKids() == 3);
 
-  Expr_ptr cond = transpile(ast, e.getKid(0));
+  Expr_ptr cond = transpile(ast, e.getKid(0), pointer_to_int);
   assert(cond);
 
-  Expr_ptr first = transpile(ast, e.getKid(1));
+  Expr_ptr first = transpile(ast, e.getKid(1), pointer_to_int);
   assert(first);
 
-  Expr_ptr second = transpile(ast, e.getKid(2));
+  Expr_ptr second = transpile(ast, e.getKid(2), pointer_to_int);
   assert(second);
 
   Select_ptr select = Select::build(cond, first, second);
@@ -356,8 +387,8 @@ KleeExprToASTNodeConverter::visitSelect(const klee::SelectExpr &e) {
 
 klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitConcat(const klee::ConcatExpr &e) {
-  Expr_ptr left = transpile(ast, e.getKid(0));
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   Type_ptr type = klee_width_to_type(e.getWidth());
 
   if (left->get_kind() == Node::NodeKind::CONSTANT &&
@@ -397,7 +428,7 @@ KleeExprToASTNodeConverter::visitExtract(const klee::ExtractExpr &e) {
 
   Type_ptr type = klee_width_to_type(e.getWidth());
 
-  Expr_ptr ast_expr = transpile(ast, expr);
+  Expr_ptr ast_expr = transpile(ast, expr, pointer_to_int);
   assert(ast_expr);
 
   while (ast_expr->get_kind() == Node::NodeKind::CONCAT) {
@@ -519,7 +550,7 @@ KleeExprToASTNodeConverter::visitZExt(const klee::ZExtExpr &e) {
   Type_ptr type = klee_width_to_type(e.getWidth());
   auto expr = e.getKid(0);
 
-  Expr_ptr ast_expr = transpile(ast, expr);
+  Expr_ptr ast_expr = transpile(ast, expr, pointer_to_int);
   assert(ast_expr);
 
   if (type->get_size() > ast_expr->get_type()->get_size()) {
@@ -540,7 +571,8 @@ KleeExprToASTNodeConverter::visitSExt(const klee::SExtExpr &e) {
   Type_ptr type = klee_width_to_type(e.getWidth());
   auto expr = e.getKid(0);
 
-  Expr_ptr ast_expr = SignedExpression::build(transpile(ast, expr));
+  Expr_ptr ast_expr =
+      SignedExpression::build(transpile(ast, expr, pointer_to_int));
   assert(ast_expr);
 
   if (type->get_size() > ast_expr->get_type()->get_size()) {
@@ -558,10 +590,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitAdd(const klee::AddExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Add_ptr a = Add::build(left, right);
@@ -574,10 +606,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitSub(const klee::SubExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Sub_ptr s = Sub::build(left, right);
@@ -590,10 +622,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitMul(const klee::MulExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Mul_ptr m = Mul::build(left, right);
@@ -606,10 +638,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitUDiv(const klee::UDivExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Div_ptr d = Div::build(left, right);
@@ -622,10 +654,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitSDiv(const klee::SDivExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Cast_ptr cast = Cast::build(left, true);
@@ -639,10 +671,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitURem(const klee::URemExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Mod_ptr m = Mod::build(left, right);
@@ -655,10 +687,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitSRem(const klee::SRemExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Cast_ptr cast = Cast::build(left, true);
@@ -673,7 +705,7 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitNot(const klee::NotExpr &e) {
   assert(e.getNumKids() == 1);
 
-  Expr_ptr arg = transpile(ast, e.getKid(0));
+  Expr_ptr arg = transpile(ast, e.getKid(0), pointer_to_int);
   save_result(Not::build(arg));
 
   return klee::ExprVisitor::Action::skipChildren();
@@ -683,10 +715,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitAnd(const klee::AndExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   And_ptr a = And::build(left, right);
@@ -699,10 +731,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitOr(const klee::OrExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Or_ptr o = Or::build(left, right);
@@ -715,10 +747,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitXor(const klee::XorExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Xor_ptr x = Xor::build(left, right);
@@ -731,10 +763,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitShl(const klee::ShlExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   ShiftLeft_ptr sl = ShiftLeft::build(left, right);
@@ -747,10 +779,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitLShr(const klee::LShrExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   ShiftRight_ptr sr = ShiftRight::build(left, right);
@@ -763,10 +795,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitAShr(const klee::AShrExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Cast_ptr cast = Cast::build(left, true);
@@ -781,10 +813,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitEq(const klee::EqExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   if (right->get_kind() == Node::NodeKind::EQUALS &&
@@ -829,10 +861,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitNe(const klee::NeExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   NotEquals_ptr ne = NotEquals::build(left, right);
@@ -846,10 +878,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitUlt(const klee::UltExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Less_ptr lt = Less::build(left, right);
@@ -863,10 +895,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitUle(const klee::UleExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   // major hack!
@@ -893,10 +925,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitUgt(const klee::UgtExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Greater_ptr gt = Greater::build(left, right);
@@ -910,10 +942,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitUge(const klee::UgeExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   GreaterEq_ptr ge = GreaterEq::build(left, right);
@@ -927,10 +959,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitSlt(const klee::SltExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Cast_ptr lc = Cast::build(left, true);
@@ -947,10 +979,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitSle(const klee::SleExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Cast_ptr lc = Cast::build(left, true);
@@ -967,10 +999,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitSgt(const klee::SgtExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Cast_ptr lc = Cast::build(left, true);
@@ -987,10 +1019,10 @@ klee::ExprVisitor::Action
 KleeExprToASTNodeConverter::visitSge(const klee::SgeExpr &e) {
   assert(e.getNumKids() == 2);
 
-  Expr_ptr left = transpile(ast, e.getKid(0));
+  Expr_ptr left = transpile(ast, e.getKid(0), pointer_to_int);
   assert(left);
 
-  Expr_ptr right = transpile(ast, e.getKid(1));
+  Expr_ptr right = transpile(ast, e.getKid(1), pointer_to_int);
   assert(right);
 
   Cast_ptr lc = Cast::build(left, true);

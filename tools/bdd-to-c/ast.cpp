@@ -5,17 +5,6 @@ constexpr char AST::CHUNK_LAYER_2[];
 constexpr char AST::CHUNK_LAYER_3[];
 constexpr char AST::CHUNK_LAYER_4[];
 
-Expr_ptr pointer_to_int(Expr_ptr ptr) {
-  if (ptr->get_type()->get_type_kind() == Type::TypeKind::POINTER) {
-    auto zero = Constant::build(PrimitiveType::PrimitiveKind::INT, 0);
-    auto int_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
-    auto casted = Cast::build(ptr, Pointer::build(int_type));
-    ptr = Read::build(casted, int_type, zero);
-  }
-
-  return ptr;
-}
-
 std::string get_symbol_label(const std::string &wanted,
                              const BDD::symbols_t &symbols) {
   for (auto symbol : symbols) {
@@ -1026,9 +1015,6 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     Expr_ptr n_elems = transpile(this, call.args["n_elems"].expr);
     assert(n_elems);
 
-    start = pointer_to_int(start);
-    n_elems = pointer_to_int(n_elems);
-
     args = std::vector<ExpressionType_ptr>{vector, map, start, n_elems};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = get_symbol_label("number_of_freed_flows", symbols);
@@ -1194,10 +1180,8 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
         get_from_local_by_addr("val_out", vector_return_value_addr);
     assert(vector_return_value);
 
-    Expr_ptr value = transpile(this, call.args["value"].expr);
+    Expr_ptr value = transpile(this, call.args["value"].expr, true);
     assert(value);
-
-    value = pointer_to_int(value);
 
     args = std::vector<ExpressionType_ptr>{map, vector_return_value, value};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
