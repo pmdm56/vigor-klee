@@ -94,6 +94,13 @@ public:
     std::string expr_str;
     llvm::raw_string_ostream os(expr_str);
 
+    // hack: constants were generating an smt query containing just "assert
+    // true", which were breaking things later along the line
+    if (expr->getKind() == klee::Expr::Kind::Constant) {
+      klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
+      expr = exprBuilder->Xor(expr, exprBuilder->Constant(0, expr->getWidth()));
+    }
+
     smtPrinter.setOutput(os);
 
     klee::Query sat_query(empty_constraints, expr);
