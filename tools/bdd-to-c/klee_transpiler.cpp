@@ -81,26 +81,11 @@ Expr_ptr transpile(AST *ast, const klee::ref<klee::Expr> &e,
 
   result = ast->get_from_local(e);
 
+  if (result && pointer_to_int) {
+    result = ptr_to_int(result);
+  }
+
   if (result) {
-    std::stringstream ss;
-    result->simplify(ast)->synthesize(ss);
-
-    if (pointer_to_int && ss.str() == "vector_value_out_1") {
-      std::cerr << "before: ";
-      result->simplify(ast)->synthesize(std::cerr);
-      std::cerr << "\n";
-
-      result = ptr_to_int(result);
-
-      std::cerr << "after: ";
-      result->simplify(ast)->synthesize(std::cerr);
-      std::cerr << "\n";
-      {
-        char c;
-        std::cin >> c;
-      }
-    }
-
     return result;
   }
 

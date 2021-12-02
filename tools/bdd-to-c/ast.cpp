@@ -1010,9 +1010,9 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
 
     Variable_ptr vector = get_from_state(vector_addr);
     Variable_ptr map = get_from_state(map_addr);
-    Expr_ptr start = transpile(this, call.args["start"].expr);
+    Expr_ptr start = transpile(this, call.args["start"].expr, true);
     assert(start);
-    Expr_ptr n_elems = transpile(this, call.args["n_elems"].expr);
+    Expr_ptr n_elems = transpile(this, call.args["n_elems"].expr, true);
     assert(n_elems);
 
     args = std::vector<ExpressionType_ptr>{vector, map, start, n_elems};
@@ -1105,7 +1105,7 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
         (static_cast<Constant *>(val_out_expr.get()))->get_value();
 
     Expr_ptr vector = get_from_state(vector_addr);
-    Expr_ptr index = transpile(this, call.args["index"].expr);
+    Expr_ptr index = transpile(this, call.args["index"].expr, true);
     assert(index);
 
     Expr_ptr index_arg = index;
@@ -1199,7 +1199,7 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
         (static_cast<Constant *>(value_expr.get()))->get_value();
 
     Expr_ptr vector = get_from_state(vector_addr);
-    Expr_ptr index = transpile(this, call.args["index"].expr);
+    Expr_ptr index = transpile(this, call.args["index"].expr, true);
     assert(index);
     Expr_ptr value = get_from_local_by_addr("val_out", value_addr);
     assert(value);
