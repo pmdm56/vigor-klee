@@ -1653,6 +1653,7 @@ private:
     add_access_lookup_table(LibvigAccess("restart_time"));
     add_access_lookup_table(LibvigAccess("current_time"));
 
+    add_access_lookup_table(LibvigAccess("sketch_hash"));
     add_access_lookup_table(LibvigAccess("rte_ether_addr_hash"));
 
     add_access_lookup_table(LibvigAccess("cht_fill_cht"));
@@ -1665,6 +1666,7 @@ private:
 
     add_access_lookup_table(LibvigAccess("expire_items"));
     add_access_lookup_table(LibvigAccess("expire_items_single_map"));
+    add_access_lookup_table(LibvigAccess("expire_items_single_map_offseted"));
     add_access_lookup_table(
         LibvigAccess("expire_items_single_map_iteratively"));
 
