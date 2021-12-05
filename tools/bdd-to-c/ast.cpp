@@ -996,6 +996,39 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     ret_expr = call.ret;
   }
 
+  else if (fname == "expire_items_single_map_offseted") {
+    check_write_attempt = true;
+
+    Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
+    assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chain_addr =
+        (static_cast<Constant *>(chain_expr.get()))->get_value();
+
+    Expr_ptr vector_expr = transpile(this, call.args["vector"].expr);
+    assert(vector_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t vector_addr =
+        (static_cast<Constant *>(vector_expr.get()))->get_value();
+
+    Expr_ptr map_expr = transpile(this, call.args["map"].expr);
+    assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t map_addr = (static_cast<Constant *>(map_expr.get()))->get_value();
+
+    Variable_ptr chain = get_from_state(chain_addr);
+    Variable_ptr vector = get_from_state(vector_addr);
+    Variable_ptr map = get_from_state(map_addr);
+    Expr_ptr now = transpile(this, call.args["time"].expr);
+    assert(now);
+    Expr_ptr offset = transpile(this, call.args["offset"].expr);
+    assert(offset);
+
+    now = fix_time_expiration(now);
+
+    args = std::vector<ExpressionType_ptr>{chain, vector, map, now, offset};
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    ret_symbol = get_symbol_label("number_of_freed_flows", symbols);
+    ret_expr = call.ret;
+  }
+
   else if (fname == "expire_items_single_map_iteratively") {
     check_write_attempt = true;
 
@@ -1262,6 +1295,23 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
           apply_changes_to_match(this, prev_chunk, call.args["the_chunk"].in);
       exprs.insert(exprs.end(), changes.begin(), changes.end());
     }
+  }
+
+  else if (fname == "sketch_hash") {
+    assert(BDD::solver_toolbox.are_exprs_always_equal(call.args["input"].in,
+                                                      call.args["input"].out));
+    Expr_ptr in = transpile(this, call.args["input"].in);
+    assert(in);
+    Expr_ptr salt = transpile(this, call.args["salt"].expr);
+    assert(salt);
+    Expr_ptr bucket_size = transpile(this, call.args["bucket_size"].expr);
+    assert(bucket_size);
+
+    args = std::vector<ExpressionType_ptr>{AddressOf::build(in), salt,
+                                           bucket_size};
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
+    ret_symbol = "sketch_hash";
+    ret_expr = call.ret;
   }
 
   else if (fname == "rte_ether_addr_hash") {

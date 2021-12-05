@@ -2111,7 +2111,7 @@ private:
 
 public:
   AccessesStitcher() {
-    alias_list = std::vector<std::string>{"vector_data_reset"};
+    alias_list = std::vector<std::string>{"vector_data_reset", "sketch_hash"};
   }
 
   void set_accesses_manager(LibvigAccessesManager *_accesses_manager) {
@@ -2124,6 +2124,7 @@ public:
     std::vector<LibvigAccess> new_accesses;
 
     unsigned int id = current_accesses.size();
+    auto replaced = false;
 
     for (auto access : current_accesses) {
       if (access.has_read_arg() &&
@@ -2138,12 +2139,28 @@ public:
                                  rep);
 
           new_accesses.push_back(new_access);
+
+          std::cerr << "read        "
+                    << expr_to_string(access.get_read_argument().get_expr(),
+                                      true)
+                    << "\n";
+          std::cerr << "replacement " << expr_to_string(rep.get_expr(), true)
+                    << "\n";
+          replaced = true;
         }
 
         continue;
       }
 
       new_accesses.push_back(access);
+    }
+
+    if (replaced) {
+      std::cerr << "replaced!\n";
+      {
+        char c;
+        std::cin >> c;
+      }
     }
 
     accesses_manager->set_accesses(new_accesses);
@@ -2232,6 +2249,10 @@ private:
     for (auto &access : accesses_manager->get_accesses()) {
       if (access.get_obj().second != obj) {
         continue;
+      }
+
+      if (access.get_interface() == "sketch_hash" && alias == "sketch_hash") {
+        std::cerr << "alias " << alias << "\n";
       }
 
       if (!access.has_write_arg()) {

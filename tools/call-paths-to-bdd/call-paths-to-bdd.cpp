@@ -377,6 +377,8 @@ void Node::update_id(uint64_t new_id) {
 void CallPathsGroup::group_call_paths() {
   assert(call_paths.size());
 
+  std::cerr << "\n================== GROUPING ==================\n";
+
   for (const auto &cp : call_paths.cp) {
     on_true.clear();
     on_false.clear();
@@ -386,6 +388,8 @@ void CallPathsGroup::group_call_paths() {
     }
 
     call_t call = cp->calls[0];
+    std::cerr << "----------------------------------------------\n";
+    std::cerr << "call: " << call.function_name << "\n";
 
     for (unsigned int icp = 0; icp < call_paths.size(); icp++) {
       auto pair = call_paths.get(icp);
@@ -393,10 +397,12 @@ void CallPathsGroup::group_call_paths() {
       if (pair.first->calls.size() &&
           are_calls_equal(pair.first->calls[0], call)) {
         on_true.push_back(pair);
+        std::cerr << "  +++ " << pair.first->file_name << "\n";
         continue;
       }
 
       on_false.push_back(pair);
+      std::cerr << "  --- " << pair.first->file_name << "\n";
     }
 
     // all calls are equal, no need do discriminate
@@ -415,6 +421,32 @@ void CallPathsGroup::group_call_paths() {
   if (on_true.size() == 0 && on_false.size() == 0) {
     on_true = call_paths;
     return;
+  }
+
+  // Last shot...
+  for (int i = 0; i < call_paths.cp.size(); i++) {
+    on_true.clear();
+    on_false.clear();
+
+    std::cerr << "--------------- LAST CHANCE ------------------\n";
+
+    for (int j = 0; j < call_paths.cp.size(); j++) {
+      auto pair = call_paths.get(j);
+
+      if (i == j) {
+        on_true.push_back(pair);
+        std::cerr << "  +++ " << pair.first->file_name << "\n";
+      } else {
+        on_false.push_back(pair);
+        std::cerr << "  --- " << pair.first->file_name << "\n";
+      }
+    }
+
+    constraint = find_discriminating_constraint();
+
+    if (!constraint.isNull()) {
+      return;
+    }
   }
 
   assert(false && "Could not group call paths");

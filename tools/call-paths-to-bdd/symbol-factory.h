@@ -105,39 +105,39 @@ private:
     }
 
     std::sort(options.begin(), options.end(),
-              [&](const std::string &a, const std::string &b) -> bool {
-                auto a_pos = a.find(base);
-                auto b_pos = b.find(base);
+              [&](const std::string & a, const std::string & b)->bool {
+      auto a_pos = a.find(base);
+      auto b_pos = b.find(base);
 
-                assert(a_pos != std::string::npos);
-                assert(b_pos != std::string::npos);
+      assert(a_pos != std::string::npos);
+      assert(b_pos != std::string::npos);
 
-                auto a_counter = a.substr(a_pos + base.size());
-                auto b_counter = b.substr(b_pos + base.size());
+      auto a_counter = a.substr(a_pos + base.size());
+      auto b_counter = b.substr(b_pos + base.size());
 
-                int a_counter_int = 0;
-                int b_counter_int = 0;
+      int a_counter_int = 0;
+      int b_counter_int = 0;
 
-                if (a_counter.size() > 1) {
-                  if (a_counter.find("__") != std::string::npos) {
-                    a_counter_int = -1;
-                  } else {
-                    a_counter = a_counter.substr(1);
-                    a_counter_int = std::stoi(a_counter);
-                  }
-                }
+      if (a_counter.size() > 1) {
+        if (a_counter.find("__") != std::string::npos) {
+          a_counter_int = -1;
+        } else {
+          a_counter = a_counter.substr(1);
+          a_counter_int = std::stoi(a_counter);
+        }
+      }
 
-                if (b_counter.size() > 1) {
-                  if (b_counter.find("__") != std::string::npos) {
-                    b_counter_int = -1;
-                  } else {
-                    b_counter = b_counter.substr(1);
-                    b_counter_int = std::stoi(b_counter);
-                  }
-                }
+      if (b_counter.size() > 1) {
+        if (b_counter.find("__") != std::string::npos) {
+          b_counter_int = -1;
+        } else {
+          b_counter = b_counter.substr(1);
+          b_counter_int = std::stoi(b_counter);
+        }
+      }
 
-                return a_counter_int < b_counter_int;
-              });
+      return a_counter_int < b_counter_int;
+    });
 
     auto counter = count_labels(base);
 
@@ -169,7 +169,7 @@ private:
   }
 
   std::string build_label(klee::ref<klee::Expr> expr, std::string base,
-                          bool save) {
+                          bool save, bool test = false) {
     RetrieveSymbols retriever;
     retriever.visit(expr);
 
@@ -185,6 +185,10 @@ private:
 
         return symbol;
       }
+    }
+
+    if (test) {
+      return "";
     }
 
     std::cerr << "expr   " << expr_to_string(expr, true) << "\n";
@@ -268,9 +272,16 @@ private:
 
     auto has_this_key =
         solver_toolbox.exprBuilder->Constant(1, map_has_this_key->getWidth());
+
     if (solver_toolbox.are_exprs_always_equal(map_has_this_key, has_this_key)) {
-      symbols.emplace(build_label(value_out, "allocated_index", save),
-                      "allocated_index", value_out);
+      auto label = build_label(value_out, "allocated_index", save, true);
+
+      if (label.size()) {
+        symbols.emplace(label, "allocated_index", value_out);
+      } else {
+        label = build_label(value_out, "new_index", save);
+        symbols.emplace(label, "new_index", value_out);
+      }
     }
 
     return symbols;
@@ -351,17 +362,15 @@ private:
     return symbols;
   }
 
-  symbols_t expire_items_single_map_iteratively(
-      call_t call, bool save,
-      const std::vector<klee::ConstraintManager> &constraint_managers) {
+  symbols_t
+  sketch_hash(call_t call, bool save,
+              const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
 
     assert(!call.ret.isNull());
-    auto number_of_freed_flows = call.ret;
-
-    symbols.emplace(
-        build_label("number_of_freed_flows", save, constraint_managers),
-        "number_of_freed_flows", number_of_freed_flows);
+    auto hash = call.ret;
+    symbols.emplace(build_label("sketch_hash", save, constraint_managers),
+                    "sketch_hash", hash);
 
     return symbols;
   }
@@ -470,43 +479,46 @@ private:
 public:
   SymbolFactory() {
     call_processor_lookup_table = {
-        {"start_time", &SymbolFactory::no_process},
-        {"current_time", &SymbolFactory::current_time},
-        {"loop_invariant_consume", &SymbolFactory::no_process},
-        {"loop_invariant_produce", &SymbolFactory::no_process},
-        {"packet_receive", &SymbolFactory::no_process},
-        {"packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk},
-        {"packet_insert_new_chunk", &SymbolFactory::no_process},
-        {"packet_shrink_chunk", &SymbolFactory::no_process},
-        {"packet_get_unread_length", &SymbolFactory::no_process},
-        {"packet_state_total_length", &SymbolFactory::no_process},
-        {"packet_return_chunk", &SymbolFactory::no_process},
-        {"packet_send", &SymbolFactory::no_process},
-        {"packet_free", &SymbolFactory::no_process},
-        {"map_allocate", &SymbolFactory::map_allocate},
-        {"map_get", &SymbolFactory::map_get},
-        {"map_put", &SymbolFactory::no_process},
-        {"vector_allocate", &SymbolFactory::vector_allocate},
-        {"vector_borrow", &SymbolFactory::vector_borrow},
-        {"vector_return", &SymbolFactory::no_process},
-        {"map_erase", &SymbolFactory::no_process},
-        {"dchain_allocate", &SymbolFactory::dchain_allocate},
-        {"dchain_allocate_new_index",
-         &SymbolFactory::dchain_allocate_new_index},
-        {"dchain_is_index_allocated",
-         &SymbolFactory::dchain_is_index_allocated},
-        {"dchain_rejuvenate_index", &SymbolFactory::no_process},
-        {"dchain_free_index", &SymbolFactory::no_process},
-        {"expire_items_single_map", &SymbolFactory::expire_items_single_map},
-        {"expire_items_single_map_iteratively",
-         &SymbolFactory::expire_items_single_map_iteratively},
-        {"cht_fill_cht", &SymbolFactory::cht_fill_cht},
-        {"LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash},
-        {"cht_find_preferred_available_backend",
-         &SymbolFactory::cht_find_preferred_available_backend},
-        {"rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash},
-        {"nf_set_rte_ipv4_udptcp_checksum",
-         &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum},
+      { "start_time", &SymbolFactory::no_process },
+      { "current_time", &SymbolFactory::current_time },
+      { "loop_invariant_consume", &SymbolFactory::no_process },
+      { "loop_invariant_produce", &SymbolFactory::no_process },
+      { "packet_receive", &SymbolFactory::no_process },
+      { "packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk },
+      { "packet_insert_new_chunk", &SymbolFactory::no_process },
+      { "packet_shrink_chunk", &SymbolFactory::no_process },
+      { "packet_get_unread_length", &SymbolFactory::no_process },
+      { "packet_state_total_length", &SymbolFactory::no_process },
+      { "packet_return_chunk", &SymbolFactory::no_process },
+      { "packet_send", &SymbolFactory::no_process },
+      { "packet_free", &SymbolFactory::no_process },
+      { "map_allocate", &SymbolFactory::map_allocate },
+      { "map_get", &SymbolFactory::map_get },
+      { "map_put", &SymbolFactory::no_process },
+      { "vector_allocate", &SymbolFactory::vector_allocate },
+      { "vector_borrow", &SymbolFactory::vector_borrow },
+      { "vector_return", &SymbolFactory::no_process },
+      { "map_erase", &SymbolFactory::no_process },
+      { "dchain_allocate", &SymbolFactory::dchain_allocate },
+      { "dchain_allocate_new_index",
+        &SymbolFactory::dchain_allocate_new_index },
+      { "dchain_is_index_allocated",
+        &SymbolFactory::dchain_is_index_allocated },
+      { "dchain_rejuvenate_index", &SymbolFactory::no_process },
+      { "dchain_free_index", &SymbolFactory::no_process },
+      { "expire_items_single_map", &SymbolFactory::expire_items_single_map },
+      { "expire_items_single_map_offseted",
+        &SymbolFactory::expire_items_single_map },
+      { "expire_items_single_map_iteratively",
+        &SymbolFactory::expire_items_single_map },
+      { "sketch_hash", &SymbolFactory::sketch_hash },
+      { "cht_fill_cht", &SymbolFactory::cht_fill_cht },
+      { "LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash },
+      { "cht_find_preferred_available_backend",
+        &SymbolFactory::cht_find_preferred_available_backend },
+      { "rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash },
+      { "nf_set_rte_ipv4_udptcp_checksum",
+        &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum },
     };
 
     stack.emplace_back();
@@ -527,9 +539,9 @@ public:
     return translate_label(base, node.get());
   }
 
-  void translate(Node *current, Node *translation_source,
-                 RenameSymbols renamer) {
-    std::vector<Node *> nodes{current};
+  void translate(Node *current, Node *translation_source, RenameSymbols renamer,
+                 bool dbg = false) {
+    std::vector<Node *> nodes{ current };
 
     while (nodes.size()) {
       auto node = nodes[0];
@@ -548,6 +560,18 @@ public:
       } else if (node->get_type() == Node::NodeType::CALL) {
         auto call_node = static_cast<Call *>(node);
         auto call = call_node->get_call();
+
+        bool go = false;
+
+        if (dbg && call.function_name == "vector_borrow") {
+          RetrieveSymbols retriever;
+          retriever.visit(call.args["index"].expr);
+          go = true;
+        }
+
+        if (go) {
+          std::cerr << "translate  " << call_node->dump(true) << "\n";
+        }
 
         auto found_it = call_processor_lookup_table.find(call.function_name);
 
@@ -568,6 +592,8 @@ public:
           if (translation_source->get_id() != node->get_id() &&
               renamer.has_translation(call_symbol.label)) {
             renamer_modified.remove_translation(call_symbol.label);
+            std::cerr << "[!] call_symbol " << call_symbol.label << " removed "
+                      << call_symbol.label << "\n";
             modified_renamer = true;
           }
         }
@@ -596,6 +622,12 @@ public:
 
         call_node->set_call(call);
 
+        if (go) {
+          std::cerr << "translated " << call_node->dump(true) << "\n";
+          std::cout << "Press Enter to Continue";
+          std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        }
+
         nodes.push_back(node->get_next().get());
       }
 
@@ -607,6 +639,22 @@ public:
   }
 
   void translate(call_t call, BDDNode_ptr node) {
+    bool dbg = false;
+
+    if (call.function_name == "map_get" &&
+        !call.args["value_out"].out.isNull()) {
+      RetrieveSymbols retriever;
+      retriever.visit(call.args["value_out"].out);
+      auto ss = retriever.get_retrieved_strings();
+
+      if (ss.find("allocated_index_1") != ss.end()) {
+        std::cerr << "map_get value_out "
+                  << expr_to_string(call.args["value_out"].out, true) << "\n";
+        std::cerr << "node " << node->dump(true) << "\n";
+        dbg = true;
+      }
+    }
+
     auto found_it = call_processor_lookup_table.find(call.function_name);
 
     if (found_it == call_processor_lookup_table.end()) {
@@ -621,16 +669,43 @@ public:
     RenameSymbols renamer;
 
     for (auto symbol : symbols) {
+      if (dbg) {
+        std::cerr << "symbol"
+                  << "\n";
+        std::cerr << "  label " << symbol.label << "\n";
+        std::cerr << "  base  " << symbol.label_base << "\n";
+        std::cerr << "  expr  " << expr_to_string(symbol.expr, true) << "\n";
+      }
+
       auto new_label = translate_label(symbol.label_base, node);
 
       if (new_label == symbol.label) {
         continue;
       }
 
+      if (dbg) {
+        std::cerr << "  new   " << new_label << "\n";
+      }
+
       renamer.add_translation(symbol.label, new_label);
     }
 
-    translate(node.get(), node.get(), renamer);
+    if (dbg) {
+      for (auto t : renamer.get_translations()) {
+        std::cerr << "translation " << t.first << " => " << t.second << "\n";
+      }
+      std::cerr << "beggining translation propagation...\n";
+      std::cout << "Press Enter to Continue";
+      std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+
+    translate(node.get(), node.get(), renamer, dbg);
+
+    if (dbg) {
+      std::cerr << "translation done!\n";
+      std::cout << "Press Enter to Continue";
+      std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
 
     assert(node->get_type() == Node::NodeType::CALL);
     auto call_node = static_cast<Call *>(node.get());
