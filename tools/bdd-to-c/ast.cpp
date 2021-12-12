@@ -657,6 +657,54 @@ Node_ptr AST::init_state_node_from_call(const BDD::Call *bdd_call,
     ret_symbol = get_symbol_label("is_dchain_allocated", symbols);
   }
 
+  else if (fname == "sketch_allocate") {
+    assert(call.args["khash"].fn_ptr_name.first);
+    Type_ptr void_type =
+        PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+    Expr_ptr khash =
+        Variable::build(call.args["khash"].fn_ptr_name.second, void_type);
+    assert(khash);
+
+    auto khash_ret_type =
+        PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
+    std::vector<FunctionArgDecl_ptr> khash_args{
+        FunctionArgDecl::build("obj", Pointer::build(void_type)),
+    };
+    auto kash_decl = Function::build(call.args["khash"].fn_ptr_name.second,
+                                     khash_args, khash_ret_type);
+    kash_decl->set_terminate_line(true);
+    push_global_code(kash_decl);
+
+    Expr_ptr capacity = transpile(this, call.args["capacity"].expr);
+    assert(capacity);
+
+    Expr_ptr threshold = transpile(this, call.args["threshold"].expr);
+    assert(threshold);
+
+    Expr_ptr sketch_out_expr = transpile(this, call.args["sketch_out"].out);
+    assert(sketch_out_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t sketch_addr =
+        (static_cast<Constant *>(sketch_out_expr.get()))->get_value();
+
+    Type_ptr sketch_type = Struct::build(translate_struct("Sketch", target));
+    Variable_ptr new_sketch = generate_new_symbol("sketch", sketch_type, 1, 0);
+    new_sketch->set_addr(sketch_addr);
+
+    push_to_state(new_sketch);
+
+    // hack
+    if (target == TargetOption::SHARED_NOTHING) {
+      new_sketch = generate_new_symbol(
+          "(*" + new_sketch->get_symbol() + "_ptr)", sketch_type, 1, 0);
+    }
+
+    args = std::vector<ExpressionType_ptr>{khash, capacity, threshold,
+                                           AddressOf::build(new_sketch)};
+
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    ret_symbol = get_symbol_label("sketch_allocation_succeeded", symbols);
+  }
+
   else if (fname == "cht_fill_cht") {
     Expr_ptr vector_expr = transpile(this, call.args["cht"].expr);
     assert(vector_expr->get_kind() == Node::NodeKind::CONSTANT);
@@ -996,6 +1044,39 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     ret_expr = call.ret;
   }
 
+  else if (fname == "expire_items_single_map_offseted") {
+    check_write_attempt = true;
+
+    Expr_ptr chain_expr = transpile(this, call.args["chain"].expr);
+    assert(chain_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t chain_addr =
+        (static_cast<Constant *>(chain_expr.get()))->get_value();
+
+    Expr_ptr vector_expr = transpile(this, call.args["vector"].expr);
+    assert(vector_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t vector_addr =
+        (static_cast<Constant *>(vector_expr.get()))->get_value();
+
+    Expr_ptr map_expr = transpile(this, call.args["map"].expr);
+    assert(map_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t map_addr = (static_cast<Constant *>(map_expr.get()))->get_value();
+
+    Variable_ptr chain = get_from_state(chain_addr);
+    Variable_ptr vector = get_from_state(vector_addr);
+    Variable_ptr map = get_from_state(map_addr);
+    Expr_ptr now = transpile(this, call.args["time"].expr);
+    assert(now);
+    Expr_ptr offset = transpile(this, call.args["offset"].expr);
+    assert(offset);
+
+    now = fix_time_expiration(now);
+
+    args = std::vector<ExpressionType_ptr>{chain, vector, map, now, offset};
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    ret_symbol = get_symbol_label("number_of_freed_flows", symbols);
+    ret_expr = call.ret;
+  }
+
   else if (fname == "expire_items_single_map_iteratively") {
     check_write_attempt = true;
 
@@ -1019,6 +1100,97 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
     ret_symbol = get_symbol_label("number_of_freed_flows", symbols);
     ret_expr = call.ret;
+  }
+
+  else if (fname == "sketch_compute_hashes") {
+    Expr_ptr sketch_expr = transpile(this, call.args["sketch"].expr);
+    assert(sketch_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t sketch_addr =
+        (static_cast<Constant *>(sketch_expr.get()))->get_value();
+
+    Expr_ptr sketch = get_from_state(sketch_addr);
+
+    auto key_klee_expr = call.args["key"].in;
+    key_klee_expr = fix_key_klee_expr(key_klee_expr);
+
+    Type_ptr key_type = type_from_klee_expr(key_klee_expr, true);
+    Variable_ptr key = generate_new_symbol("sketch_key", key_type);
+    push_to_local(key);
+
+    VariableDecl_ptr key_decl = VariableDecl::build(key);
+    exprs.push_back(key_decl);
+
+    auto statements = build_and_fill_byte_array(this, key, key_klee_expr);
+    assert(statements.size());
+    exprs.insert(exprs.end(), statements.begin(), statements.end());
+
+    args = std::vector<ExpressionType_ptr>{sketch, AddressOf::build(key)};
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+  }
+
+  else if (fname == "sketch_refresh") {
+    Expr_ptr sketch_expr = transpile(this, call.args["sketch"].expr);
+    assert(sketch_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t sketch_addr =
+        (static_cast<Constant *>(sketch_expr.get()))->get_value();
+
+    Expr_ptr sketch = get_from_state(sketch_addr);
+
+    Expr_ptr now = transpile(this, call.args["time"].expr);
+    assert(now);
+
+    now = fix_time_32_bits(now);
+
+    args = std::vector<ExpressionType_ptr>{sketch, now};
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
+  }
+
+  else if (fname == "sketch_fetch") {
+    Expr_ptr sketch_expr = transpile(this, call.args["sketch"].expr);
+    assert(sketch_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t sketch_addr =
+        (static_cast<Constant *>(sketch_expr.get()))->get_value();
+
+    Expr_ptr sketch = get_from_state(sketch_addr);
+
+    args = std::vector<ExpressionType_ptr>{sketch};
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    ret_symbol = get_symbol_label("overflow", symbols);
+    ret_expr = call.ret;
+  }
+
+  else if (fname == "sketch_touch_buckets") {
+    Expr_ptr sketch_expr = transpile(this, call.args["sketch"].expr);
+    assert(sketch_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t sketch_addr =
+        (static_cast<Constant *>(sketch_expr.get()))->get_value();
+
+    Expr_ptr sketch = get_from_state(sketch_addr);
+
+    Expr_ptr now = transpile(this, call.args["time"].expr);
+    assert(now);
+    now = fix_time_32_bits(now);
+
+    args = std::vector<ExpressionType_ptr>{sketch, now};
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::INT);
+    ret_symbol = get_symbol_label("success", symbols);
+    ret_expr = call.ret;
+  }
+
+  else if (fname == "sketch_expire") {
+    Expr_ptr sketch_expr = transpile(this, call.args["sketch"].expr);
+    assert(sketch_expr->get_kind() == Node::NodeKind::CONSTANT);
+    uint64_t sketch_addr =
+        (static_cast<Constant *>(sketch_expr.get()))->get_value();
+
+    Expr_ptr sketch = get_from_state(sketch_addr);
+
+    Expr_ptr now = transpile(this, call.args["time"].expr);
+    assert(now);
+    now = fix_time_32_bits(now);
+
+    args = std::vector<ExpressionType_ptr>{sketch, now};
+    ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
   }
 
   else if (fname == "map_get") {

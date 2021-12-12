@@ -1293,9 +1293,9 @@ public:
     obj.first = _obj_name;
     read_arg.set_name(_arg_name);
 
-    if (_op == READ) {
+    if (_op == READ && _second_arg_name.size()) {
       result_arg.set_name(_second_arg_name);
-    } else {
+    } else if (_op != READ && _second_arg_name.size()) {
       write_arg.set_name(_second_arg_name);
     }
   }
@@ -1648,6 +1648,15 @@ private:
                                          "index", LibvigAccess::VERIFY));
     add_access_lookup_table(LibvigAccess("dchain_free_index", "chain", "index",
                                          LibvigAccess::DESTROY));
+
+    add_access_lookup_table(
+        LibvigAccess("sketch_allocate", "sketch_out", LibvigAccess::INIT));
+    add_access_lookup_table(LibvigAccess("sketch_compute_hashes", "sketch",
+                                         "key", "", LibvigAccess::WRITE));
+    add_access_lookup_table(LibvigAccess("sketch_refresh"));
+    add_access_lookup_table(LibvigAccess("sketch_fetch"));
+    add_access_lookup_table(LibvigAccess("sketch_touch_buckets"));
+    add_access_lookup_table(LibvigAccess("sketch_expire"));
 
     add_access_lookup_table(LibvigAccess("start_time"));
     add_access_lookup_table(LibvigAccess("restart_time"));

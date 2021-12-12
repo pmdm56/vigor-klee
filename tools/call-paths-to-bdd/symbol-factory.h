@@ -105,39 +105,39 @@ private:
     }
 
     std::sort(options.begin(), options.end(),
-              [&](const std::string &a, const std::string &b) -> bool {
-                auto a_pos = a.find(base);
-                auto b_pos = b.find(base);
+              [&](const std::string & a, const std::string & b)->bool {
+      auto a_pos = a.find(base);
+      auto b_pos = b.find(base);
 
-                assert(a_pos != std::string::npos);
-                assert(b_pos != std::string::npos);
+      assert(a_pos != std::string::npos);
+      assert(b_pos != std::string::npos);
 
-                auto a_counter = a.substr(a_pos + base.size());
-                auto b_counter = b.substr(b_pos + base.size());
+      auto a_counter = a.substr(a_pos + base.size());
+      auto b_counter = b.substr(b_pos + base.size());
 
-                int a_counter_int = 0;
-                int b_counter_int = 0;
+      int a_counter_int = 0;
+      int b_counter_int = 0;
 
-                if (a_counter.size() > 1) {
-                  if (a_counter.find("__") != std::string::npos) {
-                    a_counter_int = -1;
-                  } else {
-                    a_counter = a_counter.substr(1);
-                    a_counter_int = std::stoi(a_counter);
-                  }
-                }
+      if (a_counter.size() > 1) {
+        if (a_counter.find("__") != std::string::npos) {
+          a_counter_int = -1;
+        } else {
+          a_counter = a_counter.substr(1);
+          a_counter_int = std::stoi(a_counter);
+        }
+      }
 
-                if (b_counter.size() > 1) {
-                  if (b_counter.find("__") != std::string::npos) {
-                    b_counter_int = -1;
-                  } else {
-                    b_counter = b_counter.substr(1);
-                    b_counter_int = std::stoi(b_counter);
-                  }
-                }
+      if (b_counter.size() > 1) {
+        if (b_counter.find("__") != std::string::npos) {
+          b_counter_int = -1;
+        } else {
+          b_counter = b_counter.substr(1);
+          b_counter_int = std::stoi(b_counter);
+        }
+      }
 
-                return a_counter_int < b_counter_int;
-              });
+      return a_counter_int < b_counter_int;
+    });
 
     auto counter = count_labels(base);
 
@@ -196,6 +196,35 @@ private:
   no_process(call_t call, bool save,
              const std::vector<klee::ConstraintManager> &constraint_managers) {
     symbols_t symbols;
+    return symbols;
+  }
+
+  symbols_t sketch_fetch(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
+    symbols_t symbols;
+
+    assert(!call.ret.isNull());
+
+    auto overflow = call.ret;
+
+    symbols.emplace(build_label(overflow, "overflow", save), "overflow",
+                    overflow);
+
+    return symbols;
+  }
+
+  symbols_t sketch_touch_buckets(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
+    symbols_t symbols;
+
+    assert(!call.ret.isNull());
+
+    auto success = call.ret;
+
+    symbols.emplace(build_label(success, "success", save), "success", success);
+
     return symbols;
   }
 
@@ -400,6 +429,20 @@ private:
     return symbols;
   }
 
+  symbols_t sketch_allocate(
+      call_t call, bool save,
+      const std::vector<klee::ConstraintManager> &constraint_managers) {
+    symbols_t symbols;
+
+    assert(!call.ret.isNull());
+    auto sketch_allocation_succeeded = call.ret;
+    symbols.emplace(
+        build_label("sketch_allocation_succeeded", save, constraint_managers),
+        "sketch_allocation_succeeded", sketch_allocation_succeeded);
+
+    return symbols;
+  }
+
   symbols_t map_allocate(
       call_t call, bool save,
       const std::vector<klee::ConstraintManager> &constraint_managers) {
@@ -470,43 +513,49 @@ private:
 public:
   SymbolFactory() {
     call_processor_lookup_table = {
-        {"start_time", &SymbolFactory::no_process},
-        {"current_time", &SymbolFactory::current_time},
-        {"loop_invariant_consume", &SymbolFactory::no_process},
-        {"loop_invariant_produce", &SymbolFactory::no_process},
-        {"packet_receive", &SymbolFactory::no_process},
-        {"packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk},
-        {"packet_insert_new_chunk", &SymbolFactory::no_process},
-        {"packet_shrink_chunk", &SymbolFactory::no_process},
-        {"packet_get_unread_length", &SymbolFactory::no_process},
-        {"packet_state_total_length", &SymbolFactory::no_process},
-        {"packet_return_chunk", &SymbolFactory::no_process},
-        {"packet_send", &SymbolFactory::no_process},
-        {"packet_free", &SymbolFactory::no_process},
-        {"map_allocate", &SymbolFactory::map_allocate},
-        {"map_get", &SymbolFactory::map_get},
-        {"map_put", &SymbolFactory::no_process},
-        {"vector_allocate", &SymbolFactory::vector_allocate},
-        {"vector_borrow", &SymbolFactory::vector_borrow},
-        {"vector_return", &SymbolFactory::no_process},
-        {"map_erase", &SymbolFactory::no_process},
-        {"dchain_allocate", &SymbolFactory::dchain_allocate},
-        {"dchain_allocate_new_index",
-         &SymbolFactory::dchain_allocate_new_index},
-        {"dchain_is_index_allocated",
-         &SymbolFactory::dchain_is_index_allocated},
-        {"dchain_rejuvenate_index", &SymbolFactory::no_process},
-        {"dchain_free_index", &SymbolFactory::no_process},
-        {"expire_items_single_map", &SymbolFactory::expire_items_single_map},
-        {"expire_items_single_map_iteratively",
-         &SymbolFactory::expire_items_single_map_iteratively},
-        {"cht_fill_cht", &SymbolFactory::cht_fill_cht},
-        {"LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash},
-        {"cht_find_preferred_available_backend",
-         &SymbolFactory::cht_find_preferred_available_backend},
-        {"rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash},
-        {"nf_set_rte_ipv4_udptcp_checksum",
-         &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum},
+      { "start_time", &SymbolFactory::no_process },
+      { "current_time", &SymbolFactory::current_time },
+      { "loop_invariant_consume", &SymbolFactory::no_process },
+      { "loop_invariant_produce", &SymbolFactory::no_process },
+      { "packet_receive", &SymbolFactory::no_process },
+      { "packet_borrow_next_chunk", &SymbolFactory::packet_borrow_next_chunk },
+      { "packet_insert_new_chunk", &SymbolFactory::no_process },
+      { "packet_shrink_chunk", &SymbolFactory::no_process },
+      { "packet_get_unread_length", &SymbolFactory::no_process },
+      { "packet_state_total_length", &SymbolFactory::no_process },
+      { "packet_return_chunk", &SymbolFactory::no_process },
+      { "packet_send", &SymbolFactory::no_process },
+      { "packet_free", &SymbolFactory::no_process },
+      { "map_allocate", &SymbolFactory::map_allocate },
+      { "map_get", &SymbolFactory::map_get },
+      { "map_put", &SymbolFactory::no_process },
+      { "vector_allocate", &SymbolFactory::vector_allocate },
+      { "vector_borrow", &SymbolFactory::vector_borrow },
+      { "vector_return", &SymbolFactory::no_process },
+      { "map_erase", &SymbolFactory::no_process },
+      { "dchain_allocate", &SymbolFactory::dchain_allocate },
+      { "dchain_allocate_new_index",
+        &SymbolFactory::dchain_allocate_new_index },
+      { "dchain_is_index_allocated",
+        &SymbolFactory::dchain_is_index_allocated },
+      { "dchain_rejuvenate_index", &SymbolFactory::no_process },
+      { "dchain_free_index", &SymbolFactory::no_process },
+      { "expire_items_single_map", &SymbolFactory::expire_items_single_map },
+      { "expire_items_single_map_iteratively",
+        &SymbolFactory::expire_items_single_map_iteratively },
+      { "sketch_allocate", &SymbolFactory::sketch_allocate },
+      { "sketch_compute_hashes", &SymbolFactory::no_process },
+      { "sketch_refresh", &SymbolFactory::no_process },
+      { "sketch_fetch", &SymbolFactory::sketch_fetch },
+      { "sketch_touch_buckets", &SymbolFactory::sketch_touch_buckets },
+      { "sketch_expire", &SymbolFactory::no_process },
+      { "cht_fill_cht", &SymbolFactory::cht_fill_cht },
+      { "LoadBalancedFlow_hash", &SymbolFactory::LoadBalancedFlow_hash },
+      { "cht_find_preferred_available_backend",
+        &SymbolFactory::cht_find_preferred_available_backend },
+      { "rte_ether_addr_hash", &SymbolFactory::rte_ether_addr_hash },
+      { "nf_set_rte_ipv4_udptcp_checksum",
+        &SymbolFactory::nf_set_rte_ipv4_udptcp_checksum },
     };
 
     stack.emplace_back();
@@ -529,11 +578,13 @@ public:
 
   void translate(Node *current, Node *translation_source,
                  RenameSymbols renamer) {
-    std::vector<Node *> nodes{current};
+    assert(current);
+    std::vector<Node *> nodes{ current };
 
     while (nodes.size()) {
       auto node = nodes[0];
       nodes.erase(nodes.begin());
+      assert(node);
 
       if (node->get_type() == Node::NodeType::BRANCH) {
         auto branch_node = static_cast<Branch *>(node);
@@ -542,6 +593,9 @@ public:
         auto renamed_condition = renamer.rename(condition);
 
         branch_node->set_condition(renamed_condition);
+
+        assert(branch_node->get_on_true());
+        assert(branch_node->get_on_false());
 
         nodes.push_back(branch_node->get_on_true().get());
         nodes.push_back(branch_node->get_on_false().get());
@@ -595,6 +649,7 @@ public:
         call.ret = renamer.rename(call.ret);
 
         call_node->set_call(call);
+        assert(node->get_next());
 
         nodes.push_back(node->get_next().get());
       }
@@ -607,6 +662,7 @@ public:
   }
 
   void translate(call_t call, BDDNode_ptr node) {
+    assert(node);
     auto found_it = call_processor_lookup_table.find(call.function_name);
 
     if (found_it == call_processor_lookup_table.end()) {

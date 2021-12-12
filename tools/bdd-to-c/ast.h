@@ -160,16 +160,40 @@ public:
       { { "vector_return", TargetOption::LOCKS }, "vector_locks_return" },
 
       /****************************************************************************
+       *                                sketch
+       ****************************************************************************/
+      { { "sketch_allocate", TargetOption::LOCKS }, "sketch_locks_allocate" },
+      { { "sketch_compute_hashes", TargetOption::LOCKS },
+        "sketch_locks_compute_hashes" },
+      { { "sketch_refresh", TargetOption::LOCKS }, "sketch_locks_refresh" },
+      { { "sketch_fetch", TargetOption::LOCKS }, "sketch_locks_fetch" },
+      { { "sketch_touch_buckets", TargetOption::LOCKS },
+        "sketch_locks_touch_buckets" },
+      { { "sketch_expire", TargetOption::LOCKS }, "sketch_locks_expire" },
+      { { "sketch_allocate", TargetOption::TM }, "sketch_tm_allocate" },
+      { { "sketch_compute_hashes", TargetOption::TM },
+        "sketch_tm_compute_hashes" },
+      { { "sketch_refresh", TargetOption::TM }, "sketch_tm_refresh" },
+      { { "sketch_fetch", TargetOption::TM }, "sketch_tm_fetch" },
+      { { "sketch_touch_buckets", TargetOption::TM },
+        "sketch_tm_touch_buckets" },
+      { { "sketch_expire", TargetOption::TM }, "sketch_tm_expire" },
+
+      /****************************************************************************
        *                                expirator
        ****************************************************************************/
       { { "expire_items", TargetOption::LOCKS }, "expire_items_locks" },
       { { "expire_items_single_map", TargetOption::LOCKS },
         "expire_items_single_map_locks" },
+      { { "expire_items_single_map_offseted", TargetOption::LOCKS },
+        "expire_items_single_map_offseted_locks" },
       { { "expire_items_single_map_iteratively", TargetOption::LOCKS },
         "expire_items_single_map_iteratively_locks" },
       { { "expire_items", TargetOption::TM }, "expire_items_tm" },
       { { "expire_items_single_map", TargetOption::TM },
         "expire_items_single_map_tm" },
+      { { "expire_items_single_map_offseted", TargetOption::TM },
+        "expire_items_single_map_offseted_tm" },
       { { "expire_items_single_map_iteratively", TargetOption::TM },
         "expire_items_single_map_iteratively_tm" },
 
@@ -200,7 +224,9 @@ public:
       { { "DoubleChain", TargetOption::TM }, "DoubleChainTM" },
       { { "Map", TargetOption::LOCKS }, "MapLocks" },
       { { "Vector", TargetOption::LOCKS }, "VectorLocks" },
-      { { "DoubleMap", TargetOption::LOCKS }, "DoubleMapLocks" }
+      { { "DoubleMap", TargetOption::LOCKS }, "DoubleMapLocks" },
+      { { "Sketch", TargetOption::LOCKS }, "SketchLocks" },
+      { { "Sketch", TargetOption::TM }, "SketchTM" },
     };
   }
 

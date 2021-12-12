@@ -417,6 +417,28 @@ void CallPathsGroup::group_call_paths() {
     return;
   }
 
+  // Last shot...
+  for (int i = 0; i < call_paths.cp.size(); i++) {
+    on_true.clear();
+    on_false.clear();
+
+    for (int j = 0; j < call_paths.cp.size(); j++) {
+      auto pair = call_paths.get(j);
+
+      if (i == j) {
+        on_true.push_back(pair);
+      } else {
+        on_false.push_back(pair);
+      }
+    }
+
+    constraint = find_discriminating_constraint();
+
+    if (!constraint.isNull()) {
+      return;
+    }
+  }
+
   assert(false && "Could not group call paths");
 }
 
@@ -717,10 +739,13 @@ BDDNode_ptr BDD::populate(call_paths_t call_paths) {
 
 BDDNode_ptr BDD::populate_init(const BDDNode_ptr &root) {
   Node *node = root.get();
+  assert(node);
 
   BDDNode_ptr local_root;
   BDDNode_ptr local_leaf;
   BDDNode_ptr new_node;
+
+  bool build_return = true;
 
   while (node) {
     new_node = nullptr;
@@ -738,9 +763,11 @@ BDDNode_ptr BDD::populate_init(const BDDNode_ptr &root) {
         new_node = node->clone();
         new_node->replace_next(empty);
         new_node->replace_prev(empty);
+        assert(new_node);
       }
 
       node = node->get_next().get();
+      assert(node);
       break;
     };
     case Node::NodeType::BRANCH: {
@@ -748,6 +775,9 @@ BDDNode_ptr BDD::populate_init(const BDDNode_ptr &root) {
 
       auto on_true_node = populate_init(root_branch->get_on_true());
       auto on_false_node = populate_init(root_branch->get_on_false());
+
+      assert(on_true_node);
+      assert(on_false_node);
 
       auto cloned = node->clone();
       auto branch = static_cast<Branch *>(cloned.get());
@@ -766,6 +796,7 @@ BDDNode_ptr BDD::populate_init(const BDDNode_ptr &root) {
 
       new_node = cloned;
       node = nullptr;
+      build_return = false;
 
       break;
     };
@@ -775,6 +806,7 @@ BDDNode_ptr BDD::populate_init(const BDDNode_ptr &root) {
           std::make_shared<ReturnInit>(get_and_inc_id(), root_return_raw);
 
       node = nullptr;
+      build_return = false;
       break;
     };
     default: {
@@ -798,6 +830,16 @@ BDDNode_ptr BDD::populate_init(const BDDNode_ptr &root) {
 
   if (local_root == nullptr) {
     local_root = std::make_shared<ReturnInit>(get_and_inc_id());
+  }
+
+  if (build_return && local_leaf) {
+    auto ret = std::make_shared<ReturnInit>(get_and_inc_id());
+
+    local_leaf->replace_next(ret);
+    ret->replace_prev(local_leaf);
+
+    assert(ret->get_prev());
+    assert(ret->get_prev()->get_id() == local_leaf->get_id());
   }
 
   return local_root;
