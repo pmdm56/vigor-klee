@@ -1191,7 +1191,8 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
 
     Expr_ptr now = transpile(this, call.args["time"].expr);
     assert(now);
-    now = fix_time_32_bits(now);
+
+    now = fix_time_expiration(now);
 
     args = std::vector<ExpressionType_ptr>{sketch, now};
     ret_type = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
