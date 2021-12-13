@@ -1160,6 +1160,8 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
   }
 
   else if (fname == "sketch_touch_buckets") {
+    check_write_attempt = true;
+
     Expr_ptr sketch_expr = transpile(this, call.args["sketch"].expr);
     assert(sketch_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t sketch_addr =
@@ -1178,6 +1180,8 @@ Node_ptr AST::process_state_node_from_call(const BDD::Call *bdd_call,
   }
 
   else if (fname == "sketch_expire") {
+    check_write_attempt = true;
+
     Expr_ptr sketch_expr = transpile(this, call.args["sketch"].expr);
     assert(sketch_expr->get_kind() == Node::NodeKind::CONSTANT);
     uint64_t sketch_addr =
