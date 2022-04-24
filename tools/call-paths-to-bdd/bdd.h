@@ -12,17 +12,16 @@ public:
 
 private:
   uint64_t id;
+  unsigned total_call_paths;
 
   BDDNode_ptr nf_init;
   BDDNode_ptr nf_process;
-
-  std::vector<call_path_t *> call_paths;
 
   static std::vector<std::string> skip_conditions_with_symbol;
   static constexpr char INIT_CONTEXT_MARKER[] = "start_time";
 
   // For deserialization
-  BDD() : id(0) { solver_toolbox.build(); }
+  BDD() : id(0), total_call_paths(0) { solver_toolbox.build(); }
 
 private:
   call_t get_successful_call(std::vector<call_path_t *> call_paths) const;
@@ -63,7 +62,8 @@ private:
   }
 
 public:
-  BDD(std::vector<call_path_t *> _call_paths) : id(0), call_paths(_call_paths) {
+  BDD(std::vector<call_path_t *> call_paths)
+    : id(0), total_call_paths(call_paths.size()) {
     solver_toolbox.build();
 
     call_paths_t cp(call_paths);
@@ -77,8 +77,8 @@ public:
   }
 
   BDD(const BDD &bdd)
-      : id(bdd.id), nf_init(bdd.nf_init), nf_process(bdd.nf_process),
-        call_paths(bdd.call_paths) {}
+      : id(bdd.id), total_call_paths(bdd.total_call_paths),
+        nf_init(bdd.nf_init), nf_process(bdd.nf_process) {}
 
   BDD &operator=(const BDD &) = default;
 
@@ -104,8 +104,8 @@ public:
     return _id;
   }
 
-  const std::vector<call_path_t *> &get_call_paths() const {
-    return call_paths;
+  unsigned get_total_call_paths() const {
+    return total_call_paths;
   }
 
   void visit(BDDVisitor &visitor) const { visitor.visit(*this); }

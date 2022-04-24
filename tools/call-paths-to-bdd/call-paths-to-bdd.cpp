@@ -418,11 +418,11 @@ void CallPathsGroup::group_call_paths() {
   }
 
   // Last shot...
-  for (int i = 0; i < call_paths.cp.size(); i++) {
+  for (unsigned i = 0; i < call_paths.cp.size(); i++) {
     on_true.clear();
     on_false.clear();
 
-    for (int j = 0; j < call_paths.cp.size(); j++) {
+    for (unsigned j = 0; j < call_paths.cp.size(); j++) {
       auto pair = call_paths.get(j);
 
       if (i == j) {

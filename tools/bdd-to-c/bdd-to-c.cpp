@@ -101,6 +101,7 @@ preppend_call_path_hitter(AST &ast,
 
 Node_ptr build_ast(AST &ast, const BDD::Node *root, TargetOption target) {
   std::vector<Node_ptr> nodes;
+  assert(root);
 
   while (root != nullptr) {
     BDD::PrinterDebug::debug(root);
@@ -228,7 +229,7 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
   case CALL_PATH_HITTER: {
     auto u64 = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT64_T);
     auto call_path_hit_counter_type =
-        Array::build(u64, bdd.get_call_paths().size());
+        Array::build(u64, bdd.get_total_call_paths());
     auto call_path_hit_counter =
         Variable::build("call_path_hit_counter", call_path_hit_counter_type);
     ast.push_to_state(call_path_hit_counter);
@@ -304,10 +305,10 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
 
     auto u64 = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT64_T);
     auto call_path_hit_counter_type =
-        Array::build(u64, bdd.get_call_paths().size());
+        Array::build(u64, bdd.get_total_call_paths());
     auto u32 = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT32_T);
 
-    for (unsigned i = 0; i < bdd.get_call_paths().size(); i++) {
+    for (unsigned i = 0; i < bdd.get_total_call_paths(); i++) {
       auto call_path_hit_counter = ast.get_from_state("call_path_hit_counter");
       auto byte = PrimitiveType::build(PrimitiveType::PrimitiveKind::UINT8_T);
       auto idx = Constant::build(PrimitiveType::PrimitiveKind::INT, i);
@@ -328,7 +329,7 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
     auto call_path_hit_counter_sz =
         Variable::build("call_path_hit_counter_sz", u32);
     auto call_paths_sz = Constant::build(PrimitiveType::PrimitiveKind::UINT32_T,
-                                         bdd.get_call_paths().size());
+                                         bdd.get_total_call_paths());
 
     auto call_path_hit_counter_ptr_val =
         Assignment::build(call_path_hit_counter_ptr, call_path_hit_counter);

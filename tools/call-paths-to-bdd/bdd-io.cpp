@@ -389,6 +389,9 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
   nodes_stream << "\n";
   edges_stream << "\n";
 
+  out << ";;-- Metadata --\n";
+  out << "total call paths:" << bdd.total_call_paths << "\n";
+
   out << ";;-- kQuery --\n";
   out << kQuery.serialize();
 
@@ -894,12 +897,28 @@ BDD BDD::deserialize(std::string file_path) {
 
   enum {
     STATE_INIT,
+    STATE_METADATA,
     STATE_KQUERY,
     STATE_NODES,
     STATE_EDGES,
     STATE_ROOTS,
-    STATE_DONE
   } state = STATE_INIT;
+
+  auto get_next_state = [&](std::string line) {
+    if (line == ";;-- Metadata --") {
+      return STATE_METADATA;
+    } if (line == ";;-- kQuery --") {
+      return STATE_KQUERY;
+    } if (line == ";; -- Nodes --") {
+      return STATE_NODES;
+    } if (line == ";; -- Edges --") {
+      return STATE_EDGES;
+    } if (line == ";; -- Roots --") {
+      return STATE_ROOTS;
+    }
+    
+    return state;
+  };
 
   std::string kQuery;
 
@@ -914,27 +933,44 @@ BDD BDD::deserialize(std::string file_path) {
     std::string line;
     std::getline(bdd_file, line);
 
+    if (line.size() == 0) {
+      continue;
+    }
+
     switch (state) {
-    case STATE_INIT: {
-      if (line == ";;-- kQuery --") {
-        state = STATE_KQUERY;
-      }
-    } break;
-
-    case STATE_KQUERY: {
-      if (line == ";; -- Nodes --") {
-        parse_kQuery(kQuery, exprs);
-
-        state = STATE_NODES;
+    case STATE_METADATA: {
+      if (get_next_state(line) != state) {
         break;
       }
 
+      auto delim = line.find(":");
+      assert(delim != std::string::npos);
+
+      auto field = line.substr(0, delim);
+
+      if (field == "total call paths") {
+        auto total_call_paths_str = line.substr(delim + 1);
+        auto total_call_paths = std::stoll(total_call_paths_str);
+        bdd.total_call_paths = total_call_paths;
+      }
+
+      else {
+        assert(false && "Unknown metadata field");
+      }
+
+      break;
+    }
+
+    case STATE_KQUERY: {
       kQuery += line + "\n";
+
+      if (get_next_state(line) != state) {
+        parse_kQuery(kQuery, exprs);
+      } 
     } break;
 
     case STATE_NODES: {
-      if (line == ";; -- Edges --") {
-        state = STATE_EDGES;
+      if (get_next_state(line) != state) {
         break;
       }
 
@@ -959,12 +995,10 @@ BDD BDD::deserialize(std::string file_path) {
         nodes[node->get_id()] = node;
         current_node.clear();
       }
-
     } break;
 
     case STATE_EDGES: {
-      if (line == ";; -- Roots --") {
-        state = STATE_ROOTS;
+      if (get_next_state(line) != state) {
         break;
       }
 
@@ -972,6 +1006,10 @@ BDD BDD::deserialize(std::string file_path) {
     } break;
 
     case STATE_ROOTS: {
+      if (get_next_state(line) != state) {
+        break;
+      }
+
       auto delim = line.find(":");
       assert(delim != std::string::npos);
 
@@ -991,8 +1029,6 @@ BDD BDD::deserialize(std::string file_path) {
         assert(nodes.find(process_id) != nodes.end());
 
         bdd.nf_process = std::shared_ptr<Node>(nodes[process_id]);
-
-        state = STATE_DONE;
         break;
       }
 
@@ -1001,10 +1037,12 @@ BDD BDD::deserialize(std::string file_path) {
       }
     } break;
 
-    case STATE_DONE: {
-      continue;
+    default: {
+      // ignore
     }
     }
+
+    state = get_next_state(line);
   }
 
   return bdd;
