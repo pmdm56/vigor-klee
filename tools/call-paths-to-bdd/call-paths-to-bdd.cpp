@@ -830,11 +830,15 @@ BDDNode_ptr BDD::populate_init(const BDDNode_ptr &root) {
   }
 
   if (local_root == nullptr) {
-    local_root = std::make_shared<ReturnInit>(get_and_inc_id());
+    local_root = std::make_shared<ReturnInit>(
+        get_and_inc_id(), nullptr, ReturnInit::ReturnType::SUCCESS,
+        root->get_call_paths_filenames(), root->get_constraints());
   }
 
   if (build_return && local_leaf) {
-    auto ret = std::make_shared<ReturnInit>(get_and_inc_id());
+    auto ret = std::make_shared<ReturnInit>(
+        get_and_inc_id(), nullptr, ReturnInit::ReturnType::SUCCESS,
+        local_leaf->get_call_paths_filenames(), local_leaf->get_constraints());
 
     local_leaf->replace_next(ret);
     ret->replace_prev(local_leaf);
