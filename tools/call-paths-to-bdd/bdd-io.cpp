@@ -389,8 +389,10 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
   nodes_stream << "\n";
   edges_stream << "\n";
 
+  out << bdd.MAGIC_SIGNATURE << "\n";
+
   out << ";;-- Metadata --\n";
-  out << "total call paths:" << bdd.total_call_paths << "\n";
+  out << "cps:" << bdd.total_call_paths << "\n";
 
   out << ";;-- kQuery --\n";
   out << kQuery.serialize();
@@ -891,6 +893,7 @@ void process_edge(std::string serialized_edge,
 
 BDD BDD::deserialize(std::string file_path) {
   BDD bdd;
+  auto magic_check = false;
 
   std::ifstream bdd_file(file_path);
   assert(bdd_file.is_open() && "Unable to open BDD file.");
@@ -907,16 +910,20 @@ BDD BDD::deserialize(std::string file_path) {
   auto get_next_state = [&](std::string line) {
     if (line == ";;-- Metadata --") {
       return STATE_METADATA;
-    } if (line == ";;-- kQuery --") {
+    }
+    if (line == ";;-- kQuery --") {
       return STATE_KQUERY;
-    } if (line == ";; -- Nodes --") {
+    }
+    if (line == ";; -- Nodes --") {
       return STATE_NODES;
-    } if (line == ";; -- Edges --") {
+    }
+    if (line == ";; -- Edges --") {
       return STATE_EDGES;
-    } if (line == ";; -- Roots --") {
+    }
+    if (line == ";; -- Roots --") {
       return STATE_ROOTS;
     }
-    
+
     return state;
   };
 
@@ -938,6 +945,14 @@ BDD BDD::deserialize(std::string file_path) {
     }
 
     switch (state) {
+    case STATE_INIT: {
+      if (line == bdd.MAGIC_SIGNATURE) {
+        magic_check = true;
+      }
+
+      break;
+    }
+
     case STATE_METADATA: {
       if (get_next_state(line) != state) {
         break;
@@ -948,7 +963,7 @@ BDD BDD::deserialize(std::string file_path) {
 
       auto field = line.substr(0, delim);
 
-      if (field == "total call paths") {
+      if (field == "cps") {
         auto total_call_paths_str = line.substr(delim + 1);
         auto total_call_paths = std::stoll(total_call_paths_str);
         bdd.total_call_paths = total_call_paths;
@@ -966,7 +981,7 @@ BDD BDD::deserialize(std::string file_path) {
 
       if (get_next_state(line) != state) {
         parse_kQuery(kQuery, exprs);
-      } 
+      }
     } break;
 
     case STATE_NODES: {
@@ -1042,7 +1057,17 @@ BDD BDD::deserialize(std::string file_path) {
     }
     }
 
+    if (state == STATE_INIT && get_next_state(line) != state && !magic_check) {
+      std::cerr << "\"" << file_path << "\" not a BDD file. Aborting.\n";
+      exit(1);
+    }
+
     state = get_next_state(line);
+  }
+
+  if (!magic_check) {
+    std::cerr << "\"" << file_path << "\" not a BDD file. Aborting.\n";
+    exit(1);
   }
 
   return bdd;

@@ -18,7 +18,9 @@ private:
   BDDNode_ptr nf_process;
 
   static std::vector<std::string> skip_conditions_with_symbol;
+
   static constexpr char INIT_CONTEXT_MARKER[] = "start_time";
+  static constexpr char MAGIC_SIGNATURE[] = "===== VIGOR_BDD_SIG =====";
 
   // For deserialization
   BDD() : id(0), total_call_paths(0) { solver_toolbox.build(); }
@@ -40,7 +42,7 @@ private:
   unsigned get_number_of_nodes(BDDNode_ptr root) const {
     unsigned num_nodes = 0;
 
-    std::vector<BDDNode_ptr> nodes{ root };
+    std::vector<BDDNode_ptr> nodes{root};
     BDDNode_ptr node;
 
     while (nodes.size()) {
@@ -63,7 +65,7 @@ private:
 
 public:
   BDD(std::vector<call_path_t *> call_paths)
-    : id(0), total_call_paths(call_paths.size()) {
+      : id(0), total_call_paths(call_paths.size()) {
     solver_toolbox.build();
 
     call_paths_t cp(call_paths);
@@ -104,9 +106,7 @@ public:
     return _id;
   }
 
-  unsigned get_total_call_paths() const {
-    return total_call_paths;
-  }
+  unsigned get_total_call_paths() const { return total_call_paths; }
 
   void visit(BDDVisitor &visitor) const { visitor.visit(*this); }
 
@@ -114,7 +114,7 @@ public:
   void set_id(uint64_t _id) { id = _id; }
 
   BDDNode_ptr get_node_by_id(uint64_t _id) const {
-    std::vector<BDDNode_ptr> nodes{ nf_init, nf_process };
+    std::vector<BDDNode_ptr> nodes{nf_init, nf_process};
     BDDNode_ptr node;
 
     while (nodes.size()) {
@@ -198,7 +198,7 @@ private:
   }
 
   void trim_constraints(BDDNode_ptr node) {
-    std::vector<BDDNode_ptr> nodes{ node };
+    std::vector<BDDNode_ptr> nodes{node};
 
     while (nodes.size()) {
       auto node = nodes[0];
@@ -218,9 +218,9 @@ private:
 
           auto used_symbols = retriever.get_retrieved_strings();
 
-          auto used_not_available_it =
-              std::find_if(used_symbols.begin(), used_symbols.end(),
-                           [&](const std::string &used_symbol) {
+          auto used_not_available_it = std::find_if(
+              used_symbols.begin(), used_symbols.end(),
+              [&](const std::string &used_symbol) {
                 auto available_symbol_it = std::find_if(
                     available_symbols.begin(), available_symbols.end(),
                     [&](const symbol_t &available_symbol) {

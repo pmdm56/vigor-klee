@@ -588,6 +588,7 @@ bool CallPathsGroup::check_discriminating_constraint(
 }
 
 constexpr char BDD::INIT_CONTEXT_MARKER[];
+constexpr char BDD::MAGIC_SIGNATURE[];
 
 solver_toolbox_t solver_toolbox;
 
