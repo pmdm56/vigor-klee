@@ -44,7 +44,9 @@ private:
         stream << "0";
         break;
       }
-      default: { assert(false); }
+      default: {
+        assert(false);
+      }
       }
       stream << "\"";
 
@@ -253,7 +255,9 @@ public:
 
       break;
     }
-    default: { assert(false); }
+    default: {
+      assert(false);
+    }
     }
     os << ";\n";
 
@@ -327,7 +331,9 @@ public:
 
       break;
     }
-    default: { assert(false); }
+    default: {
+      assert(false);
+    }
     }
     os << ";\n";
     return STOP;
@@ -335,11 +341,11 @@ public:
 
   void visitInitRoot(const Node *root) override {
     os << "digraph mygraph {\n";
-    os << "\tnode [shape=box];\n";
+    os << "\tnode [shape=box style=rounded border=0];\n";
 
     os << "\tsubgraph clusterinit {\n";
     os << "\t\tlabel=\"nf_init\";\n";
-    os << "\t\tnode [style=filled,color=white];\n";
+    os << "\t\tnode [style=\"rounded,filled\",color=white];\n";
 
     root->visit(*this);
   }
@@ -349,7 +355,7 @@ public:
 
     os << "\tsubgraph clusterprocess {\n";
     os << "\t\tlabel=\"nf_process\"\n";
-    os << "\t\tnode [style=filled,color=white];\n";
+    os << "\t\tnode [style=\"rounded,filled\",color=white];\n";
 
     root->visit(*this);
 
