@@ -68,6 +68,8 @@ public:
   bool operator==(const ConstraintManager &other) const {
     return constraints == other.constraints;
   }
+
+  ConstraintManager& operator=(const klee::ConstraintManager&) = default;
   
 private:
   std::vector< ref<Expr> > constraints;

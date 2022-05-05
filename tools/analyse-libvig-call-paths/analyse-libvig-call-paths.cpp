@@ -940,6 +940,8 @@ public:
     klee_interface = pm.klee_interface;
   }
 
+  PacketManager& operator=(const PacketManager& other) = default;
+
   bool process_packet_call(const call_t &call) {
     if (!call_handler_map.count(call.function_name))
       return false;
@@ -1081,6 +1083,8 @@ public:
 
     packet_dependencies = expr_arg.get_packet_dependencies();
   }
+
+  LibvigAccessExpressionArgument& operator=(const LibvigAccessExpressionArgument& other) = default;
 
   bool is_name_set() const { return name.first; }
   bool is_expr_set() const { return expr.first; }
@@ -1299,6 +1303,8 @@ public:
       write_arg.set_name(_second_arg_name);
     }
   }
+
+  LibvigAccess& operator=(const LibvigAccess& other) = default;
 
   void replace_arg(LibvigAccessExpressionArgument::Type type,
                    LibvigAccessExpressionArgument arg) {
