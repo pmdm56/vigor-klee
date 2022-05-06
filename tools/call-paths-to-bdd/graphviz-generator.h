@@ -3,9 +3,9 @@
 #include <assert.h>
 #include <iostream>
 
-#include "./bdd-nodes.h"
-#include "./bdd.h"
-#include "./visitor.h"
+#include "bdd/bdd.h"
+#include "bdd/nodes/nodes.h"
+#include "bdd/visitor.h"
 
 namespace BDD {
 
@@ -44,9 +44,7 @@ private:
         stream << "0";
         break;
       }
-      default: {
-        assert(false);
-      }
+      default: { assert(false); }
       }
       stream << "\"";
 
@@ -255,9 +253,7 @@ public:
 
       break;
     }
-    default: {
-      assert(false);
-    }
+    default: { assert(false); }
     }
     os << ";\n";
 
@@ -331,9 +327,7 @@ public:
 
       break;
     }
-    default: {
-      assert(false);
-    }
+    default: { assert(false); }
     }
     os << ";\n";
     return STOP;

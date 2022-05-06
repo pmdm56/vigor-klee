@@ -26,7 +26,7 @@ llvm::cl::opt<std::string> InputCallPathHitRateReportFile(
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
-  auto bdd = BDD::BDD::deserialize(InputBDDFile);
+  auto bdd = BDD::BDD(InputBDDFile);
   auto file = std::ofstream(Out);
   assert(file.is_open());
 

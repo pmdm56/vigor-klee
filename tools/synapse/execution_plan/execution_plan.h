@@ -168,8 +168,6 @@ private:
     processed_bdd_nodes.insert(processed_node_id);
   }
 
-  void replace_node_in_bdd(BDD::BDDNode_ptr target);
-
 public:
   unsigned get_depth() const { return depth; }
   unsigned get_nodes() const { return nodes; }
@@ -348,7 +346,7 @@ public:
   }
 
   float get_percentage_of_processed_bdd_nodes() const {
-    auto total_nodes = bdd.get_number_of_process_nodes();
+    auto total_nodes = bdd.get_number_of_nodes(bdd.get_process());
     return (float)processed_bdd_nodes.size() / (float)total_nodes;
   }
 

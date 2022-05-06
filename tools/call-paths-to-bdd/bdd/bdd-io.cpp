@@ -1,4 +1,6 @@
 #include "bdd.h"
+#include "nodes/return_init.h"
+#include "nodes/return_process.h"
 
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -239,7 +241,7 @@ std::string serialize_call(const call_t &call, kQuery_t &kQuery) {
   return call_stream.str();
 }
 
-void BDD::serialize(const BDD &bdd, std::string out_file) {
+void BDD::serialize(std::string out_file) const {
   std::ofstream out(out_file);
 
   assert(out);
@@ -253,7 +255,7 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
   std::stringstream nodes_stream;
   std::stringstream edges_stream;
 
-  std::vector<const Node *> nodes{bdd.nf_init.get(), bdd.nf_process.get()};
+  std::vector<const Node *> nodes{nf_init.get(), nf_process.get()};
   while (nodes.size()) {
     auto node = nodes[0];
     nodes.erase(nodes.begin());
@@ -389,10 +391,10 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
   nodes_stream << "\n";
   edges_stream << "\n";
 
-  out << bdd.MAGIC_SIGNATURE << "\n";
+  out << MAGIC_SIGNATURE << "\n";
 
   out << ";;-- Metadata --\n";
-  out << "cps:" << bdd.total_call_paths << "\n";
+  out << "cps:" << total_call_paths << "\n";
 
   out << ";;-- kQuery --\n";
   out << kQuery.serialize();
@@ -404,8 +406,8 @@ void BDD::serialize(const BDD &bdd, std::string out_file) {
   out << edges_stream.str();
 
   out << ";; -- Roots --\n";
-  out << "init:" << bdd.nf_init.get()->get_id() << "\n";
-  out << "process:" << bdd.nf_process.get()->get_id() << "\n";
+  out << "init:" << nf_init.get()->get_id() << "\n";
+  out << "process:" << nf_process.get()->get_id() << "\n";
 
   out.close();
 }
@@ -891,8 +893,7 @@ void process_edge(std::string serialized_edge,
   }
 }
 
-BDD BDD::deserialize(std::string file_path) {
-  BDD bdd;
+void BDD::deserialize(const std::string &file_path) {
   auto magic_check = false;
 
   std::ifstream bdd_file(file_path);
@@ -946,7 +947,7 @@ BDD BDD::deserialize(std::string file_path) {
 
     switch (state) {
     case STATE_INIT: {
-      if (line == bdd.MAGIC_SIGNATURE) {
+      if (line == MAGIC_SIGNATURE) {
         magic_check = true;
       }
 
@@ -966,7 +967,7 @@ BDD BDD::deserialize(std::string file_path) {
       if (field == "cps") {
         auto total_call_paths_str = line.substr(delim + 1);
         auto total_call_paths = std::stoll(total_call_paths_str);
-        bdd.total_call_paths = total_call_paths;
+        total_call_paths = total_call_paths;
       }
 
       else {
@@ -1005,7 +1006,7 @@ BDD BDD::deserialize(std::string file_path) {
         assert(node);
         assert(nodes.find(node->get_id()) == nodes.end());
 
-        bdd.id = std::max(bdd.id, node->get_id()) + 1;
+        id = std::max(id, node->get_id()) + 1;
 
         nodes[node->get_id()] = node;
         current_node.clear();
@@ -1035,7 +1036,7 @@ BDD BDD::deserialize(std::string file_path) {
         uint64_t init_id = std::stoll(root_id_str);
         assert(nodes.find(init_id) != nodes.end());
 
-        bdd.nf_init = std::shared_ptr<Node>(nodes[init_id]);
+        nf_init = std::shared_ptr<Node>(nodes[init_id]);
         break;
       }
 
@@ -1043,7 +1044,7 @@ BDD BDD::deserialize(std::string file_path) {
         uint64_t process_id = std::stoll(root_id_str);
         assert(nodes.find(process_id) != nodes.end());
 
-        bdd.nf_process = std::shared_ptr<Node>(nodes[process_id]);
+        nf_process = std::shared_ptr<Node>(nodes[process_id]);
         break;
       }
 
@@ -1069,8 +1070,6 @@ BDD BDD::deserialize(std::string file_path) {
     std::cerr << "\"" << file_path << "\" not a BDD file. Aborting.\n";
     exit(1);
   }
-
-  return bdd;
 }
 
 } // namespace BDD

@@ -64,7 +64,7 @@ BDD::BDD build_bdd() {
          "Please provide either at least 1 call path file, or a bdd file");
 
   if (InputBDDFile.size() > 0) {
-    return BDD::BDD::deserialize(InputBDDFile);
+    return BDD::BDD(InputBDDFile);
   }
 
   std::vector<call_path_t *> call_paths;

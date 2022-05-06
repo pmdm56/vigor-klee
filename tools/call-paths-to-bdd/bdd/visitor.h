@@ -1,11 +1,10 @@
 #pragma once
 
-#include "solver_toolbox.h"
+#include "../solver-toolbox.h"
 
 #include <assert.h>
 
 namespace BDD {
-
 class BDD;
 class Branch;
 class Call;

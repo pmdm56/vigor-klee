@@ -76,7 +76,9 @@ private:
 
         root->replace_prev(clone);
 
-        clone->update_id(bdd.get_and_inc_id());
+        auto id = bdd.get_id();
+        clone->update_id(id);
+        bdd.set_id(id + 1);
 
         root = clone;
       }

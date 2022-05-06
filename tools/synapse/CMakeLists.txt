@@ -6,6 +6,14 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
+file(GLOB call-paths-to-bdd-sources
+  "../call-paths-to-bdd/*.cpp"
+  "../call-paths-to-bdd/bdd/*.cpp"
+  "../call-paths-to-bdd/bdd/nodes/*.cpp"
+)
+
+list(FILTER call-paths-to-bdd-sources EXCLUDE REGEX ".*main\\.cpp$")
+
 add_executable(synapse
   synapse.cpp
   code_generator.cpp
@@ -19,8 +27,7 @@ add_executable(synapse
   execution_plan/visitors/target_code_generators/BMv2SimpleSwitchgRPC/klee_expr_to_p4.cpp
   log.cpp
   ../load-call-paths/load-call-paths.cpp
-  ../call-paths-to-bdd/call-paths-to-bdd.cpp
-  ../call-paths-to-bdd/bdd-io.cpp
+  ${call-paths-to-bdd-sources}
   ../printer/printer.cpp
 )
 

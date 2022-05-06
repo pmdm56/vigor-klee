@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   if (InputBDDFile.size()) {
-    auto bdd = BDD::BDD::deserialize(InputBDDFile);
+    auto bdd = BDD::BDD(InputBDDFile);
 
     if (Gv.size()) {
       auto file = std::ofstream(Gv);
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
   }
 
   if (OutputBDDFile.size()) {
-    BDD::BDD::serialize(bdd, OutputBDDFile);
+    bdd.serialize(OutputBDDFile);
   }
 
   for (auto call_path : call_paths) {

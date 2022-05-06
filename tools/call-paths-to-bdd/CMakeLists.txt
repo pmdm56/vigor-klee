@@ -6,9 +6,14 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
+file(GLOB call-paths-to-bdd-sources
+  "*.cpp"
+  "bdd/*.cpp"
+  "bdd/nodes/*.cpp"
+)
+
 add_executable(call-paths-to-bdd
-  call-paths-to-bdd.cpp
-  bdd-io.cpp
+  ${call-paths-to-bdd-sources}
   main.cpp
   ../load-call-paths/load-call-paths.cpp
   ../printer/printer.cpp

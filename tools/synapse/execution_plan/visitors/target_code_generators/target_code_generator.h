@@ -5,7 +5,7 @@
 #include <streambuf>
 #include <string>
 
-#include "visitor.h"
+#include "../visitor.h"
 
 #define GET_BOILERPLATE_PATH(fname)                                            \
   (std::string(__FILE__).substr(0, std::string(__FILE__).rfind("/")) + "/" +   \

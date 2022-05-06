@@ -25,6 +25,21 @@
 
 #define DEBUG
 
+std::vector<std::string> call_paths_t::skip_functions{
+    "loop_invariant_consume",
+    "loop_invariant_produce",
+    "packet_receive",
+    "packet_state_total_length",
+    "packet_free",
+    "packet_send",
+    "packet_get_unread_length"};
+
+bool call_paths_t::is_skip_function(const std::string &fname) {
+  auto found_it = std::find(call_paths_t::skip_functions.begin(),
+                            call_paths_t::skip_functions.end(), fname);
+  return found_it != call_paths_t::skip_functions.end();
+}
+
 call_path_t *load_call_path(std::string file_name,
                             std::vector<std::string> expressions_str,
                             std::deque<klee::ref<klee::Expr>> &expressions) {

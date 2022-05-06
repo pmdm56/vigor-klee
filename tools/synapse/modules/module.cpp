@@ -684,8 +684,10 @@ void reorder_bdd(ExecutionPlan &ep, BDD::BDDNode_ptr node,
     old_next_cloned->recursive_update_ids(id);
     bdd.set_id(id);
 
-    auto branch = std::make_shared<BDD::Branch>(
-        bdd.get_and_inc_id(), candidate.extra_condition, no_call_paths);
+    auto branch = std::make_shared<BDD::Branch>(id, candidate.extra_condition,
+                                                no_call_paths);
+
+    bdd.set_id(id++);
 
     branch->replace_on_true(candidate_clone);
     branch->replace_on_false(old_next_cloned);

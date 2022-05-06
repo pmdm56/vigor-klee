@@ -6,12 +6,19 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
+file(GLOB call-paths-to-bdd-sources
+  "../call-paths-to-bdd/*.cpp"
+  "../call-paths-to-bdd/bdd/*.cpp"
+  "../call-paths-to-bdd/bdd/nodes/*.cpp"
+)
+
+list(FILTER call-paths-to-bdd-sources EXCLUDE REGEX ".*main\\.cpp$")
+
 add_executable(call-path-hit-rate-graphviz-generator
   main.cpp
   ../load-call-paths/load-call-paths.cpp
   ../printer/printer.cpp
-  ../call-paths-to-bdd/call-paths-to-bdd.cpp
-  ../call-paths-to-bdd/bdd-io.cpp
+  ${call-paths-to-bdd-sources}
 )
 
 set(KLEE_LIBS

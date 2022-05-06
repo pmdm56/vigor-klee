@@ -25,10 +25,9 @@ bool get_bytes_read(klee::ref<klee::Expr> expr, std::vector<unsigned> &bytes) {
     auto left = concat->getLeft();
     auto right = concat->getRight();
 
-    if (!get_bytes_read(left, bytes))
+    if (!get_bytes_read(left, bytes) || !get_bytes_read(right, bytes)) {
       return false;
-    if (!get_bytes_read(right, bytes))
-      return false;
+    }
 
     return true;
   };
@@ -207,7 +206,7 @@ public:
         }
 
         if (ss.str().size()) {
-          ss << "|||";
+          ss << "++";
         }
 
         ss << symbol;
@@ -226,7 +225,7 @@ public:
 
       if (!processed) {
         if (ss.str().size()) {
-          ss << "|||";
+          ss << "++";
         }
 
         ss << symbol;
@@ -251,7 +250,7 @@ public:
     ss << "(";
     ss << pretty_print_expr(left);
     ss << ")";
-    ss << "|||";
+    ss << "++";
     ss << "(";
     ss << pretty_print_expr(right);
     ss << ")";
