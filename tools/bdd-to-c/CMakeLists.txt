@@ -10,6 +10,7 @@ file(GLOB call-paths-to-bdd-sources
   "../call-paths-to-bdd/*.cpp"
   "../call-paths-to-bdd/bdd/*.cpp"
   "../call-paths-to-bdd/bdd/nodes/*.cpp"
+  "../call-paths-to-bdd/bdd/visitors/*.cpp"
 )
 
 list(FILTER call-paths-to-bdd-sources EXCLUDE REGEX ".*main\\.cpp$")

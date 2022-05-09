@@ -10,6 +10,7 @@ file(GLOB call-paths-to-bdd-sources
   "*.cpp"
   "bdd/*.cpp"
   "bdd/nodes/*.cpp"
+  "bdd/visitors/*.cpp"
 )
 
 add_executable(call-paths-to-bdd

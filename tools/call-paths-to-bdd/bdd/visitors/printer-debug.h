@@ -3,9 +3,9 @@
 #include <assert.h>
 #include <iostream>
 
-#include "./bdd/bdd.h"
-#include "./bdd/nodes/nodes.h"
-#include "./bdd/visitor.h"
+#include "../bdd.h"
+#include "../nodes/nodes.h"
+#include "../visitor.h"
 
 namespace BDD {
 
