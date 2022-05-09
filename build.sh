@@ -4,11 +4,15 @@ set -euo pipefail
 
 KLEE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-[ -d "$KLEE_DIR/build" ] || mkdir "$KLEE_DIR/build"
+function build {
+  path=$1
+  build_type=$2
 
-cd "$KLEE_DIR/build"
+  [ -d "$KLEE_DIR/$path" ] || mkdir "$KLEE_DIR/$path"
 
-[ -f "Makefile" ] || CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
+  cd "$KLEE_DIR/$path"
+
+  [ -f "Makefile" ] || CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
                      CMAKE_PREFIX_PATH="$KLEE_DIR/../z3/build" \
                      CMAKE_INCLUDE_PATH="$KLEE_DIR/../z3/build/include/" \
                      cmake \
@@ -22,10 +26,14 @@ cd "$KLEE_DIR/build"
                          -DENABLE_KLEE_UCLIBC=ON \
                          -DKLEE_UCLIBC_PATH="$KLEE_DIR/../klee-uclibc" \
                          -DENABLE_POSIX_RUNTIME=ON \
-                         -DCMAKE_BUILD_TYPE=Debug \
+                         -DCMAKE_BUILD_TYPE=$build_type \
                          -DENABLE_KLEE_ASSERTS=ON \
                          -DENABLE_DOXYGEN=ON \
                          ..
 
+  make -kj $(nproc)
+}
 
-make -kj $(nproc)
+build "Debug" "Debug"
+build "Release" "Release"
+
