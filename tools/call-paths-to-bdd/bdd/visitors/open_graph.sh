@@ -7,7 +7,7 @@ if [[ $# -eq 0 ]] ; then
 fi
 
 function open {
-  xdot $1 & > /dev/null
+  xdot $1 > /dev/null 2>&1 &
 }
 
 for f in "${@}"; do

@@ -6,7 +6,7 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-file(GLOB_RECURSE call-paths-to-bdd-sources
+file(GLOB_RECURSE bdd-reorderer-sources
   "*.cpp"
 )
 
@@ -18,12 +18,18 @@ file(GLOB_RECURSE expr-printer-sources
   "../expr-printer/*.cpp"
 )
 
+file(GLOB_RECURSE call-paths-to-bdd-sources
+  "../call-paths-to-bdd/*.cpp"
+)
+
+list(FILTER call-paths-to-bdd-sources EXCLUDE REGEX ".*main\\.cpp$")
 list(FILTER load-call-paths-sources EXCLUDE REGEX ".*main\\.cpp$")
 list(FILTER expr-printer-sources EXCLUDE REGEX ".*main\\.cpp$")
 
-add_executable(call-paths-to-bdd
-  ${call-paths-to-bdd-sources}
+add_executable(bdd-reorderer
+  ${bdd-reorderer-sources}
   ${load-call-paths-sources}
+  ${call-paths-to-bdd-sources}
   ${expr-printer-sources}
 )
 
@@ -32,7 +38,7 @@ set(KLEE_LIBS
   kleeCore
 )
 
-target_include_directories(call-paths-to-bdd PRIVATE ../load-call-paths ../expr-printer)
-target_link_libraries(call-paths-to-bdd ${KLEE_LIBS})
+target_include_directories(bdd-reorderer PRIVATE ../load-call-paths ../call-paths-to-bdd ../expr-printer)
+target_link_libraries(bdd-reorderer ${KLEE_LIBS})
 
-install(TARGETS call-paths-to-bdd RUNTIME DESTINATION bin)
+install(TARGETS bdd-reorderer RUNTIME DESTINATION bin)

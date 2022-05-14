@@ -6,8 +6,13 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
+
+file(GLOB_RECURSE check-call-path-compatibility-sources
+  "*.cpp"
+)
+
 add_executable(check-call-path-compatibility
-  check-call-path-compatibility.cpp
+  ${check-call-path-compatibility-sources}
 )
 
 set(KLEE_LIBS

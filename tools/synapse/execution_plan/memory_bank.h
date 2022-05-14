@@ -95,4 +95,25 @@ public:
   }
 };
 
+#define DECLARE_SPECIALIZATION(value_type, prefix)                             \
+  template <>                                                                  \
+  bool MemoryBank::contains<value_type>(Target target, uint64_t key) const;    \
+                                                                               \
+  template <>                                                                  \
+  value_type MemoryBank::read<value_type>(Target target, uint64_t key) const;  \
+                                                                               \
+  template <>                                                                  \
+  void MemoryBank::write<value_type>(Target target, uint64_t key,              \
+                                     value_type value);                        \
+  template <> bool MemoryBank::contains<value_type>(uint64_t key) const;       \
+                                                                               \
+  template <> value_type MemoryBank::read<value_type>(uint64_t key) const;     \
+                                                                               \
+  template <>                                                                  \
+  void MemoryBank::write<value_type>(uint64_t key, value_type value);
+
+DECLARE_SPECIALIZATION(int, int)
+DECLARE_SPECIALIZATION(unsigned, unsigned)
+DECLARE_SPECIALIZATION(klee::ref<klee::Expr>, expr)
+
 } // namespace synapse

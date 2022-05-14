@@ -4,8 +4,8 @@
 #include <vector>
 
 #include "../../solver-toolbox.h"
+#include "expr-printer.h"
 #include "load-call-paths.h"
-#include "printer.h"
 #include "symbol.h"
 
 namespace BDD {

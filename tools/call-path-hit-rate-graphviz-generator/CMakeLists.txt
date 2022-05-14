@@ -6,20 +6,31 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-file(GLOB call-paths-to-bdd-sources
+file(GLOB_RECURSE call-path-hit-rate-graphviz-generator-sources
+  "*.cpp"
+)
+
+file(GLOB_RECURSE call-paths-to-bdd-sources
   "../call-paths-to-bdd/*.cpp"
-  "../call-paths-to-bdd/bdd/*.cpp"
-  "../call-paths-to-bdd/bdd/nodes/*.cpp"
-  "../call-paths-to-bdd/bdd/visitors/*.cpp"
+)
+
+file(GLOB_RECURSE load-call-paths-sources
+  "../load-call-paths*.cpp"
+)
+
+file(GLOB_RECURSE expr-printer-sources
+  "../expr-printer/*.cpp"
 )
 
 list(FILTER call-paths-to-bdd-sources EXCLUDE REGEX ".*main\\.cpp$")
+list(FILTER load-call-paths-sources EXCLUDE REGEX ".*main\\.cpp$")
+list(FILTER expr-printer-sources EXCLUDE REGEX ".*main\\.cpp$")
 
 add_executable(call-path-hit-rate-graphviz-generator
-  main.cpp
-  ../load-call-paths/load-call-paths.cpp
-  ../printer/printer.cpp
+  ${call-path-hit-rate-graphviz-generator-sources}
   ${call-paths-to-bdd-sources}
+  ${load-call-paths-sources}
+  ${expr-printer-sources}
 )
 
 set(KLEE_LIBS
@@ -27,7 +38,7 @@ set(KLEE_LIBS
   kleeCore
 )
 
-target_include_directories(call-path-hit-rate-graphviz-generator PRIVATE ../load-call-paths ../call-paths-to-bdd ../printer)
+target_include_directories(call-path-hit-rate-graphviz-generator PRIVATE ../load-call-paths ../call-paths-to-bdd ../expr-printer)
 target_link_libraries(call-path-hit-rate-graphviz-generator ${KLEE_LIBS})
 
 install(TARGETS call-path-hit-rate-graphviz-generator RUNTIME DESTINATION bin)

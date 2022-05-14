@@ -1,5 +1,5 @@
 #include "ast.h"
-#include "printer.h"
+#include "expr-printer.h"
 
 constexpr char AST::CHUNK_LAYER_2[];
 constexpr char AST::CHUNK_LAYER_3[];

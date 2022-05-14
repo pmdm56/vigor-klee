@@ -85,7 +85,12 @@ BDD::BDD build_bdd() {
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
+#ifdef NDEBUG
   synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::DEBUG;
+#else
+  synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::ERROR;
+#endif
+
   BDD::BDD bdd = build_bdd();
 
   synapse::SearchEngine search_engine(bdd);

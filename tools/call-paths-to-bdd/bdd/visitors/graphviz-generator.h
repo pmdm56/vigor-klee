@@ -1,7 +1,12 @@
 #pragma once
 
 #include <assert.h>
+#include <ctime>
+#include <fstream>
 #include <iostream>
+#include <limits>
+#include <math.h>
+#include <unistd.h>
 
 #include "../bdd.h"
 #include "../nodes/nodes.h"
@@ -14,48 +19,96 @@ private:
   std::ostream &os;
   std::unordered_set<uint64_t> processed;
   const Node *next;
+  bool show_init_graph;
 
   const char *COLOR_PROCESSED = "gray";
   const char *COLOR_NEXT = "cyan";
 
 public:
-  GraphvizGenerator(std::ostream &_os) : os(_os), next(nullptr) {}
+  GraphvizGenerator(std::ostream &_os)
+      : os(_os), next(nullptr), show_init_graph(true) {}
+
   GraphvizGenerator(std::ostream &_os,
                     const std::unordered_set<uint64_t> &_processed,
                     const Node *_next)
-      : os(_os), processed(_processed), next(_next) {}
+      : os(_os), processed(_processed), next(_next), show_init_graph(true) {}
 
-private:
-  std::string get_gv_name(const Node *node) const {
-    assert(node);
-
-    std::stringstream stream;
-
-    if (node->get_type() == Node::NodeType::RETURN_INIT) {
-      const ReturnInit *ret = static_cast<const ReturnInit *>(node);
-
-      stream << "\"return ";
-      switch (ret->get_return_value()) {
-      case ReturnInit::ReturnType::SUCCESS: {
-        stream << "1";
-        break;
-      }
-      case ReturnInit::ReturnType::FAILURE: {
-        stream << "0";
-        break;
-      }
-      default: { assert(false); }
-      }
-      stream << "\"";
-
-      return stream.str();
-    }
-
-    stream << node->get_id();
-    return stream.str();
+  void set_show_init_graph(bool _show_init_graph) {
+    show_init_graph = _show_init_graph;
   }
 
-public:
+  static void visualize(const BDD &bdd, bool interrupt = true,
+                        bool process_only = true) {
+    constexpr int fname_len = 15;
+    constexpr const char *prefix = "/tmp/";
+    constexpr const char *alphanum = "0123456789"
+                                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                     "abcdefghijklmnopqrstuvwxyz";
+
+    auto random_fname_generator = []() {
+      std::stringstream ss;
+      static unsigned counter = 1;
+
+      ss << prefix;
+
+      srand((unsigned)std::time(NULL) * getpid() + counter);
+
+      for (int i = 0; i < fname_len; i++) {
+        ss << alphanum[rand() % (strlen(alphanum) - 1)];
+      }
+
+      ss << ".gv";
+
+      counter++;
+      return ss.str();
+    };
+
+    auto open_graph = [](const std::string &fpath) {
+      std::string file_path = __FILE__;
+      std::string dir_path = file_path.substr(0, file_path.rfind("/"));
+      std::string script = "open_graph.sh";
+      std::string cmd = dir_path + "/" + script + " " + fpath;
+
+      system(cmd.c_str());
+    };
+
+    auto random_fname = random_fname_generator();
+    auto file = std::ofstream(random_fname);
+    assert(file.is_open());
+
+    GraphvizGenerator gv(file);
+    gv.set_show_init_graph(!process_only);
+    gv.visit(bdd);
+
+    file.close();
+
+#ifdef NDEBUG
+    std::cerr << "Opening " << random_fname << "\n";
+#endif
+
+    open_graph(random_fname);
+
+    if (interrupt) {
+      std::cout << "Press Enter to continue ";
+      std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+  }
+
+  void visit(const BDD &bdd) override {
+    os << "digraph mygraph {\n";
+    os << "\tnode [shape=box style=rounded border=0];\n";
+
+    if (show_init_graph) {
+      assert(bdd.get_init());
+      visitInitRoot(bdd.get_init().get());
+    }
+
+    assert(bdd.get_process());
+    visitProcessRoot(bdd.get_process().get());
+
+    os << "}";
+  }
+
   Action visitBranch(const Branch *node) override {
     if (node->get_next()) {
       assert(node->get_on_true()->get_prev());
@@ -334,27 +387,55 @@ public:
   }
 
   void visitInitRoot(const Node *root) override {
-    os << "digraph mygraph {\n";
-    os << "\tnode [shape=box style=rounded border=0];\n";
-
     os << "\tsubgraph clusterinit {\n";
     os << "\t\tlabel=\"nf_init\";\n";
     os << "\t\tnode [style=\"rounded,filled\",color=white];\n";
 
     root->visit(*this);
+
+    os << "\t}\n";
   }
 
   void visitProcessRoot(const Node *root) override {
-    os << "\t}\n";
-
     os << "\tsubgraph clusterprocess {\n";
-    os << "\t\tlabel=\"nf_process\"\n";
+    if (show_init_graph) {
+      os << "\t\tlabel=\"nf_process\"\n";
+    }
     os << "\t\tnode [style=\"rounded,filled\",color=white];\n";
 
     root->visit(*this);
 
     os << "\t}\n";
-    os << "}";
+  }
+
+private:
+  std::string get_gv_name(const Node *node) const {
+    assert(node);
+
+    std::stringstream stream;
+
+    if (node->get_type() == Node::NodeType::RETURN_INIT) {
+      const ReturnInit *ret = static_cast<const ReturnInit *>(node);
+
+      stream << "\"return ";
+      switch (ret->get_return_value()) {
+      case ReturnInit::ReturnType::SUCCESS: {
+        stream << "1";
+        break;
+      }
+      case ReturnInit::ReturnType::FAILURE: {
+        stream << "0";
+        break;
+      }
+      default: { assert(false); }
+      }
+      stream << "\"";
+
+      return stream.str();
+    }
+
+    stream << node->get_id();
+    return stream.str();
   }
 };
 } // namespace BDD

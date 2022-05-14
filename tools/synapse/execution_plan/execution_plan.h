@@ -397,6 +397,32 @@ public:
 
   void visit(ExecutionPlanVisitor &visitor) const { visitor.visit(*this); }
 
+  ExecutionPlan clone(BDD::BDD new_bdd) const {
+    ExecutionPlan copy = *this;
+
+    copy.id = counter++;
+    copy.bdd = new_bdd;
+
+    if (root) {
+      copy.root = clone_nodes(copy, root.get());
+    } else {
+      for (auto leaf : copy.leaves) {
+        assert(!leaf.leaf);
+      }
+    }
+
+    for (auto &leaf : copy.leaves) {
+      assert(leaf.next);
+      auto new_next = copy.bdd.get_node_by_id(leaf.next->get_id());
+
+      if (new_next) {
+        leaf.next = new_next;
+      }
+    }
+
+    return copy;
+  }
+
   ExecutionPlan clone(bool deep = false) const {
     ExecutionPlan copy = *this;
 

@@ -5,8 +5,8 @@
 #include <numeric>
 #include <vector>
 
+#include "expr-printer.h"
 #include "load-call-paths.h"
-#include "printer.h"
 
 enum TargetOption {
   SEQUENTIAL,

@@ -6,30 +6,37 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-file(GLOB call-paths-to-bdd-sources
-  "../call-paths-to-bdd/*.cpp"
-  "../call-paths-to-bdd/bdd/*.cpp"
-  "../call-paths-to-bdd/bdd/nodes/*.cpp"
-  "../call-paths-to-bdd/bdd/visitors/*.cpp"
+file(GLOB_RECURSE synapse-sources
+  "*.cpp"
 )
 
+file(GLOB_RECURSE load-call-paths-sources
+  "../load-call-paths*.cpp"
+)
+
+file(GLOB_RECURSE call-paths-to-bdd-sources
+  "../call-paths-to-bdd/*.cpp"
+)
+
+file(GLOB_RECURSE bdd-reorderer-sources
+  "../bdd-reorderer/*.cpp"
+)
+
+file(GLOB_RECURSE expr-printer-sources
+  "../expr-printer/*.cpp"
+)
+
+list(FILTER load-call-paths-sources EXCLUDE REGEX ".*main\\.cpp$")
 list(FILTER call-paths-to-bdd-sources EXCLUDE REGEX ".*main\\.cpp$")
+list(FILTER bdd-reorderer-sources EXCLUDE REGEX ".*main\\.cpp$")
+list(FILTER expr-printer-sources EXCLUDE REGEX ".*main\\.cpp$")
 
 add_executable(synapse
-  synapse.cpp
-  code_generator.cpp
-  heuristics/score.cpp
-  modules/module.cpp
-  execution_plan/execution_plan.cpp
-  execution_plan/memory_bank.cpp
-  execution_plan/visitors/visitor.cpp
-  execution_plan/visitors/target_code_generators/x86/x86_generator.cpp
-  execution_plan/visitors/target_code_generators/BMv2SimpleSwitchgRPC/BMv2SimpleSwitchgRPC_generator.cpp
-  execution_plan/visitors/target_code_generators/BMv2SimpleSwitchgRPC/klee_expr_to_p4.cpp
-  log.cpp
-  ../load-call-paths/load-call-paths.cpp
+  ${synapse-sources}
+  ${load-call-paths-sources}
+  ${bdd-reorderer-sources}
   ${call-paths-to-bdd-sources}
-  ../printer/printer.cpp
+  ${expr-printer-sources}
 )
 
 set(KLEE_LIBS
@@ -37,7 +44,7 @@ set(KLEE_LIBS
   kleeCore
 )
 
-target_include_directories(synapse PRIVATE ../load-call-paths ../call-paths-to-bdd ../printer)
+target_include_directories(synapse PRIVATE ../load-call-paths ../call-paths-to-bdd ../expr-printer)
 target_link_libraries(synapse ${KLEE_LIBS})
 
 install(TARGETS synapse RUNTIME DESTINATION bin)

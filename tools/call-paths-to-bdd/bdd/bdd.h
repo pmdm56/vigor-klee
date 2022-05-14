@@ -27,7 +27,7 @@ public:
       : id(bdd.id), total_call_paths(bdd.total_call_paths),
         nf_init(bdd.nf_init), nf_process(bdd.nf_process) {}
 
-  BDD(const std::string &file_path) {
+  BDD(const std::string &file_path) : id(0), total_call_paths(0) {
     solver_toolbox.build();
     deserialize(file_path);
   }
@@ -41,16 +41,15 @@ public:
   }
 
   unsigned get_total_call_paths() const { return total_call_paths; }
+  unsigned get_number_of_nodes(BDDNode_ptr root) const;
 
   BDDNode_ptr get_init() const { return nf_init; }
   BDDNode_ptr get_process() const { return nf_process; }
-
-  unsigned get_number_of_nodes(BDDNode_ptr root) const;
   BDDNode_ptr get_node_by_id(uint64_t _id) const;
 
-  void visit(BDDVisitor &visitor) const;
   BDD clone() const;
 
+  void visit(BDDVisitor &visitor) const;
   void serialize(std::string file_path) const;
 
 private:

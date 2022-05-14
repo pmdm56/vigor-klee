@@ -6,9 +6,13 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-add_executable(printer
-  printer.cpp
-  main.cpp
+
+file(GLOB_RECURSE expr-printer-sources
+  "*.cpp"
+)
+
+add_executable(expr-printer
+  ${expr-printer-sources}
 )
 
 set(KLEE_LIBS
@@ -16,6 +20,6 @@ set(KLEE_LIBS
   kleeCore
 )
 
-target_link_libraries(printer ${KLEE_LIBS})
+target_link_libraries(expr-printer ${KLEE_LIBS})
 
-install(TARGETS printer RUNTIME DESTINATION bin)
+install(TARGETS expr-printer RUNTIME DESTINATION bin)

@@ -29,8 +29,8 @@
 #include <stack>
 #include <vector>
 
+#include "../expr-printer/expr-printer.h"
 #include "../load-call-paths/load-call-paths.h"
-#include "../printer/printer.h"
 
 namespace {
 llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
@@ -940,7 +940,7 @@ public:
     klee_interface = pm.klee_interface;
   }
 
-  PacketManager& operator=(const PacketManager& other) = default;
+  PacketManager &operator=(const PacketManager &other) = default;
 
   bool process_packet_call(const call_t &call) {
     if (!call_handler_map.count(call.function_name))
@@ -1084,7 +1084,8 @@ public:
     packet_dependencies = expr_arg.get_packet_dependencies();
   }
 
-  LibvigAccessExpressionArgument& operator=(const LibvigAccessExpressionArgument& other) = default;
+  LibvigAccessExpressionArgument &
+  operator=(const LibvigAccessExpressionArgument &other) = default;
 
   bool is_name_set() const { return name.first; }
   bool is_expr_set() const { return expr.first; }
@@ -1304,7 +1305,7 @@ public:
     }
   }
 
-  LibvigAccess& operator=(const LibvigAccess& other) = default;
+  LibvigAccess &operator=(const LibvigAccess &other) = default;
 
   void replace_arg(LibvigAccessExpressionArgument::Type type,
                    LibvigAccessExpressionArgument arg) {

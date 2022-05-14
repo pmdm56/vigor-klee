@@ -26,7 +26,7 @@ public:
   void visit(const ReturnInit *node);
   void visit(const ReturnProcess *node);
   void visit(const ReturnRaw *node);
-  void visit(const BDD &bdd);
+  virtual void visit(const BDD &bdd);
 
 protected:
   virtual Action visitBranch(const Branch *node) = 0;
@@ -39,6 +39,7 @@ protected:
 
   virtual Action visitReturnRaw(const ReturnRaw *node) {
     assert(false && "Something went wrong...");
+    return Action::STOP;
   }
 };
 } // namespace BDD
