@@ -86,20 +86,29 @@ struct candidate_t {
 
 std::map<std::string, bool> fn_has_side_effects_lookup{
     {"current_time", true},
-    {"map_get", false},
-    {"vector_borrow", false},
-    {"vector_return", true},
     {"rte_ether_addr_hash", false},
-    {"packet_borrow_next_chunk", true},
     {"expire_items_single_map", true},
+    {"expire_items_single_map_iteratively", true},
+    {"packet_borrow_next_chunk", true},
     {"packet_get_unread_length", true},
     {"packet_return_chunk", true},
     {"packet_borrow_next_chunk", true},
+    {"vector_borrow", false},
+    {"vector_return", true},
+    {"map_get", false},
     {"map_put", true},
+    {"map_erase", true},
     {"dchain_allocate_new_index", true},
     {"dchain_is_index_allocated", false},
+    {"dchain_free_index", true},
     {"dchain_rejuvenate_index", true},
-};
+    {"cht_find_preferred_available_backend", false},
+    {"LoadBalancedFlow_hash", false},
+    {"sketch_expire", true},
+    {"sketch_compute_hashes", true},
+    {"sketch_refresh", true},
+    {"sketch_fetch", false},
+    {"sketch_touch_buckets", true}};
 
 std::vector<std::string> fn_cannot_reorder_lookup{
     "current_time", "packet_return_chunk", "nf_set_rte_ipv4_udptcp_checksum"};
@@ -107,7 +116,8 @@ std::vector<std::string> fn_cannot_reorder_lookup{
 bool fn_has_side_effects(std::string fn) {
   auto found = fn_has_side_effects_lookup.find(fn);
   if (found == fn_has_side_effects_lookup.end()) {
-    std::cerr << "Function " << fn << " not in fn_has_side_effects_lookup\n";
+    std::cerr << "ERROR: function \"" << fn
+              << "\" not in fn_has_side_effects_lookup\n";
     assert(false && "TODO");
   }
   return found->second;
