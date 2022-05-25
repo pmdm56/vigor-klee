@@ -18,6 +18,7 @@
 #include <stack>
 #include <utility>
 #include <vector>
+#include <chrono>
 
 #include "bdd-reorderer.h"
 
@@ -34,6 +35,10 @@ llvm::cl::opt<std::string>
 llvm::cl::opt<int> MaxReorderingOperations(
     "max", llvm::cl::desc("Maximum number of reordering operations."),
     llvm::cl::initializer<int>(-1), llvm::cl::cat(BDDReorderer));
+
+llvm::cl::opt<std::string> ReportFile(
+    "report", llvm::cl::desc("Output report file"),
+    llvm::cl::cat(BDDReorderer));
 } // namespace
 
 BDD::BDD build_bdd() {
@@ -62,6 +67,8 @@ BDD::BDD build_bdd() {
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
+  auto start = std::chrono::steady_clock::now();
+
   auto original_bdd = build_bdd();
   auto total_bdds = BDD::calculate_total_number_of_reordered_bdds(
       original_bdd, MaxReorderingOperations);
@@ -71,6 +78,25 @@ int main(int argc, char **argv) {
   // for (auto bdd : completed_bdds) {
   //   BDD::GraphvizGenerator::visualize(bdd, true);
   // }
+
+  if (ReportFile.size() == 0) {
+    return 0;
+  }
+  
+  auto end = std::chrono::steady_clock::now();
+  auto elapsed = end - start;
+  auto report = std::ofstream(ReportFile, std::ios::out);
+  
+  if (report.is_open()) {
+    report << "# time (s) \t total\n";
+    report << std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+    report << "\t";
+    report << total_bdds;
+    report << "\n";
+    report.close();
+  } else {
+    std::cerr << "Unable to open report file " << ReportFile << "\n";
+  }
 
   return 0;
 }
