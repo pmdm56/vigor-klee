@@ -3,7 +3,8 @@
 
 namespace BDD {
 BDDNode_ptr ReturnProcess::clone(bool recursive) const {
-  auto clone = std::make_shared<ReturnProcess>(id, prev, value, operation);
+  auto clone = std::make_shared<ReturnProcess>(
+      id, prev, value, operation, call_paths_filenames, constraints);
   return clone;
 }
 
