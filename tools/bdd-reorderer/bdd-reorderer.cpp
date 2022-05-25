@@ -943,7 +943,7 @@ int calculate_total_number_of_reordered_bdds(BDD original_bdd,
     bdds.erase(bdds.begin());
 
     if (!bdd.has_next() ||
-        (max_reordering > 0 && bdd.times >= max_reordering)) {
+        (max_reordering >= 0 && bdd.times >= max_reordering)) {
       completed_bdds++;
       std::cerr << "\r"
                 << "completed: " << completed_bdds << std::flush;
