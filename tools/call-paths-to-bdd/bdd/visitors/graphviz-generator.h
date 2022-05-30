@@ -94,6 +94,64 @@ public:
     }
   }
 
+  std::string callpaths_list_to_str(const Node *node) {
+    std::vector<int> call_path_ids;
+    std::stringstream ss;
+
+    if (node->get_call_paths_filenames().size() == 0) {
+      return ss.str();
+    }
+
+    for (auto cp : node->get_call_paths_filenames()) {
+      int call_path_id;
+      sscanf(cp.c_str(), "test%d", &call_path_id);
+      call_path_ids.push_back(call_path_id);
+    }
+
+    std::sort(call_path_ids.begin(), call_path_ids.end());
+
+    if (call_path_ids.size() == 1) {
+      ss << call_path_ids[0];
+      return ss.str();
+    }
+
+    int start = call_path_ids[0];
+    int end = start;
+    bool started = false;
+    bool print = false;
+
+    auto dump = [](std::stringstream &ss, int start, int end, bool &started) {
+      if (started) {
+        ss << ",";
+      } else {
+        started = true;
+      }
+
+      if (start != end) {
+        ss << start << "-" << end;
+      } else {
+        ss << start;
+      }
+    };
+
+    for (int i = 1; i < call_path_ids.size(); i++) {
+      auto id = call_path_ids[i];
+
+      if (id == end + 1) {
+        end = id;
+      } else {
+        dump(ss, start, end, started);
+        start = end = id;
+      }
+
+      if (i == call_path_ids.size() - 1) {
+        dump(ss, start, end, started);
+      }
+    }
+
+    return ss.str();
+  }
+
   void visit(const BDD &bdd) override {
     os << "digraph mygraph {\n";
     os << "\tnode [shape=box style=rounded border=0];\n";
@@ -134,20 +192,8 @@ public:
 
     auto i = 0u;
     os << "\\ncps={";
-    for (auto cp : node->get_call_paths_filenames()) {
-      int call_path_id;
-      sscanf(cp.c_str(), "test%d", &call_path_id);
-      os << call_path_id;
-      if (i < node->get_call_paths_filenames().size() - 1) {
-        os << ",";
-      }
-      if (i > 0 && i % 10 == 0) {
-        os << "\\n";
-      }
-      i++;
-    }
+    os << callpaths_list_to_str(node);
     os << "}";
-
     os << "\"";
 
     if (processed.find(node->get_id()) != processed.end()) {
@@ -241,18 +287,7 @@ public:
 
     i = 0;
     os << " cps={";
-    for (auto cp : node->get_call_paths_filenames()) {
-      int call_path_id;
-      sscanf(cp.c_str(), "test%d", &call_path_id);
-      os << call_path_id;
-      if (i < node->get_call_paths_filenames().size() - 1) {
-        os << ",";
-      }
-      if (i > 0 && i % 10 == 0) {
-        os << "\\l          ";
-      }
-      i++;
-    }
+    os << callpaths_list_to_str(node);
     os << "}\\l";
 
     os << "\", ";
@@ -306,7 +341,9 @@ public:
 
       break;
     }
-    default: { assert(false); }
+    default: {
+      assert(false);
+    }
     }
     os << ";\n";
 
@@ -320,15 +357,7 @@ public:
     auto i = 0u;
     std::stringstream cps;
     cps << "\\lcps={";
-    for (auto cp : node->get_call_paths_filenames()) {
-      int call_path_id;
-      sscanf(cp.c_str(), "test%d", &call_path_id);
-      cps << call_path_id;
-      if (i < node->get_call_paths_filenames().size() - 1) {
-        cps << ",";
-      }
-      i++;
-    }
+    cps << callpaths_list_to_str(node);
     cps << "}\\l";
 
     os << "\t\t" << get_gv_name(node);
@@ -380,7 +409,9 @@ public:
 
       break;
     }
-    default: { assert(false); }
+    default: {
+      assert(false);
+    }
     }
     os << ";\n";
     return STOP;
@@ -427,7 +458,9 @@ private:
         stream << "0";
         break;
       }
-      default: { assert(false); }
+      default: {
+        assert(false);
+      }
       }
       stream << "\"";
 
