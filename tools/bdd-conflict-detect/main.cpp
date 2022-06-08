@@ -36,8 +36,8 @@ int main(int argc, char **argv) {
     }
 
     BDD::PathExplorer explorer(&bdd);
-    while(explorer.nextPath())
-      ;
+    while(explorer.nextPath());
+ 
   }
 
   return 0;

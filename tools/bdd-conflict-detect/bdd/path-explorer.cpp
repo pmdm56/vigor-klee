@@ -5,90 +5,113 @@
 namespace BDD {
 bool PathExplorer::explore(Branch *node) {
   if (!node)
-    return true;
-  //std::cerr << "branch " << node->is_visited_true() << " " << node->is_visited_false() << std::endl;
-  pathLength++;
-  if (!node->is_visited_true()) {
-    //std::cerr << "took true" << std::endl;
-    auto condition = node->get_condition();
-    conditionStack.push(exprBuilder->Eq(condition, exprBuilder->True()));
-    node->set_visited_true(node->get_on_true()->explore(*this));
+    return false;
 
-  } else if (!node->is_visited_false()) {
-    //std::cerr << "took false" << std::endl;
-    auto condition = node->get_condition();
-    conditionStack.push(exprBuilder->Eq(condition, exprBuilder->False()));
-    node->set_visited_false(node->get_on_false()->explore(*this));
-  }
+  conditionStack.push_back(exprBuilder->True());
+  pathStack.push_back(node);
 
-  return node->is_visited_true() && node->is_visited_false();
+  return node->get_on_true()->explore(*this);
+}
+
+bool PathExplorer::exploreFalse(Branch *node) {
+  if (!node)
+    return false;
+
+  conditionStack.push_back(exprBuilder->False());
+  pathStack.push_back(node);
+
+  return node->get_on_false()->explore(*this);
 }
 
 bool PathExplorer::explore( Call *node) {
   if (!node)
-    return true;
-  pathLength++;
-  //std::cerr << "call" << std::endl;
+    return false;
+  pathStack.push_back(node);
   return node->get_next()->explore(*this);
 }
 
-bool PathExplorer::explore( ReturnInit *node) {
+bool PathExplorer::explore(ReturnInit *node) {
   if (!node)
     return true;
-    //std::cerr << "retinit" << std::endl;
-    pathLength++;
-    assert(!node->get_next());
-    isPath = true;
-    return true;
-}
-
-bool PathExplorer::explore( ReturnProcess *node) {
-  if (!node)
-    return true;
-  //std::cerr << "retprocess" << std::endl;
-  pathLength++;
   assert(!node->get_next());
-  isPath = true;
+  pathStack.push_back(node);
   return true;
 }
 
-bool PathExplorer::explore( ReturnRaw *node) {
+bool PathExplorer::explore(ReturnProcess *node) {
   if (!node)
-    return true;
-  pathLength++;
+    return false;
   assert(!node->get_next());
+  pathStack.push_back(node);
   return true;
+}
+
+bool PathExplorer::explore(ReturnRaw *node) {
+  if (!node)
+    return false;
+  assert(!node->get_next());
+  pathStack.push_back(node);
+  return false;
 }
 
 bool PathExplorer::nextPath() {
-
-  pathLength = 0;
-  isPath = false;
-  while (!conditionStack.empty())
-    conditionStack.pop();
-
+  bool ret;
   assert(bdd->get_process());
-  exploreProcessRoot(bdd->get_process().get());
+  
+  if(firstPath){
+    firstPath = false;
+    ret =  exploreProcessRoot(bdd->get_process().get());  
+  } else {
 
-  if(isPath)
-  std::cerr << "Path with len: " << pathLength << " and "
-            << conditionStack.size() << " conditions." << std::endl;
+    //roll back until we find a branch evaluated to true
+    while(pathStack.size() && ((pathStack.back()->get_type() != Node::NodeType::BRANCH )
+          || (pathStack.back()->get_type() == Node::NodeType::BRANCH && conditionStack.back() == exprBuilder->False()))){
+      if(pathStack.back()->get_type() == Node::NodeType::BRANCH)
+        conditionStack.pop_back();
+      pathStack.pop_back();
+          }
 
-  return isPath;
+    //unique path or theres no more paths to explore
+    if(pathStack.empty())
+      return false;
+
+    //now we need to populate the pathStack w/ on_false
+    //and remove its info from both stacks
+    Branch* currentBranch = (Branch*)pathStack.back();
+    conditionStack.pop_back();
+    pathStack.pop_back();
+
+    ret = exploreFalse(currentBranch);
+
+  }
+
+  std::cerr << "Path has size " << pathStack.size() << " and " << conditionStack.size() << " conditions" << std::endl;
+
+  return ret;
 }
 
 bool PathExplorer::exploreInitRoot( Node *root) {
-  if (!root)
-    return true;
-  root->explore(*this);
-  return true;
+  return root ? root->explore(*this) : false;
 }
 
 bool PathExplorer::exploreProcessRoot( Node *root) {
-  if (!root)
-    return true;
+  return root ? root->explore(*this) : false; 
+}
 
-  return root->explore(*this);
+bool PathExplorer::resetState() {
+  
+  while(!conditionStack.empty())
+    conditionStack.pop_back();
+  
+  while(!pathStack.empty())
+    pathStack.pop_back();
+  
+  firstPath = true;
+}
+
+
+
+bool PathExplorer::arePathsCompatible(PathExplorer bdd1, PathExplorer bdd2){
 }
 
 } // namespace BDD
