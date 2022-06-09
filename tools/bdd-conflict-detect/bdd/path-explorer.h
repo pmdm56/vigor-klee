@@ -33,7 +33,8 @@ public:
   bool explore(ReturnProcess *node);
   bool explore(ReturnRaw *node);
   bool resetState();
-  static bool arePathsCompatible(PathExplorer bdd1, PathExplorer bdd2);
+  static bool arePathsCompatible(klee::ref<klee::Expr> c1, klee::ref<klee::Expr> c2);
+  klee::ref<klee::Expr> getPathConstraint();
 
 protected:
   bool exploreInitRoot( Node *root);

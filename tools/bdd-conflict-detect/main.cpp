@@ -26,18 +26,26 @@ int main(int argc, char **argv) {
   }
 
   for(auto bdd : bdds){
+
+    BDD::PathExplorer explorer(&bdd);
+    
     for(auto bdd2 : bdds){
 
       if(bdd2.get_id() <= bdd.get_id())
         continue;
 
-      //TODO
+      BDD::PathExplorer explorer2(&bdd2);
 
+      while(explorer.nextPath()){
+        while(explorer2.nextPath()){
+          
+        }
+      }
+      explorer.resetState();
     }
 
-    BDD::PathExplorer explorer(&bdd);
-    while(explorer.nextPath());
- 
+    while(explorer.nextPath())
+      explorer.getPathConstraint()->dump();
   }
 
   return 0;

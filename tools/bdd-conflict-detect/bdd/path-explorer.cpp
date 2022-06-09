@@ -69,7 +69,7 @@ bool PathExplorer::nextPath() {
       if(pathStack.back()->get_type() == Node::NodeType::BRANCH)
         conditionStack.pop_back();
       pathStack.pop_back();
-          }
+    }
 
     //unique path or theres no more paths to explore
     if(pathStack.empty())
@@ -109,9 +109,23 @@ bool PathExplorer::resetState() {
   firstPath = true;
 }
 
+klee::ref<klee::Expr> PathExplorer::getPathConstraint() {
+  klee::ref<klee::Expr> ret = exprBuilder->True();
+  int constraintNum = 0;
 
+  for (auto i = 0; i < pathStack.size(); i++)
+    if(pathStack[i]->get_type() == Node::NodeType::BRANCH){
+      klee::ref<klee::Expr> branchEval = conditionStack.at(constraintNum++);
+      if(branchEval == exprBuilder->True())
+        ret = exprBuilder->And(ret, ((Branch *)pathStack[i])->get_condition());
+      else
+        ret = exprBuilder->And(ret, exprBuilder->Not(((Branch *)pathStack[i])->get_condition()));
+    }
 
-bool PathExplorer::arePathsCompatible(PathExplorer bdd1, PathExplorer bdd2){
+  return ret;
+}
+
+bool PathExplorer::arePathsCompatible(klee::ref<klee::Expr> c1, klee::ref<klee::Expr> c2){
 }
 
 } // namespace BDD
