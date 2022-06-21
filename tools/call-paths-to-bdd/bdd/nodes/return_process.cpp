@@ -71,12 +71,12 @@ void ReturnProcess::fill_return_value(calls_t calls) {
   }
 
   if (counter_dst_device_pair.first > 1) {
-    value = ((uint16_t)-1);
+    value = ((uint16_t) - 1);
     operation = BCAST;
     return;
   }
 
-  auto packet_receive_finder = [](call_t call) -> bool {
+  auto packet_receive_finder = [](call_t call)->bool {
     return call.function_name == "packet_receive";
   };
 

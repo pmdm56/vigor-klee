@@ -25,10 +25,10 @@
 
 namespace {
 llvm::cl::opt<std::string>
-    ContractLib("contract",
-                llvm::cl::desc("A performance contract library to load that "
-                               "describes the data structure performance."),
-                llvm::cl::Required);
+ContractLib("contract",
+            llvm::cl::desc("A performance contract library to load that "
+                           "describes the data structure performance."),
+            llvm::cl::Required);
 
 llvm::cl::opt<std::string> UserVariables(
     "user-vars",
@@ -42,7 +42,7 @@ llvm::cl::opt<std::string> InputCallPathFile(llvm::cl::desc("<call path>"),
 typedef struct {
   std::string function_name;
   std::map<std::string, std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr>>>
-      extra_vars;
+  extra_vars;
 } call_t;
 
 typedef struct {
@@ -53,7 +53,7 @@ typedef struct {
 } call_path_t;
 
 std::map<std::pair<std::string, int>, klee::ref<klee::Expr>>
-    subcontract_constraints;
+subcontract_constraints;
 
 call_path_t *load_call_path(std::string file_name,
                             std::set<std::string> symbols,
@@ -218,7 +218,9 @@ call_path_t *load_call_path(std::string file_name,
       continue;
     } break;
 
-    default: { assert(false && "Invalid call path file."); } break;
+    default: {
+      assert(false && "Invalid call path file.");
+    } break;
     }
   }
 
@@ -348,9 +350,10 @@ process_candidate(call_path_t *call_path, void *contract,
     for (int sub_contract_idx = 0;
          sub_contract_idx < contract_num_sub_contracts(cit.function_name);
          sub_contract_idx++) {
-      klee::Query sat_query(call_constraints,
-                            subcontract_constraints[std::make_pair(
-                                cit.function_name, sub_contract_idx)]);
+      klee::Query sat_query(
+          call_constraints,
+          subcontract_constraints
+              [std::make_pair(cit.function_name, sub_contract_idx)]);
       bool result = false;
       bool success = solver->mayBeTrue(sat_query, result);
       assert(success);
@@ -474,14 +477,15 @@ int main(int argc, char **argv, char **envp) {
       contract_get_optimization_variables();
 
   std::map<std::pair<std::string, int>, std::string>
-      subcontract_constraints_str;
+  subcontract_constraints_str;
   for (auto function_name : contract_get_contracts()) {
     for (int sub_contract_idx = 0;
          sub_contract_idx < contract_num_sub_contracts(function_name);
          sub_contract_idx++) {
-      subcontract_constraints_str[std::make_pair(function_name,
-                                                 sub_contract_idx)] =
-          contract_get_subcontract_constraints(function_name, sub_contract_idx);
+      subcontract_constraints_str
+          [std::make_pair(function_name, sub_contract_idx)] =
+              contract_get_subcontract_constraints(function_name,
+                                                   sub_contract_idx);
     }
   }
 
@@ -524,7 +528,7 @@ int main(int argc, char **argv, char **envp) {
   assert(expressions.empty());
 
   std::map<std::string, std::set<klee::ref<klee::Expr>>::iterator>
-      candidate_iterators;
+  candidate_iterators;
   for (auto &it : optimization_variables) {
     if (!overriden_user_variables.count(it.first)) {
       candidate_iterators[it.first] = it.second.begin();
@@ -543,7 +547,7 @@ int main(int argc, char **argv, char **envp) {
 
   std::map<std::string, long> max_performance;
   std::map<std::string, std::set<klee::ref<klee::Expr>>::iterator>::iterator
-      pos;
+  pos;
   do {
     std::map<std::string, klee::ref<klee::Expr>> vars = user_variables;
 

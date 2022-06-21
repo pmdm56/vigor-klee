@@ -117,9 +117,10 @@ bool solver_toolbox_t::are_exprs_always_not_equal(
   return not_eq_in_e1_ctx && not_eq_in_e2_ctx;
 }
 
-bool solver_toolbox_t::is_expr_always_true(
-    klee::ConstraintManager constraints, klee::ref<klee::Expr> expr,
-    ReplaceSymbols &symbol_replacer) const {
+bool
+solver_toolbox_t::is_expr_always_true(klee::ConstraintManager constraints,
+                                      klee::ref<klee::Expr> expr,
+                                      ReplaceSymbols &symbol_replacer) const {
   klee::ConstraintManager replaced_constraints;
 
   for (auto constr : constraints) {
@@ -145,9 +146,10 @@ bool solver_toolbox_t::is_expr_always_false(klee::ConstraintManager constraints,
   return result;
 }
 
-bool solver_toolbox_t::is_expr_always_false(
-    klee::ConstraintManager constraints, klee::ref<klee::Expr> expr,
-    ReplaceSymbols &symbol_replacer) const {
+bool
+solver_toolbox_t::is_expr_always_false(klee::ConstraintManager constraints,
+                                       klee::ref<klee::Expr> expr,
+                                       ReplaceSymbols &symbol_replacer) const {
   klee::ConstraintManager replaced_constraints;
 
   for (auto constr : constraints) {
@@ -157,8 +159,9 @@ bool solver_toolbox_t::is_expr_always_false(
   return is_expr_always_false(replaced_constraints, expr);
 }
 
-bool solver_toolbox_t::are_exprs_always_equal(
-    klee::ref<klee::Expr> expr1, klee::ref<klee::Expr> expr2) const {
+bool
+solver_toolbox_t::are_exprs_always_equal(klee::ref<klee::Expr> expr1,
+                                         klee::ref<klee::Expr> expr2) const {
   if (expr1.isNull() != expr2.isNull()) {
     return false;
   }

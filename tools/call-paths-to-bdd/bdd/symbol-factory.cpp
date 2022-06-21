@@ -2,9 +2,10 @@
 
 namespace BDD {
 
-std::vector<std::string> SymbolFactory::ignored_symbols{"VIGOR_DEVICE"};
+std::vector<std::string> SymbolFactory::ignored_symbols{ "VIGOR_DEVICE" };
 std::vector<std::string> SymbolFactory::symbols_without_translation{
-    "packet_chunks"};
+  "packet_chunks"
+};
 
 bool SymbolFactory::should_ignore(std::string symbol) {
   auto found_it =
@@ -66,39 +67,39 @@ std::string SymbolFactory::build_label(
   }
 
   std::sort(options.begin(), options.end(),
-            [&](const std::string &a, const std::string &b) -> bool {
-              auto a_pos = a.find(base);
-              auto b_pos = b.find(base);
+            [&](const std::string & a, const std::string & b)->bool {
+    auto a_pos = a.find(base);
+    auto b_pos = b.find(base);
 
-              assert(a_pos != std::string::npos);
-              assert(b_pos != std::string::npos);
+    assert(a_pos != std::string::npos);
+    assert(b_pos != std::string::npos);
 
-              auto a_counter = a.substr(a_pos + base.size());
-              auto b_counter = b.substr(b_pos + base.size());
+    auto a_counter = a.substr(a_pos + base.size());
+    auto b_counter = b.substr(b_pos + base.size());
 
-              int a_counter_int = 0;
-              int b_counter_int = 0;
+    int a_counter_int = 0;
+    int b_counter_int = 0;
 
-              if (a_counter.size() > 1) {
-                if (a_counter.find("__") != std::string::npos) {
-                  a_counter_int = -1;
-                } else {
-                  a_counter = a_counter.substr(1);
-                  a_counter_int = std::stoi(a_counter);
-                }
-              }
+    if (a_counter.size() > 1) {
+      if (a_counter.find("__") != std::string::npos) {
+        a_counter_int = -1;
+      } else {
+        a_counter = a_counter.substr(1);
+        a_counter_int = std::stoi(a_counter);
+      }
+    }
 
-              if (b_counter.size() > 1) {
-                if (b_counter.find("__") != std::string::npos) {
-                  b_counter_int = -1;
-                } else {
-                  b_counter = b_counter.substr(1);
-                  b_counter_int = std::stoi(b_counter);
-                }
-              }
+    if (b_counter.size() > 1) {
+      if (b_counter.find("__") != std::string::npos) {
+        b_counter_int = -1;
+      } else {
+        b_counter = b_counter.substr(1);
+        b_counter_int = std::stoi(b_counter);
+      }
+    }
 
-              return a_counter_int < b_counter_int;
-            });
+    return a_counter_int < b_counter_int;
+  });
 
   auto counter = count_labels(base);
 
@@ -472,7 +473,7 @@ symbols_t SymbolFactory::dchain_allocate(
 void SymbolFactory::translate(Node *current, Node *translation_source,
                               RenameSymbols renamer) {
   assert(current);
-  std::vector<Node *> nodes{current};
+  std::vector<Node *> nodes{ current };
 
   while (nodes.size()) {
     auto node = nodes[0];

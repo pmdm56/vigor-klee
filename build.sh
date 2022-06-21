@@ -9,13 +9,12 @@ function debug {
 
   cd "$KLEE_DIR/Debug"
 
-  [ -f "Makefile" ] || CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0 -DNDEBUG" \
+  [ -f "Makefile" ] || CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
                      CMAKE_PREFIX_PATH="$KLEE_DIR/../z3/build" \
                      CMAKE_INCLUDE_PATH="$KLEE_DIR/../z3/build/include/" \
                      cmake \
                          -DENABLE_UNIT_TESTS=OFF \
                          -DBUILD_SHARED_LIBS=OFF \
-                         -DENABLE_KLEE_ASSERTS=OFF \
                          -DLLVM_CONFIG_BINARY="$KLEE_DIR/../llvm/Release/bin/llvm-config" \
                          -DLLVMCC="$KLEE_DIR/../llvm/Release/bin/clang" \
                          -DLLVMCXX="$KLEE_DIR/../llvm/Release/bin/clang++" \
@@ -28,7 +27,7 @@ function debug {
                          -DENABLE_DOXYGEN=ON \
                          ..
 
-  make -kj $(nproc)
+  make -kj $(nproc) || exit 1
 }
 
 function release {
@@ -36,7 +35,7 @@ function release {
 
   cd "$KLEE_DIR/Release"
 
-  [ -f "Makefile" ] || CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
+  [ -f "Makefile" ] || CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0 -DNDEBUG" \
                      CMAKE_PREFIX_PATH="$KLEE_DIR/../z3/build" \
                      CMAKE_INCLUDE_PATH="$KLEE_DIR/../z3/build/include/" \
                      cmake \
@@ -52,11 +51,15 @@ function release {
                          -DENABLE_POSIX_RUNTIME=ON \
                          -DCMAKE_BUILD_TYPE=Release \
                          -DENABLE_KLEE_ASSERTS=ON \
-                         -DENABLE_DOXYGEN=ON \
+                         -DENABLE_DOXYGEN=OFF \
                          ..
 
-  make -kj $(nproc)
+  make -kj $(nproc) || exit 1
 }
 
-debug
-release
+if [ $# -ge 1 ] && [[ "$1" == "debug" ]]; then
+  debug
+else
+  debug
+  release
+fi

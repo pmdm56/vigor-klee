@@ -10,16 +10,16 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 llvm::cl::OptionCategory BDDGeneratorCat("BDD generator specific options");
 
 llvm::cl::opt<std::string>
-    Gv("gv", llvm::cl::desc("GraphViz file for BDD visualization."),
-       llvm::cl::cat(BDDGeneratorCat));
+Gv("gv", llvm::cl::desc("GraphViz file for BDD visualization."),
+   llvm::cl::cat(BDDGeneratorCat));
 
 llvm::cl::opt<std::string>
-    InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
-                 llvm::cl::cat(BDDGeneratorCat));
+InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
+             llvm::cl::cat(BDDGeneratorCat));
 
 llvm::cl::opt<std::string>
-    OutputBDDFile("out", llvm::cl::desc("Output file for BDD serialization."),
-                  llvm::cl::cat(BDDGeneratorCat));
+OutputBDDFile("out", llvm::cl::desc("Output file for BDD serialization."),
+              llvm::cl::cat(BDDGeneratorCat));
 } // namespace
 
 int main(int argc, char **argv) {

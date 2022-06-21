@@ -63,21 +63,15 @@ Expr_ptr Not::simplify(AST *ast) const {
         eq->get_rhs()->get_kind() != CONSTANT) {
       constant = eq->get_lhs();
       expression = eq->get_rhs();
-    }
-
-    else if (eq->get_lhs()->get_kind() != CONSTANT &&
-             eq->get_rhs()->get_kind() == CONSTANT) {
+    } else if (eq->get_lhs()->get_kind() != CONSTANT &&
+               eq->get_rhs()->get_kind() == CONSTANT) {
       constant = eq->get_rhs();
       expression = eq->get_lhs();
-    }
-
-    else if (eq->get_lhs()->get_kind() != CONSTANT &&
-             eq->get_rhs()->get_kind() != CONSTANT) {
+    } else if (eq->get_lhs()->get_kind() != CONSTANT &&
+               eq->get_rhs()->get_kind() != CONSTANT) {
       NotEquals_ptr ne = NotEquals::build(eq->get_lhs(), eq->get_rhs());
       return ne->simplify(ast);
-    }
-
-    else {
+    } else {
       break;
     }
 

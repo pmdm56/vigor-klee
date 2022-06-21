@@ -5,7 +5,7 @@
 #include "../execution_plan/visitors/visitor.h"
 
 #define MODULE(X) (std::make_shared<X>())
-#define UINT_16_SWAP_ENDIANNESS(p) ((((p) & 0xff) << 8) | ((p) >> 8 & 0xff))
+#define UINT_16_SWAP_ENDIANNESS(p) ((((p)&0xff) << 8) | ((p) >> 8 & 0xff))
 
 namespace synapse {
 
@@ -72,6 +72,21 @@ public:
     BMv2SimpleSwitchgRPC_Drop,
     BMv2SimpleSwitchgRPC_Forward,
     BMv2SimpleSwitchgRPC_VectorReturn,
+    Tofino_EthernetConsume,
+    Tofino_Drop,
+    Tofino_Forward,
+    Tofino_IPv4Consume,
+    Tofino_TcpUdpConsume,
+    Tofino_Ignore,
+    Tofino_SetupExpirationNotifications,
+    Tofino_If,
+    Tofino_Then,
+    Tofino_Else,
+    Tofino_EthernetModify,
+    Tofino_IPv4Modify,
+    Tofino_TcpUdpModify,
+    Tofino_IPOptionsConsume,
+    Tofino_IPOptionsModify,
   };
 
 protected:
@@ -143,6 +158,7 @@ public:
     }
 
     assert(false && "I should not be here");
+    exit(1);
   }
 
   std::string get_target_name() const { return target_to_string(target); }

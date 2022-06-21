@@ -567,10 +567,8 @@ bool is_called_in_all_future_branches(const Node *start, const Node *target,
         nodes.erase(nodes.begin());
         continue;
       }
-    }
-
-    else if (node->get_type() == Node::NodeType::BRANCH &&
-             target->get_type() == Node::NodeType::BRANCH) {
+    } else if (node->get_type() == Node::NodeType::BRANCH &&
+               target->get_type() == Node::NodeType::BRANCH) {
       auto node_branch = static_cast<const Branch *>(node);
       auto target_branch = static_cast<const Branch *>(target);
 
@@ -865,7 +863,7 @@ std::vector<reordered_bdd> reorder(const BDD &bdd, BDDNode_ptr root) {
 
   auto candidates = get_candidates(root.get());
 
-#ifdef NDEBUG
+#ifndef NDEBUG
   std::cerr << "\n";
   std::cerr << "*********************************************************"
                "********************\n";

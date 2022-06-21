@@ -31,31 +31,31 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 llvm::cl::OptionCategory SynthesizerCat("Synthesizer specific options");
 
 llvm::cl::opt<std::string>
-    InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
-                 llvm::cl::cat(SynthesizerCat));
+InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
+             llvm::cl::cat(SynthesizerCat));
 
 llvm::cl::opt<std::string>
-    Out("out",
-        llvm::cl::desc("Output file of the syntethized code. If omited, code "
-                       "will be dumped to stdout."),
-        llvm::cl::cat(SynthesizerCat));
+Out("out",
+    llvm::cl::desc("Output file of the syntethized code. If omited, code "
+                   "will be dumped to stdout."),
+    llvm::cl::cat(SynthesizerCat));
 
 llvm::cl::opt<std::string>
-    XML("xml",
-        llvm::cl::desc("Output file of the syntethized code's XML. If omited, "
-                       "XML will not be dumped."),
-        llvm::cl::cat(SynthesizerCat));
+XML("xml",
+    llvm::cl::desc("Output file of the syntethized code's XML. If omited, "
+                   "XML will not be dumped."),
+    llvm::cl::cat(SynthesizerCat));
 
-llvm::cl::opt<TargetOption> Target(
-    "target", llvm::cl::desc("Output file's target."),
-    llvm::cl::cat(SynthesizerCat),
-    llvm::cl::values(clEnumValN(SEQUENTIAL, "seq", "Sequential"),
-                     clEnumValN(SHARED_NOTHING, "sn", "Shared-nothing"),
-                     clEnumValN(LOCKS, "locks", "Lock based"),
-                     clEnumValN(TM, "tm", "Transactional memory"),
-                     clEnumValN(CALL_PATH_HITTER, "cph", "Call path hitter"),
-                     clEnumValEnd),
-    llvm::cl::Required);
+llvm::cl::opt<TargetOption>
+Target("target", llvm::cl::desc("Output file's target."),
+       llvm::cl::cat(SynthesizerCat),
+       llvm::cl::values(clEnumValN(SEQUENTIAL, "seq", "Sequential"),
+                        clEnumValN(SHARED_NOTHING, "sn", "Shared-nothing"),
+                        clEnumValN(LOCKS, "locks", "Lock based"),
+                        clEnumValN(TM, "tm", "Transactional memory"),
+                        clEnumValN(CALL_PATH_HITTER, "cph", "Call path hitter"),
+                        clEnumValEnd),
+       llvm::cl::Required);
 } // namespace
 
 Node_ptr
@@ -95,7 +95,7 @@ preppend_call_path_hitter(AST &ast,
     block->set_enclose(false);
   }
 
-  std::vector<Node_ptr> nodes = {assignment, node};
+  std::vector<Node_ptr> nodes = { assignment, node };
   return Block::build(nodes);
 }
 
@@ -197,12 +197,10 @@ Node_ptr build_ast(AST &ast, const BDD::Node *root, TargetOption target) {
       case BDD::ReturnProcess::Operation::DROP: {
         Node_ptr ret = Return::build(ast.get_from_local("device"));
         Comment_ptr comm = Comment::build("dropping");
-        new_node = Block::build(std::vector<Node_ptr>{comm, ret}, false);
+        new_node = Block::build(std::vector<Node_ptr>{ comm, ret }, false);
         break;
       };
-      default: {
-        assert(false);
-      }
+      default: { assert(false); }
       }
 
       nodes.push_back(new_node);
@@ -211,9 +209,7 @@ Node_ptr build_ast(AST &ast, const BDD::Node *root, TargetOption target) {
       break;
     };
 
-    default: {
-      assert(false);
-    }
+    default: { assert(false); }
     }
   }
 
@@ -257,8 +253,8 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
       auto renamed = Variable::build("_" + name, type);
       auto ret = PrimitiveType::build(PrimitiveType::PrimitiveKind::VOID);
 
-      std::vector<ExpressionType_ptr> define_args = {type, renamed};
-      std::vector<ExpressionType_ptr> args = {renamed};
+      std::vector<ExpressionType_ptr> define_args = { type, renamed };
+      std::vector<ExpressionType_ptr> args = { renamed };
 
       auto def = FunctionCall::build("RTE_DEFINE_PER_LCORE", define_args, ret);
       def->set_terminate_line(true);
@@ -292,7 +288,7 @@ void build_ast(AST &ast, const BDD::BDD &bdd, TargetOption target) {
 
     auto rte_lcore_id = FunctionCall::build("rte_lcore_id", no_args, void_ret);
 
-    std::vector<ExpressionType_ptr> args = {rte_lcore_id};
+    std::vector<ExpressionType_ptr> args = { rte_lcore_id };
     auto HTM_thr_init = FunctionCall::build("HTM_thr_init", args, void_ret);
     HTM_thr_init->set_terminate_line(true);
 

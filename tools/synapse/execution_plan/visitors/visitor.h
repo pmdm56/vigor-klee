@@ -55,12 +55,36 @@ class Drop;
 class Forward;
 class VectorReturn;
 } // namespace BMv2SimpleSwitchgRPC
+
+namespace tofino {
+class Drop;
+class Forward;
+class EthernetConsume;
+class IPv4Consume;
+class TcpUdpConsume;
+class Ignore;
+class SetupExpirationNotifications;
+class If;
+class Then;
+class Else;
+class EthernetModify;
+class IPv4Modify;
+class TcpUdpModify;
+class IPOptionsConsume;
+class IPOptionsModify;
+} // namespace tofino
 } // namespace targets
 
 class ExecutionPlanVisitor {
 public:
   virtual void visit(ExecutionPlan ep);
   virtual void visit(const ExecutionPlanNode *ep_node);
+
+  /*************************************
+   *
+   *              x86
+   *
+   * **********************************/
 
   virtual void visit(const targets::x86::MapGet *node) {}
   virtual void visit(const targets::x86::CurrentTime *node) {}
@@ -83,6 +107,12 @@ public:
   virtual void visit(const targets::x86::PacketGetUnreadLength *node) {}
   virtual void visit(const targets::x86::SetIpv4UdpTcpChecksum *node) {}
   virtual void visit(const targets::x86::DchainIsIndexAllocated *node) {}
+
+  /*************************************
+   *
+   *        BMv2SimpleSwitchgRPC
+   *
+   * **********************************/
 
   virtual void
   visit(const targets::BMv2SimpleSwitchgRPC::SendToController *node) {}
@@ -110,6 +140,29 @@ public:
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Drop *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::Forward *node) {}
   virtual void visit(const targets::BMv2SimpleSwitchgRPC::VectorReturn *node) {}
+
+  /*************************************
+   *
+   *              Tofino
+   *
+   * **********************************/
+
+  virtual void visit(const targets::tofino::Drop *node) {}
+  virtual void visit(const targets::tofino::Forward *node) {}
+  virtual void visit(const targets::tofino::EthernetConsume *node) {}
+  virtual void visit(const targets::tofino::IPv4Consume *node) {}
+  virtual void visit(const targets::tofino::TcpUdpConsume *node) {}
+  virtual void visit(const targets::tofino::Ignore *node) {}
+  virtual void
+  visit(const targets::tofino::SetupExpirationNotifications *node) {}
+  virtual void visit(const targets::tofino::If *node) {}
+  virtual void visit(const targets::tofino::Then *node) {}
+  virtual void visit(const targets::tofino::Else *node) {}
+  virtual void visit(const targets::tofino::EthernetModify *node) {}
+  virtual void visit(const targets::tofino::IPv4Modify *node) {}
+  virtual void visit(const targets::tofino::TcpUdpModify *node) {}
+  virtual void visit(const targets::tofino::IPOptionsConsume *node) {}
+  virtual void visit(const targets::tofino::IPOptionsModify *node) {}
 };
 
 } // namespace synapse

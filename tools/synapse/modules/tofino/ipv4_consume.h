@@ -6,7 +6,7 @@
 
 namespace synapse {
 namespace targets {
-namespace BMv2SimpleSwitchgRPC {
+namespace tofino {
 
 class IPv4Consume : public Module {
 private:
@@ -14,12 +14,11 @@ private:
 
 public:
   IPv4Consume()
-      : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Consume,
-               Target::BMv2SimpleSwitchgRPC, "IPv4Consume") {}
+      : Module(ModuleType::Tofino_IPv4Consume, Target::Tofino, "IPv4Consume") {}
 
   IPv4Consume(BDD::BDDNode_ptr node, klee::ref<klee::Expr> _chunk)
-      : Module(ModuleType::BMv2SimpleSwitchgRPC_IPv4Consume,
-               Target::BMv2SimpleSwitchgRPC, "IPv4Consume", node),
+      : Module(ModuleType::Tofino_IPv4Consume, Target::Tofino, "IPv4Consume",
+               node),
         chunk(_chunk) {}
 
 private:
@@ -89,6 +88,7 @@ private:
 
     auto valid = is_valid_ipv4(all_prev_packet_borrow_next_chunk[0].get(),
                                _length, node->get_constraints());
+
     assert(valid);
 
     auto new_module = std::make_shared<IPv4Consume>(node, _chunk);
@@ -116,6 +116,6 @@ public:
 
   const klee::ref<klee::Expr> &get_chunk() const { return chunk; }
 };
-} // namespace BMv2SimpleSwitchgRPC
+} // namespace tofino
 } // namespace targets
 } // namespace synapse

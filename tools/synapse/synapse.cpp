@@ -85,7 +85,7 @@ BDD::BDD build_bdd() {
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
-#ifdef NDEBUG
+#ifndef NDEBUG
   synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::DEBUG;
 #else
   synapse::Log::MINIMUM_LOG_LEVEL = synapse::Log::Level::ERROR;
@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
 
   for (unsigned i = 0; i != TargetList.size(); ++i) {
     search_engine.add_target(TargetList[i]);
-    code_generator.add_target(TargetList[i]);
+    // code_generator.add_target(TargetList[i]);
   }
 
   synapse::Biggest biggest;

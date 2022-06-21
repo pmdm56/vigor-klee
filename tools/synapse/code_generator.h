@@ -43,15 +43,15 @@ private:
 
   void populate_target_helpers_bank() {
     target_helpers_bank = {
-      { Target::x86, target_helper_t(&CodeGenerator::x86_extractor,
-                                     std::make_shared<x86_Generator>()) },
-      { Target::BMv2SimpleSwitchgRPC,
-        target_helper_t(&CodeGenerator::bmv2SimpleSwitchgRPC_extractor,
-                        std::make_shared<BMv2SimpleSwitchgRPC_Generator>()) },
-      { Target::FPGA, target_helper_t(&CodeGenerator::fpga_extractor) },
-      { Target::Tofino, target_helper_t(&CodeGenerator::tofino_extractor) },
-      { Target::Netronome,
-        target_helper_t(&CodeGenerator::netronome_extractor) },
+        {Target::x86, target_helper_t(&CodeGenerator::x86_extractor,
+                                      std::make_shared<x86_Generator>())},
+        {Target::BMv2SimpleSwitchgRPC,
+         target_helper_t(&CodeGenerator::bmv2SimpleSwitchgRPC_extractor,
+                         std::make_shared<BMv2SimpleSwitchgRPC_Generator>())},
+        {Target::FPGA, target_helper_t(&CodeGenerator::fpga_extractor)},
+        {Target::Tofino, target_helper_t(&CodeGenerator::tofino_extractor)},
+        {Target::Netronome,
+         target_helper_t(&CodeGenerator::netronome_extractor)},
     };
   }
 
@@ -66,6 +66,7 @@ public:
     auto found_it = target_helpers_bank.find(target);
     assert(found_it != target_helpers_bank.end() &&
            "Target not found in target_extractors_bank of CodeGenerator");
+    assert(found_it->second.generator);
 
     if (!directory.size()) {
       target_helpers_loaded.push_back(found_it->second);

@@ -129,7 +129,7 @@ private:
     auto yellow = color_t(1, 1, 0);
     auto red = color_t(1, 0, 0);
 
-    auto palette = std::vector<color_t>{blue, cyan, green, yellow, red};
+    auto palette = std::vector<color_t>{ blue, cyan, green, yellow, red };
 
     auto value = hit_rate_fp * (palette.size() - 1);
     auto idx1 = (int)std::floor(value);
@@ -165,9 +165,7 @@ private:
         stream << "0";
         break;
       }
-      default: {
-        assert(false);
-      }
+      default: { assert(false); }
       }
       stream << "\"";
 
@@ -349,9 +347,7 @@ public:
 
       break;
     }
-    default: {
-      assert(false);
-    }
+    default: { assert(false); }
     }
     os << ";\n";
 
@@ -404,9 +400,7 @@ public:
 
       break;
     }
-    default: {
-      assert(false);
-    }
+    default: { assert(false); }
     }
     os << ";\n";
     return STOP;

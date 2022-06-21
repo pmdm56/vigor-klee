@@ -52,8 +52,8 @@ void fill_arrays(klee::ref<klee::Expr> expr,
     assert(root->isSymbolicArray());
     auto found_it = std::find_if(arrays.begin(), arrays.end(),
                                  [&](const klee::Array *array) {
-                                   return array->getName() == root->getName();
-                                 });
+      return array->getName() == root->getName();
+    });
 
     if (found_it == arrays.end()) {
       arrays.push_back(root);
@@ -255,7 +255,7 @@ void BDD::serialize(std::string out_file) const {
   std::stringstream nodes_stream;
   std::stringstream edges_stream;
 
-  std::vector<const Node *> nodes{nf_init.get(), nf_process.get()};
+  std::vector<const Node *> nodes{ nf_init.get(), nf_process.get() };
   while (nodes.size()) {
     auto node = nodes[0];
     nodes.erase(nodes.begin());
@@ -380,9 +380,7 @@ void BDD::serialize(std::string out_file) const {
       assert(!node->get_next());
       break;
     }
-    case Node::NodeType::RETURN_RAW: {
-      assert(false);
-    }
+    case Node::NodeType::RETURN_RAW: { assert(false); }
     }
 
     nodes_stream << ")";
@@ -439,9 +437,7 @@ parse_arg(std::string serialized_arg,
 
   if (delim == std::string::npos) {
     expr_str = serialized_arg;
-  }
-
-  else {
+  } else {
     expr_str = serialized_arg.substr(0, delim);
     serialized_arg = serialized_arg.substr(delim + 1);
 
@@ -449,9 +445,7 @@ parse_arg(std::string serialized_arg,
 
     if (delim == std::string::npos) {
       fn_ptr_name = serialized_arg;
-    }
-
-    else {
+    } else {
       serialized_arg = serialized_arg.substr(delim + 1);
 
       delim = serialized_arg.find("->");
@@ -684,21 +678,13 @@ BDDNode_ptr parse_node_return_process(
 
   if (return_operation_str == "FWD") {
     return_operation = ReturnProcess::Operation::FWD;
-  }
-
-  else if (return_operation_str == "DROP") {
+  } else if (return_operation_str == "DROP") {
     return_operation = ReturnProcess::Operation::DROP;
-  }
-
-  else if (return_operation_str == "BCAST") {
+  } else if (return_operation_str == "BCAST") {
     return_operation = ReturnProcess::Operation::BCAST;
-  }
-
-  else if (return_operation_str == "ERR") {
+  } else if (return_operation_str == "ERR") {
     return_operation = ReturnProcess::Operation::ERR;
-  }
-
-  else {
+  } else {
     assert(false);
   }
 
@@ -788,24 +774,16 @@ BDDNode_ptr parse_node(std::string serialized_node,
   if (node_type_str == "CALL") {
     node = parse_node_call(id, call_paths_filenames, constraint_managers,
                            serialized_node, exprs);
-  }
-
-  else if (node_type_str == "BRANCH") {
+  } else if (node_type_str == "BRANCH") {
     node = parse_node_branch(id, call_paths_filenames, constraint_managers,
                              serialized_node, exprs);
-  }
-
-  else if (node_type_str == "RETURN_INIT") {
+  } else if (node_type_str == "RETURN_INIT") {
     node = parse_node_return_init(id, call_paths_filenames, constraint_managers,
                                   serialized_node, exprs);
-  }
-
-  else if (node_type_str == "RETURN_PROCESS") {
+  } else if (node_type_str == "RETURN_PROCESS") {
     node = parse_node_return_process(
         id, call_paths_filenames, constraint_managers, serialized_node, exprs);
-  }
-
-  else {
+  } else {
     assert(false);
   }
 
@@ -877,9 +855,7 @@ void process_edge(std::string serialized_edge,
 
     on_true->replace_prev(prev);
     on_false->replace_prev(prev);
-  }
-
-  else {
+  } else {
     assert(prev->get_type() == Node::NodeType::CALL);
 
     auto next_id_str = serialized_edge;
@@ -968,9 +944,7 @@ void BDD::deserialize(const std::string &file_path) {
         auto total_call_paths_str = line.substr(delim + 1);
         auto total_call_paths = std::stoll(total_call_paths_str);
         total_call_paths = total_call_paths;
-      }
-
-      else {
+      } else {
         assert(false && "Unknown metadata field");
       }
 
@@ -1038,17 +1012,13 @@ void BDD::deserialize(const std::string &file_path) {
 
         nf_init = std::shared_ptr<Node>(nodes[init_id]);
         break;
-      }
-
-      else if (root_type == "process") {
+      } else if (root_type == "process") {
         uint64_t process_id = std::stoll(root_id_str);
         assert(nodes.find(process_id) != nodes.end());
 
         nf_process = std::shared_ptr<Node>(nodes[process_id]);
         break;
-      }
-
-      else {
+      } else {
         assert(false);
       }
     } break;
