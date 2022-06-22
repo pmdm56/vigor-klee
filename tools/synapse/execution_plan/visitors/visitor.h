@@ -32,8 +32,6 @@ class SetIpv4UdpTcpChecksum;
 class DchainIsIndexAllocated;
 } // namespace x86
 
-namespace tofino {} // namespace tofino
-
 namespace BMv2SimpleSwitchgRPC {
 class SendToController;
 class ParserConsume;
@@ -72,6 +70,10 @@ class IPv4Modify;
 class TcpUdpModify;
 class IPOptionsConsume;
 class IPOptionsModify;
+class TableLookup;
+class UpdateIpv4TcpUdpChecksum;
+class PortAllocatorAllocate;
+class CachedTableLookup;
 } // namespace tofino
 } // namespace targets
 
@@ -163,6 +165,10 @@ public:
   virtual void visit(const targets::tofino::TcpUdpModify *node) {}
   virtual void visit(const targets::tofino::IPOptionsConsume *node) {}
   virtual void visit(const targets::tofino::IPOptionsModify *node) {}
+  virtual void visit(const targets::tofino::TableLookup *node) {}
+  virtual void visit(const targets::tofino::UpdateIpv4TcpUdpChecksum *node) {}
+  virtual void visit(const targets::tofino::PortAllocatorAllocate *node) {}
+  virtual void visit(const targets::tofino::CachedTableLookup *node) {}
 };
 
 } // namespace synapse

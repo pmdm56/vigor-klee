@@ -466,5 +466,9 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::tofino::TcpUdpModify)
   VISIT_PRINT_MODULE_NAME(targets::tofino::IPOptionsConsume)
   VISIT_PRINT_MODULE_NAME(targets::tofino::IPOptionsModify)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::TableLookup)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::UpdateIpv4TcpUdpChecksum)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::PortAllocatorAllocate)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::CachedTableLookup)
 };
 } // namespace synapse

@@ -87,6 +87,10 @@ public:
     Tofino_TcpUdpModify,
     Tofino_IPOptionsConsume,
     Tofino_IPOptionsModify,
+    Tofino_TableLookup,
+    Tofino_UpdateIpv4TcpUdpChecksum,
+    Tofino_PortAllocatorAllocate,
+    Tofino_CachedTableLookup,
   };
 
 protected:
