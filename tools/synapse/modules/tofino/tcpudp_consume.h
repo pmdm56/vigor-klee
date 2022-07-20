@@ -103,12 +103,8 @@ private:
 
     assert(always_true(len_eq_4, constraints));
 
-    std::cerr << "ipv4_chunk " << expr_to_string(ipv4_chunk, true) << "\n";
-
     auto next_proto_id_expr =
         BDD::solver_toolbox.exprBuilder->Extract(ipv4_chunk, 9 * 8, 8);
-    std::cerr << "next_proto_id_expr "
-              << expr_to_string(next_proto_id_expr, true) << "\n";
 
     auto next_proto_id_expr_tcp =
         BDD::solver_toolbox.exprBuilder->Constant(IPPROTO_TCP, 8);
