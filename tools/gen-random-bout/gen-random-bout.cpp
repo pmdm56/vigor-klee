@@ -24,7 +24,7 @@
 
 // --sym-args 0 1 10 --sym-args 0 2 2 --sym-files 1 8 --sym-stdout
 static int getint(char *i) {
-  if(!i) {
+  if (!i) {
     fprintf(stderr, "ran out of arguments!\n");
     assert(i);
   }
@@ -32,7 +32,7 @@ static int getint(char *i) {
 }
 
 #define MAX 64
-static void push_obj(KTest *b, const char *name, unsigned non_zero_bytes, 
+static void push_obj(KTest *b, const char *name, unsigned non_zero_bytes,
                      unsigned total_bytes) {
   KTestObject *o = &b->objects[b->numObjects++];
   assert(b->numObjects < MAX);
@@ -42,13 +42,12 @@ static void push_obj(KTest *b, const char *name, unsigned non_zero_bytes,
   o->bytes = (unsigned char *)malloc(o->numBytes);
 
   unsigned i;
-  for(i = 0; i < non_zero_bytes; i++)
+  for (i = 0; i < non_zero_bytes; i++)
     o->bytes[i] = random();
 
-  for(i = non_zero_bytes; i < total_bytes; i++)
+  for (i = non_zero_bytes; i < total_bytes; i++)
     o->bytes[i] = 0;
 }
-
 
 static void push_range(KTest *b, const char *name, unsigned value) {
   KTestObject *o = &b->objects[b->numObjects++];
@@ -58,7 +57,7 @@ static void push_range(KTest *b, const char *name, unsigned value) {
   o->numBytes = 4;
   o->bytes = (unsigned char *)malloc(o->numBytes);
 
-  *(unsigned*)o->bytes = value;
+  *(unsigned *)o->bytes = value;
 }
 
 int main(int argc, char *argv[]) {
@@ -67,16 +66,20 @@ int main(int argc, char *argv[]) {
 
   if (argc < 2) {
     fprintf(stderr, "Usage: %s <random-seed> <argument-types>\n", argv[0]);
-    fprintf(stderr, "       If <random-seed> is 0, time(NULL)*getpid() is used as a seed\n");
-    fprintf(stderr, "       <argument-types> are the ones accepted by KLEE: --sym-args, --sym-files etc.\n");
-    fprintf(stderr, "   Ex: %s 100 --sym-args 0 2 2 --sym-files 1 8\n", argv[0]);
+    fprintf(stderr, "       If <random-seed> is 0, time(NULL)*getpid() is used "
+                    "as a seed\n");
+    fprintf(stderr, "       <argument-types> are the ones accepted by KLEE: "
+                    "--sym-args, --sym-files etc.\n");
+    fprintf(stderr, "   Ex: %s 100 --sym-args 0 2 2 --sym-files 1 8\n",
+            argv[0]);
     exit(1);
   }
 
   unsigned seed = atoi(argv[1]);
   if (seed)
     srandom(seed);
-  else srandom(time(NULL) * getpid());
+  else
+    srandom(time(NULL) * getpid());
 
   KTest b;
   b.numArgs = argc;
@@ -87,8 +90,8 @@ int main(int argc, char *argv[]) {
   b.numObjects = 0;
   b.objects = (KTestObject *)malloc(MAX * sizeof *b.objects);
 
-  for(i = 2; i < (unsigned)argc; i++) {
-    if(strcmp(argv[i], "--sym-args") == 0) {
+  for (i = 2; i < (unsigned)argc; i++) {
+    if (strcmp(argv[i], "--sym-args") == 0) {
       unsigned lb = getint(argv[++i]);
       unsigned ub = getint(argv[++i]);
       unsigned nbytes = getint(argv[++i]);
@@ -96,7 +99,7 @@ int main(int argc, char *argv[]) {
       narg = random() % (ub - lb) + lb;
       push_range(&b, "range", narg);
 
-      while(narg-- > 0) {
+      while (narg-- > 0) {
         unsigned x = random() % (nbytes + 1);
 
         // A little different than how klee does it but more natural
@@ -105,20 +108,20 @@ int main(int argc, char *argv[]) {
         char arg[1024];
 
         sprintf(arg, "arg%d", total_args++);
-        push_obj(&b, arg, x, nbytes+1);
+        push_obj(&b, arg, x, nbytes + 1);
       }
-    } else if(strcmp(argv[i], "--sym-stdout") == 0) {
-      if(!sym_stdout) {
+    } else if (strcmp(argv[i], "--sym-stdout") == 0) {
+      if (!sym_stdout) {
         sym_stdout = 1;
         push_obj(&b, "stdout", 1024, 1024);
-        push_obj(&b, "stdout-stat", sizeof(struct stat64), 
+        push_obj(&b, "stdout-stat", sizeof(struct stat64),
                  sizeof(struct stat64));
       }
-    } else if(strcmp(argv[i], "--sym-files") == 0) {
+    } else if (strcmp(argv[i], "--sym-files") == 0) {
       unsigned nfiles = getint(argv[++i]);
       unsigned nbytes = getint(argv[++i]);
 
-      while(nfiles-- > 0) {
+      while (nfiles-- > 0) {
         push_obj(&b, "file", nbytes, nbytes);
         push_obj(&b, "file-stat", sizeof(struct stat64), sizeof(struct stat64));
       }

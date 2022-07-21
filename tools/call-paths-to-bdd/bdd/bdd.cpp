@@ -12,13 +12,13 @@ namespace BDD {
 constexpr char BDD::INIT_CONTEXT_MARKER[];
 constexpr char BDD::MAGIC_SIGNATURE[];
 
-std::vector<std::string> BDD::skip_conditions_with_symbol{"received_a_packet",
-                                                          "loop_termination"};
+std::vector<std::string> BDD::skip_conditions_with_symbol{ "received_a_packet",
+                                                           "loop_termination" };
 
 void BDD::visit(BDDVisitor &visitor) const { visitor.visit(*this); }
 
 BDDNode_ptr BDD::get_node_by_id(uint64_t _id) const {
-  std::vector<BDDNode_ptr> nodes{nf_init, nf_process};
+  std::vector<BDDNode_ptr> nodes{ nf_init, nf_process };
   BDDNode_ptr node;
 
   while (nodes.size()) {
@@ -45,7 +45,7 @@ BDDNode_ptr BDD::get_node_by_id(uint64_t _id) const {
 unsigned BDD::get_number_of_nodes(BDDNode_ptr root) const {
   unsigned num_nodes = 0;
 
-  std::vector<BDDNode_ptr> nodes{root};
+  std::vector<BDDNode_ptr> nodes{ root };
   BDDNode_ptr node;
 
   while (nodes.size()) {
@@ -398,9 +398,7 @@ BDDNode_ptr BDD::populate_process(const BDDNode_ptr &root, bool store) {
 
       if (store && equal) {
         new_node = on_true_node;
-      }
-
-      else if (store && !skip) {
+      } else if (store && !skip) {
         auto clone = node->clone();
         auto branch = static_cast<Branch *>(clone.get());
 
@@ -417,9 +415,7 @@ BDDNode_ptr BDD::populate_process(const BDDNode_ptr &root, bool store) {
         assert(on_false_node->get_prev()->get_id() == branch->get_id());
 
         new_node = clone;
-      }
-
-      else {
+      } else {
         auto on_true_empty =
             on_true_node->get_type() == Node::NodeType::RETURN_INIT ||
             on_true_node->get_type() == Node::NodeType::RETURN_PROCESS;
@@ -509,7 +505,7 @@ void BDD::rename_symbols(BDDNode_ptr node, SymbolFactory &factory) {
 }
 
 void BDD::trim_constraints(BDDNode_ptr node) {
-  std::vector<BDDNode_ptr> nodes{node};
+  std::vector<BDDNode_ptr> nodes{ node };
 
   while (nodes.size()) {
     auto node = nodes[0];
@@ -529,9 +525,9 @@ void BDD::trim_constraints(BDDNode_ptr node) {
 
         auto used_symbols = retriever.get_retrieved_strings();
 
-        auto used_not_available_it = std::find_if(
-            used_symbols.begin(), used_symbols.end(),
-            [&](const std::string &used_symbol) {
+        auto used_not_available_it =
+            std::find_if(used_symbols.begin(), used_symbols.end(),
+                         [&](const std::string &used_symbol) {
               auto available_symbol_it = std::find_if(
                   available_symbols.begin(), available_symbols.end(),
                   [&](const symbol_t &available_symbol) {

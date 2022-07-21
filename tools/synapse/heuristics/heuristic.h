@@ -37,12 +37,12 @@ private:
     auto conf = static_cast<const HeuristicConfiguration *>(&configuration);
     auto it = execution_plans.begin();
 
-    while (!conf->terminate_on_first_solution() && !it->get_next_node() &&
-           it != execution_plans.end()) {
+    while (!conf->terminate_on_first_solution() &&
+           it != execution_plans.end() && !it->get_next_node()) {
       ++it;
     }
 
-    if (!it->get_next_node()) {
+    if (it != execution_plans.end() && !it->get_next_node()) {
       it = execution_plans.end();
     }
 
@@ -62,9 +62,11 @@ public:
 
   ExecutionPlan pop() {
     auto it = get_next_it();
-    auto copy = *it;
+    assert(it != execution_plans.end());
 
+    auto copy = *it;
     execution_plans.erase(it);
+
     return copy;
   }
 

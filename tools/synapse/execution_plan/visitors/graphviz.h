@@ -85,13 +85,13 @@ private:
 public:
   Graphviz(const std::string &path, const SearchSpace *_search_space)
       : fpath(path), search_space(_search_space) {
-    node_colors =
-        std::map<Target, std::string>{ { Target::x86, "cornflowerblue" },
-                                       { Target::Tofino, "darkolivegreen2" },
-                                       { Target::Netronome, "gold" },
-                                       { Target::FPGA, "coral1" },
-                                       { Target::BMv2SimpleSwitchgRPC,
-                                         "firebrick2" }, };
+    node_colors = std::map<Target, std::string>{
+        {Target::x86, "cornflowerblue"},
+        {Target::Tofino, "darkolivegreen2"},
+        {Target::Netronome, "gold"},
+        {Target::FPGA, "coral1"},
+        {Target::BMv2SimpleSwitchgRPC, "firebrick2"},
+    };
 
     ofs.open(fpath);
     assert(ofs);
@@ -444,5 +444,31 @@ public:
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Drop)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::Forward)
   VISIT_PRINT_MODULE_NAME(targets::BMv2SimpleSwitchgRPC::VectorReturn)
+
+  /********************************************
+   *
+   *                  Tofino
+   *
+   ********************************************/
+
+  VISIT_PRINT_MODULE_NAME(targets::tofino::Drop)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::Forward)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::EthernetConsume)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::IPv4Consume)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::TcpUdpConsume)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::Ignore)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::SetupExpirationNotifications)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::If)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::Then)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::Else)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::EthernetModify)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::IPv4Modify)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::TcpUdpModify)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::IPOptionsConsume)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::IPOptionsModify)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::TableLookup)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::UpdateIpv4TcpUdpChecksum)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::PortAllocatorAllocate)
+  VISIT_PRINT_MODULE_NAME(targets::tofino::CachedTableLookup)
 };
 } // namespace synapse

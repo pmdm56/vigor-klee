@@ -83,7 +83,7 @@ public:
       return;
     }
 
-    Branches branches = { _root };
+    Branches branches = {_root};
 
     while (branches.size()) {
       auto node = branches[0];
@@ -94,14 +94,15 @@ public:
       auto next = node->get_next();
       branches.insert(branches.end(), next.begin(), next.end());
     }
-
-    // TODO: calculate the rest of metadata
   }
 
 private:
   void update_leaves(std::vector<leaf_t> _leaves, bool is_terminal) {
     assert(leaves.size());
-    leaves.erase(leaves.begin());
+
+    if (leaves.size()) {
+      leaves.erase(leaves.begin());
+    }
 
     for (auto leaf : _leaves) {
       if (!leaf.next && is_terminal) {
@@ -224,6 +225,8 @@ public:
     }
 
     auto new_leaf = ExecutionPlan::leaf_t(new_module, next);
+
+    assert(new_ep.leaves.size());
     auto old_leaf = new_ep.leaves[0];
 
     if (!old_leaf.leaf->get_prev()) {
@@ -233,7 +236,6 @@ public:
       prev->replace_next(old_leaf.leaf, new_leaf.leaf);
     }
 
-    assert(new_ep.leaves.size());
     new_ep.leaves[0] = new_leaf;
 
     assert(old_leaf.leaf->get_module());
@@ -483,8 +485,8 @@ inline bool operator==(const ExecutionPlan &lhs, const ExecutionPlan &rhs) {
     }
   }
 
-  auto lhs_nodes = std::vector<ExecutionPlanNode_ptr>{ lhs.get_root() };
-  auto rhs_nodes = std::vector<ExecutionPlanNode_ptr>{ rhs.get_root() };
+  auto lhs_nodes = std::vector<ExecutionPlanNode_ptr>{lhs.get_root()};
+  auto rhs_nodes = std::vector<ExecutionPlanNode_ptr>{rhs.get_root()};
 
   while (lhs_nodes.size()) {
     auto lhs_node = lhs_nodes[0];
@@ -519,8 +521,8 @@ inline bool operator==(const ExecutionPlan &lhs, const ExecutionPlan &rhs) {
   auto lhs_bdd = lhs.get_bdd();
   auto rhs_bdd = rhs.get_bdd();
 
-  auto lhs_bdd_nodes = std::vector<BDD::BDDNode_ptr>{ lhs_bdd.get_process() };
-  auto rhs_bdd_nodes = std::vector<BDD::BDDNode_ptr>{ rhs_bdd.get_process() };
+  auto lhs_bdd_nodes = std::vector<BDD::BDDNode_ptr>{lhs_bdd.get_process()};
+  auto rhs_bdd_nodes = std::vector<BDD::BDDNode_ptr>{rhs_bdd.get_process()};
 
   while (lhs_bdd_nodes.size()) {
     auto lhs_bdd_node = lhs_bdd_nodes[0];

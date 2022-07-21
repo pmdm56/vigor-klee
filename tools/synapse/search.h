@@ -48,13 +48,17 @@ public:
     auto first_execution_plan = ExecutionPlan(bdd);
     SearchSpace search_space(h.get_cfg(), first_execution_plan);
 
-    h.add(std::vector<ExecutionPlan>{ first_execution_plan });
+    h.add(std::vector<ExecutionPlan>{first_execution_plan});
 
+    puts("");
     while (!h.finished()) {
       auto available = h.size();
       auto next_ep = h.pop();
       auto next_node = next_ep.get_next_node();
       assert(next_node);
+
+      printf("Search space %lu\r", available);
+      fflush(stdout);
 
       // Graphviz::visualize(next_ep);
 
@@ -138,6 +142,7 @@ public:
     // for (auto &ep : h.get_all()) {
     //   Graphviz::visualize(ep);
     // }
+
     // Graphviz::visualize(h.get(), search_space);
 
     return h.get();

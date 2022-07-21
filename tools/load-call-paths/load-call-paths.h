@@ -15,7 +15,7 @@ typedef struct {
 typedef struct call {
   std::string function_name;
   std::map<std::string, std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr>>>
-  extra_vars;
+      extra_vars;
   std::map<std::string, arg_t> args;
 
   klee::ref<klee::Expr> ret;

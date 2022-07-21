@@ -29,16 +29,16 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
 llvm::cl::OptionCategory BDDReorderer("BDDReorderer specific options");
 
 llvm::cl::opt<std::string>
-    InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
-                 llvm::cl::cat(BDDReorderer));
+InputBDDFile("in", llvm::cl::desc("Input file for BDD deserialization."),
+             llvm::cl::cat(BDDReorderer));
 
 llvm::cl::opt<int> MaxReorderingOperations(
     "max", llvm::cl::desc("Maximum number of reordering operations."),
     llvm::cl::initializer<int>(-1), llvm::cl::cat(BDDReorderer));
 
-llvm::cl::opt<std::string> ReportFile(
-    "report", llvm::cl::desc("Output report file"),
-    llvm::cl::cat(BDDReorderer));
+llvm::cl::opt<std::string> ReportFile("report",
+                                      llvm::cl::desc("Output report file"),
+                                      llvm::cl::cat(BDDReorderer));
 } // namespace
 
 BDD::BDD build_bdd() {
@@ -82,11 +82,11 @@ int main(int argc, char **argv) {
   if (ReportFile.size() == 0) {
     return 0;
   }
-  
+
   auto end = std::chrono::steady_clock::now();
   auto elapsed = end - start;
   auto report = std::ofstream(ReportFile, std::ios::out);
-  
+
   if (report.is_open()) {
     report << "# time (s) \t total\n";
     report << std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();

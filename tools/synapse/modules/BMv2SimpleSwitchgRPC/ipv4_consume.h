@@ -89,7 +89,6 @@ private:
 
     auto valid = is_valid_ipv4(all_prev_packet_borrow_next_chunk[0].get(),
                                _length, node->get_constraints());
-
     assert(valid);
 
     auto new_module = std::make_shared<IPv4Consume>(node, _chunk);

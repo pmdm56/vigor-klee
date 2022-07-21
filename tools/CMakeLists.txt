@@ -1,11 +1,11 @@
-#===------------------------------------------------------------------------===#
+# ===------------------------------------------------------------------------===#
 #
-#                     The KLEE Symbolic Virtual Machine
+# The KLEE Symbolic Virtual Machine
 #
 # This file is distributed under the University of Illinois Open Source
 # License. See LICENSE.TXT for details.
 #
-#===------------------------------------------------------------------------===#
+# ===------------------------------------------------------------------------===#
 add_subdirectory(gen-random-bout)
 add_subdirectory(kleaver)
 add_subdirectory(klee)
@@ -24,3 +24,4 @@ add_subdirectory(call-path-hit-rate-graphviz-generator)
 add_subdirectory(bdd-reorderer)
 add_subdirectory(synapse)
 add_subdirectory(bdd-conflict-detect)
+add_subdirectory(packet-modification-detector)

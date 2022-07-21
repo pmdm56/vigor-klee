@@ -76,22 +76,27 @@ private:
 public:
   template <typename T> bool contains(Target target, uint64_t key) const {
     assert(false && "MemoryBank: I dont know this type");
+    exit(1);
   }
   template <typename T> T read(Target target, uint64_t key) const {
     assert(false && "MemoryBank: I dont know this type");
+    exit(1);
   }
   template <typename T> void write(Target target, uint64_t key, T value) {
     assert(false && "MemoryBank: I dont know this type");
+    exit(1);
   }
-
   template <typename T> bool contains(uint64_t key) const {
     assert(false && "MemoryBank: I dont know this type");
+    exit(1);
   }
   template <typename T> T read(uint64_t key) const {
     assert(false && "MemoryBank: I dont know this type");
+    exit(1);
   }
   template <typename T> void write(uint64_t key, T value) {
     assert(false && "MemoryBank: I dont know this type");
+    exit(1);
   }
 };
 

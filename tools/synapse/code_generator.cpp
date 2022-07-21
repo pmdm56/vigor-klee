@@ -115,9 +115,7 @@ CodeGenerator::x86_extractor(const ExecutionPlan &execution_plan) const {
 
       if (current_next.size() == 0) {
         leaves.erase(leaf_it);
-      }
-
-      else {
+      } else {
         for (auto i = 0u; i < current_next.size(); i++) {
           if (i == 0) {
             *leaf_it = clone;
@@ -251,16 +249,19 @@ ExecutionPlan CodeGenerator::bmv2SimpleSwitchgRPC_extractor(
 ExecutionPlan
 CodeGenerator::fpga_extractor(const ExecutionPlan &execution_plan) const {
   assert(false && "TODO");
+  exit(1);
 }
 
 ExecutionPlan
 CodeGenerator::tofino_extractor(const ExecutionPlan &execution_plan) const {
   assert(false && "TODO");
+  exit(1);
 }
 
 ExecutionPlan
 CodeGenerator::netronome_extractor(const ExecutionPlan &execution_plan) const {
   assert(false && "TODO");
+  exit(1);
 }
 
 } // namespace synapse

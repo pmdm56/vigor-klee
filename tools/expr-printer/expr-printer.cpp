@@ -31,8 +31,7 @@ bool get_bytes_read(klee::ref<klee::Expr> expr, std::vector<unsigned> &bytes) {
 
     return true;
   };
-  default: {
-  }
+  default: {}
   }
 
   return false;
@@ -467,13 +466,9 @@ public:
     if (left == "0" &&
         (std::regex_match(right, m, p0) || std::regex_match(right, m, p1))) {
       ss << m.str(1);
-    }
-
-    else if (left == "0") {
+    } else if (left == "0") {
       ss << "!" << right;
-    }
-
-    else {
+    } else {
       ss << "(" << left << " == " << right << ")";
     }
 
@@ -609,7 +604,7 @@ std::string expr_to_string(klee::ref<klee::Expr> expr, bool one_liner) {
                    expr_str.end());
 
     // remove duplicated whitespaces
-    auto bothAreSpaces = [](char lhs, char rhs) -> bool {
+    auto bothAreSpaces = [](char lhs, char rhs)->bool {
       return (lhs == rhs) && (lhs == ' ');
     };
     std::string::iterator new_end =

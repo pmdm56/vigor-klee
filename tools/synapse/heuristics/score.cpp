@@ -11,7 +11,7 @@ int Score::get_nr_merged_tables() const {
   }
 
   auto num_merged_tables = 0;
-  auto nodes = std::vector<ExecutionPlanNode_ptr>{execution_plan.get_root()};
+  auto nodes = std::vector<ExecutionPlanNode_ptr>{ execution_plan.get_root() };
 
   while (nodes.size()) {
     auto node = nodes[0];
