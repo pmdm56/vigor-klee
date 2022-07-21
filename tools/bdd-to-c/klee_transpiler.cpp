@@ -49,9 +49,7 @@ Constant_ptr const_to_ast_expr(const klee::ref<klee::Expr> &e) {
       auto value = BDD::solver_toolbox.value_from_expr(byte);
       constant_node->set_value(value, offset);
     }
-  }
-
-  else {
+  } else {
     assert(type->get_size() <= 64);
     uint64_t value = constant->getZExtValue();
     constant_node->set_value(value);
@@ -163,9 +161,7 @@ std::vector<Expr_ptr> apply_changes(AST *ast, Expr_ptr variable,
 
   case Type::TypeKind::STRUCT:
   case Type::TypeKind::ARRAY:
-  case Type::TypeKind::PRIMITIVE: {
-    assert(false && "TODO");
-  }
+  case Type::TypeKind::PRIMITIVE: { assert(false && "TODO"); }
   }
 
   return changes;
@@ -289,17 +285,11 @@ KleeExprToASTNodeConverter::visitRead(const klee::ReadExpr &e) {
 
   if (symbol == "VIGOR_DEVICE") {
     symbol = "src_devices";
-  }
-
-  else if (symbol.find("next_time") != std::string::npos) {
+  } else if (symbol.find("next_time") != std::string::npos) {
     symbol = "now";
-  }
-
-  else if (symbol.find("data_len") != std::string::npos) {
+  } else if (symbol.find("data_len") != std::string::npos) {
     symbol = "pkt_len";
-  }
-
-  else if (symbol == "packet_chunks") {
+  } else if (symbol == "packet_chunks") {
     assert(idx->get_kind() == Node::NodeKind::CONSTANT);
     Constant *idx_const = static_cast<Constant *>(idx.get());
 
@@ -438,14 +428,10 @@ KleeExprToASTNodeConverter::visitExtract(const klee::ExtractExpr &e) {
 
     if (offset_value + size <= right_size) {
       ast_expr = right;
-    }
-
-    else if (offset_value >= right_size) {
+    } else if (offset_value >= right_size) {
       ast_expr = left;
       offset_value -= right_size;
-    }
-
-    else {
+    } else {
       break;
     }
   }
@@ -821,10 +807,8 @@ KleeExprToASTNodeConverter::visitEq(const klee::EqExpr &e) {
         return klee::ExprVisitor::Action::skipChildren();
       }
     }
-  }
-
-  else if (right->get_kind() == Node::NodeKind::VARIABLE &&
-           left->get_kind() == Node::NodeKind::CONSTANT) {
+  } else if (right->get_kind() == Node::NodeKind::VARIABLE &&
+             left->get_kind() == Node::NodeKind::CONSTANT) {
     Type_ptr right_type = right->get_type();
 
     if (right_type->get_type_kind() == Type::TypeKind::ARRAY ||

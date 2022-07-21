@@ -22,7 +22,6 @@ llvm::cl::list<std::string> InputCallPathFiles(llvm::cl::desc("<call paths>"),
                                                llvm::cl::OneOrMore);
 }
 
-
 #define DEBUG
 
 int main(int argc, char **argv, char **envp) {
@@ -34,7 +33,7 @@ int main(int argc, char **argv, char **envp) {
     std::cerr << "Loading: " << file << std::endl;
 
     std::vector<std::string> expressions_str;
-    std::deque<klee::ref<klee::Expr> > expressions;
+    std::deque<klee::ref<klee::Expr>> expressions;
     call_paths.push_back(load_call_path(file, expressions_str, expressions));
   }
 
@@ -96,4 +95,3 @@ int main(int argc, char **argv, char **envp) {
 
   return 0;
 }
-

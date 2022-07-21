@@ -82,7 +82,7 @@ public:
 
     file.close();
 
-#ifdef NDEBUG
+#ifndef NDEBUG
     std::cerr << "Opening " << random_fname << "\n";
 #endif
 
@@ -118,7 +118,6 @@ public:
     int start = call_path_ids[0];
     int end = start;
     bool started = false;
-    bool print = false;
 
     auto dump = [](std::stringstream &ss, int start, int end, bool &started) {
       if (started) {
@@ -134,7 +133,7 @@ public:
       }
     };
 
-    for (int i = 1; i < call_path_ids.size(); i++) {
+    for (auto i = 1u; i < call_path_ids.size(); i++) {
       auto id = call_path_ids[i];
 
       if (id == end + 1) {
@@ -190,7 +189,6 @@ public:
     os << node->get_id() << ":";
     os << pretty_print_expr(condition);
 
-    auto i = 0u;
     os << "\\ncps={";
     os << callpaths_list_to_str(node);
     os << "}";
@@ -354,7 +352,6 @@ public:
     auto value = node->get_return_value();
     auto operation = node->get_return_operation();
 
-    auto i = 0u;
     std::stringstream cps;
     cps << "\\lcps={";
     cps << callpaths_list_to_str(node);

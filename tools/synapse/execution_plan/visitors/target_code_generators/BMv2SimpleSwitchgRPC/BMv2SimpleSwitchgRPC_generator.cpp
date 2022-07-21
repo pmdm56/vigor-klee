@@ -243,8 +243,8 @@ BMv2SimpleSwitchgRPC_Generator::assign_key_bytes(klee::ref<klee::Expr> expr) {
   return assignments;
 }
 
-bool BMv2SimpleSwitchgRPC_Generator::is_constant(
-    klee::ref<klee::Expr> expr) const {
+bool
+BMv2SimpleSwitchgRPC_Generator::is_constant(klee::ref<klee::Expr> expr) const {
   if (expr->getKind() == klee::Expr::Kind::Constant) {
     return true;
   }
@@ -334,8 +334,8 @@ BMv2SimpleSwitchgRPC_Generator::transpile(const klee::ref<klee::Expr> &e,
   return code;
 }
 
-void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
-    code_builder_t &code_builder) {
+void
+BMv2SimpleSwitchgRPC_Generator::parser_t::dump(code_builder_t &code_builder) {
   assert(stages.size());
   auto root = stages[0];
 
@@ -355,7 +355,7 @@ void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
   pad(parser_states_stream, lvl);
   parser_states_stream << "}\n";
 
-  auto built_stages = std::vector<std::shared_ptr<parsing_stage>>{root};
+  auto built_stages = std::vector<std::shared_ptr<parsing_stage>>{ root };
 
   while (built_stages.size()) {
     auto stage = built_stages[0];
@@ -438,8 +438,8 @@ void BMv2SimpleSwitchgRPC_Generator::parser_t::dump(
 void BMv2SimpleSwitchgRPC_Generator::verify_checksum_t::dump(
     code_builder_t &code_builder) {}
 
-void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(
-    code_builder_t &code_builder) {
+void
+BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(code_builder_t &code_builder) {
   std::stringstream ingress_globals_stream;
   auto lvl = code_builder.get_indentation_level(MARKER_INGRESS_GLOBALS);
 
@@ -469,14 +469,14 @@ void BMv2SimpleSwitchgRPC_Generator::ingress_t::dump(
                          ingress_apply_content_stream.str());
 }
 
-void BMv2SimpleSwitchgRPC_Generator::egress_t::dump(
-    code_builder_t &code_builder) {}
+void
+BMv2SimpleSwitchgRPC_Generator::egress_t::dump(code_builder_t &code_builder) {}
 
 void BMv2SimpleSwitchgRPC_Generator::compute_checksum_t::dump(
     code_builder_t &code_builder) {}
 
-void BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(
-    code_builder_t &code_builder) {
+void
+BMv2SimpleSwitchgRPC_Generator::deparser_t::dump(code_builder_t &code_builder) {
   std::unordered_set<std::string> defined_hdrs;
 
   std::stringstream deparser_apply_stream;
@@ -700,7 +700,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   header_field_t srcAddr(48, "srcAddr");
   header_field_t etherType(16, "etherType");
 
-  std::vector<header_field_t> fields = {dstAddr, srcAddr, etherType};
+  std::vector<header_field_t> fields = { dstAddr, srcAddr, etherType };
   auto chunk = node->get_chunk();
   auto label = "ethernet";
 
@@ -736,7 +736,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
     ingress.apply_block << "(";
     ingress.apply_block << "(";
     auto str = transpile(expr);
-    str.erase(1,9); // remove bit<8>...
+    str.erase(1, 9); // remove bit<8>...
     ingress.apply_block << str;
     ingress.apply_block << ")";
     ingress.apply_block << " << ";
@@ -819,9 +819,10 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   header_field_t src_addr(32, "src_addr");
   header_field_t dst_addr(32, "dst_addr");
 
-  std::vector<header_field_t> fields = {
-      version_ihl, diff_serv, total_len, id,       flags,   frag_offset,
-      ttl,         proto,     checksum,  src_addr, dst_addr};
+  std::vector<header_field_t> fields = { version_ihl, diff_serv, total_len,
+                                         id,          flags,     frag_offset,
+                                         ttl,         proto,     checksum,
+                                         src_addr,    dst_addr };
 
   auto chunk = node->get_chunk();
   auto label = "ipv4";
@@ -846,7 +847,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
 
   header_field_t options(320, "options", length);
 
-  std::vector<header_field_t> fields = {options};
+  std::vector<header_field_t> fields = { options };
 
   auto label = "ipv4_options";
 
@@ -879,7 +880,7 @@ void BMv2SimpleSwitchgRPC_Generator::visit(
   header_field_t src_port(16, "src_port");
   header_field_t dst_port(16, "dst_port");
 
-  std::vector<header_field_t> fields = {src_port, dst_port};
+  std::vector<header_field_t> fields = { src_port, dst_port };
 
   auto chunk = node->get_chunk();
   auto label = "tcp_udp";

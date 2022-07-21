@@ -9,6 +9,7 @@ namespace synapse {
 std::vector<ExecutionPlan> get_reordered(const ExecutionPlan &ep) {
   std::vector<ExecutionPlan> reordered;
 
+  // FIXME: comment this to enable node reordering
   // if (ep.get_reordered_nodes() >= 0) {
   //   return reordered;
   // }

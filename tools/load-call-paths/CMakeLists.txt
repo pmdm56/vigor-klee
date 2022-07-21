@@ -1,11 +1,11 @@
-#===------------------------------------------------------------------------===#
+# ===------------------------------------------------------------------------===#
 #
-#                     The KLEE Symbolic Virtual Machine
+# The KLEE Symbolic Virtual Machine
 #
 # This file is distributed under the University of Illinois Open Source
 # License. See LICENSE.TXT for details.
 #
-#===------------------------------------------------------------------------===#
+# ===------------------------------------------------------------------------===#
 file(GLOB_RECURSE load-call-paths-sources
   "*.cpp"
 )

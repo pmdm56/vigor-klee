@@ -13,8 +13,8 @@ void ExecutionPlanVisitor::visit(ExecutionPlan ep) {
   }
 }
 
-void ExecutionPlanVisitor::visit(const ExecutionPlanNode* ep_node) {
-  auto mod  = ep_node->get_module();
+void ExecutionPlanVisitor::visit(const ExecutionPlanNode *ep_node) {
+  auto mod = ep_node->get_module();
   auto next = ep_node->get_next();
 
   mod->visit(*this);
@@ -23,5 +23,4 @@ void ExecutionPlanVisitor::visit(const ExecutionPlanNode* ep_node) {
     branch->visit(*this);
   }
 }
-
 }

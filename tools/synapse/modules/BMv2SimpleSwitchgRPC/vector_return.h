@@ -45,6 +45,7 @@ private:
     }
 
     assert(false);
+    exit(1);
   }
 
   bool modifies_cell(const BDD::Call *node) const {

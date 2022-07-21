@@ -201,15 +201,11 @@ public:
 
       if (offset + sz <= lsb_sz) {
         expr = lsb;
-      }
-
-      else if (offset >= lsb_sz) {
+      } else if (offset >= lsb_sz) {
         offset -= lsb_sz;
         assert(offset + sz <= msb_sz);
         expr = msb;
-      }
-
-      else {
+      } else {
         assert(false);
       }
     }
@@ -999,21 +995,13 @@ void x86_Generator::allocate(const ExecutionPlan &ep) {
       nf_init_stream << "if (";
       if (call.function_name == "map_allocate") {
         allocate_map(call, global_state_stream, nf_init_stream);
-      }
-
-      else if (call.function_name == "vector_allocate") {
+      } else if (call.function_name == "vector_allocate") {
         allocate_vector(call, global_state_stream, nf_init_stream);
-      }
-
-      else if (call.function_name == "dchain_allocate") {
+      } else if (call.function_name == "dchain_allocate") {
         allocate_dchain(call, global_state_stream, nf_init_stream);
-      }
-
-      else if (call.function_name == "cht_fill_cht") {
+      } else if (call.function_name == "cht_fill_cht") {
         allocate_cht(call, global_state_stream, nf_init_stream);
-      }
-
-      else {
+      } else {
         assert(false);
       }
 
@@ -1023,10 +1011,7 @@ void x86_Generator::allocate(const ExecutionPlan &ep) {
       break;
     }
 
-    case BDD::Node::NodeType::BRANCH: {
-
-      break;
-    }
+    case BDD::Node::NodeType::BRANCH: { break; }
 
     case BDD::Node::NodeType::RETURN_INIT: {
       pad(nf_init_stream);
@@ -1073,7 +1058,7 @@ std::vector<x86_Generator::p4_table> x86_Generator::get_associated_p4_tables(
   assert(original_ep);
   assert(original_ep->get_root());
 
-  std::vector<ExecutionPlanNode_ptr> nodes = {original_ep->get_root()};
+  std::vector<ExecutionPlanNode_ptr> nodes = { original_ep->get_root() };
 
   while (nodes.size()) {
     auto node = nodes[0];
@@ -1116,8 +1101,8 @@ std::vector<x86_Generator::p4_table> x86_Generator::get_associated_p4_tables(
 
       auto found_it = std::find_if(tables.begin(), tables.end(),
                                    [&](x86_Generator::p4_table table) {
-                                     return table.name == table_label;
-                                   });
+        return table.name == table_label;
+      });
 
       if (found_it != tables.end()) {
         goto skip;
@@ -1167,7 +1152,7 @@ void x86_Generator::fill_is_controller() {
   assert(original_ep);
   assert(original_ep->get_root());
 
-  std::vector<ExecutionPlanNode_ptr> nodes = {original_ep->get_root()};
+  std::vector<ExecutionPlanNode_ptr> nodes = { original_ep->get_root() };
 
   while (nodes.size()) {
     auto node = nodes[0];
@@ -1193,7 +1178,11 @@ void x86_Generator::build_runtime_configure() {
 
   struct table_t {
     struct libvig_obj_t {
-      enum obj_type_t { MAP, VECTOR, DCHAIN };
+      enum obj_type_t {
+        MAP,
+        VECTOR,
+        DCHAIN
+      };
 
       std::string obj_label;
       obj_type_t obj_type;
@@ -1205,7 +1194,7 @@ void x86_Generator::build_runtime_configure() {
 
   std::vector<table_t> tables;
 
-  std::vector<ExecutionPlanNode_ptr> nodes = {original_ep->get_root()};
+  std::vector<ExecutionPlanNode_ptr> nodes = { original_ep->get_root() };
 
   while (nodes.size()) {
     auto node = nodes[0];
@@ -1259,8 +1248,9 @@ void x86_Generator::build_runtime_configure() {
         assert(false && "TODO");
       }
 
-      table_t table{table_name, std::vector<table_t::libvig_obj_t>{
-                                    table_t::libvig_obj_t{obj_label, type}}};
+      table_t table{ table_name, std::vector<table_t::libvig_obj_t>{
+                                   table_t::libvig_obj_t{ obj_label, type }
+                                 } };
 
       tables.push_back(table);
     }
@@ -1491,7 +1481,7 @@ void x86_Generator::visit(const targets::x86::CurrentTime *node) {
 
   auto next_time_label = get_label(generated_symbols, "next_time");
 
-  stack.cp_var_to_code_translation.insert({next_time_label, "now"});
+  stack.cp_var_to_code_translation.insert({ next_time_label, "now" });
   stack.set_value(next_time_label, node->get_time());
 }
 
@@ -1811,7 +1801,7 @@ void x86_Generator::visit(const targets::x86::DchainRejuvenateIndex *node) {
 
 klee::ref<klee::Expr> get_future_vector_value(BDD::BDDNode_ptr root,
                                               klee::ref<klee::Expr> vector) {
-  std::vector<BDD::BDDNode_ptr> nodes{root};
+  std::vector<BDD::BDDNode_ptr> nodes{ root };
 
   while (nodes.size()) {
     auto node = nodes[0];
@@ -1824,9 +1814,7 @@ klee::ref<klee::Expr> get_future_vector_value(BDD::BDDNode_ptr root,
       nodes.push_back(branch_node->get_on_false());
 
       continue;
-    }
-
-    else if (node->get_type() == BDD::Node::NodeType::CALL) {
+    } else if (node->get_type() == BDD::Node::NodeType::CALL) {
       auto call_node = static_cast<BDD::Call *>(node.get());
       auto call = call_node->get_call();
 

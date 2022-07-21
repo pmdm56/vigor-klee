@@ -24,19 +24,19 @@
 #define DEBUG
 
 namespace {
-llvm::cl::opt<std::string> SenderCallPathFile(llvm::cl::desc("<sender call path>"),
-                                         llvm::cl::Positional,
-                                         llvm::cl::Required);
+llvm::cl::opt<std::string>
+SenderCallPathFile(llvm::cl::desc("<sender call path>"), llvm::cl::Positional,
+                   llvm::cl::Required);
 
-llvm::cl::opt<std::string> ReceiverCallPathFile(llvm::cl::desc("<receiver call path>"),
-                                         llvm::cl::Positional,
-                                         llvm::cl::Required);
+llvm::cl::opt<std::string>
+ReceiverCallPathFile(llvm::cl::desc("<receiver call path>"),
+                     llvm::cl::Positional, llvm::cl::Required);
 }
 
 typedef struct {
   std::string function_name;
   std::map<std::string, std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr>>>
-      extra_vars;
+  extra_vars;
 } call_t;
 
 typedef struct {
@@ -47,7 +47,7 @@ typedef struct {
 } call_path_t;
 
 std::map<std::pair<std::string, int>, klee::ref<klee::Expr>>
-    subcontract_constraints;
+subcontract_constraints;
 
 call_path_t *load_call_path(std::string file_name) {
   std::ifstream call_path_file(file_name);
@@ -184,7 +184,9 @@ call_path_t *load_call_path(std::string file_name) {
       continue;
     } break;
 
-    default: { assert(false && "Invalid call path file."); } break;
+    default: {
+      assert(false && "Invalid call path file.");
+    } break;
     }
   }
 

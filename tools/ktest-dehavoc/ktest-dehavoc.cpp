@@ -65,7 +65,7 @@ int main(int argc, char **argv, char **envp) {
       if (havoced_objects.count(name)) {
         std::cout << "Dehavocing " << name << std::endl;
         *it = havoced_objects[name];
-        it->name = (char *) (new std::string(name))->c_str();
+        it->name = (char *)(new std::string(name))->c_str();
       }
       it++;
     }
@@ -75,6 +75,5 @@ int main(int argc, char **argv, char **envp) {
   out.objects = objects.data();
 
   int file_writing_result = kTest_toFile(&out, OutputFile.c_str());
-  assert( file_writing_result &&
-         "Error writing output KTEST file.");
+  assert(file_writing_result && "Error writing output KTEST file.");
 }

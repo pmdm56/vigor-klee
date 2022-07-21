@@ -218,15 +218,11 @@ KleeExprToP4::visitExtract(const klee::ExtractExpr &e) {
 
     if (offset + sz <= lsb_sz) {
       expr = lsb;
-    }
-
-    else if (offset >= lsb_sz) {
+    } else if (offset >= lsb_sz) {
       offset -= lsb_sz;
       assert(offset + sz <= msb_sz);
       expr = msb;
-    }
-
-    else {
+    } else {
       assert(false);
     }
   }
@@ -337,18 +333,14 @@ klee::ExprVisitor::Action KleeExprToP4::visitAdd(const klee::AddExpr &e) {
 
     code << "(" << rhs_parsed << ") ";
     code << constant_signed;
-  }
-
-  else if (generator.is_constant_signed(rhs) &&
-           !generator.is_constant_signed(lhs)) {
+  } else if (generator.is_constant_signed(rhs) &&
+             !generator.is_constant_signed(lhs)) {
     auto constant_signed = generator.get_constant_signed(rhs);
     auto lhs_parsed = generator.transpile(lhs, is_signed);
 
     code << "(" << lhs_parsed << ") ";
     code << constant_signed;
-  }
-
-  else {
+  } else {
     auto lhs_parsed = generator.transpile(lhs, is_signed);
     auto rhs_parsed = generator.transpile(rhs, is_signed);
 
@@ -693,9 +685,7 @@ klee::ExprVisitor::Action KleeExprToP4::visitEq(const klee::EqExpr &e) {
     } else {
       assert(false && "TODO");
     }
-  }
-
-  else if (generator.transpile(rhs).find("etherType") != std::string::npos) {
+  } else if (generator.transpile(rhs).find("etherType") != std::string::npos) {
     // be careful with endianess
     assert(lhs->getKind() == klee::Expr::Constant);
     auto etherType_val = BDD::solver_toolbox.value_from_expr(lhs);
@@ -707,9 +697,7 @@ klee::ExprVisitor::Action KleeExprToP4::visitEq(const klee::EqExpr &e) {
     code << "0x";
     code << new_val;
     code << std::dec;
-  }
-
-  else {
+  } else {
     auto lhs_parsed = generator.transpile(lhs, is_signed);
     code << "(";
     code << "(" << generator.p4_type_from_expr(lhs) << ")";
