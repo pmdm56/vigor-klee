@@ -7,7 +7,6 @@
 #include "expr-printer.h"
 #include "load-call-paths.h"
 #include "symbol.h"
-#include "../path-explorer.h"
 
 namespace BDD {
 
@@ -98,7 +97,6 @@ public:
   virtual BDDNode_ptr clone(bool recursive = false) const = 0;
   virtual void recursive_update_ids(uint64_t &new_id) = 0;
   virtual void visit(BDDVisitor &visitor) const = 0;
-  virtual bool explore(PathExplorer &explorer) = 0;
   virtual std::string dump(bool one_liner = false) const = 0;
   virtual std::string dump_recursive(int lvl = 0) const;
 

@@ -15,38 +15,26 @@ int main(int argc, char **argv) {
 
   std::list<BDD::BDD> bdds;
   int bddId = 0;
+  BDD::PathExplorer explorer;
+  std::vector<std::vector<BDD::bdd_path_t *>> all_paths;
 
   assert(BDDFiles.size() >= 1 &&
          "Please provide either at least 1 bdd file");
   
 
   for (auto bdd : BDDFiles) {
-    std::cerr << "Loading: " << bdd << std::endl;
+    std::cerr << "Loading BDD: " << bdd << std::endl;
     bdds.push_front(BDD::BDD(bdd, bddId++));
   }
 
+  
   for(auto bdd : bdds){
-
-    BDD::PathExplorer explorer(&bdd);
-    
-    for(auto bdd2 : bdds){
-
-      if(bdd2.get_id() <= bdd.get_id())
-        continue;
-
-      BDD::PathExplorer explorer2(&bdd2);
-
-      while(explorer.nextPath()){
-        while(explorer2.nextPath()){
-          
-        }
-      }
-      explorer.resetState();
-    }
-
-    while(explorer.nextPath())
-      explorer.getPathConstraint()->dump();
+    all_paths.push_back(std::vector<BDD::bdd_path_t *>(explorer.getPaths(&bdd)));
   }
+
+  for(auto paths: all_paths)
+    for(auto p: paths)
+      p->dump();
 
   return 0;
 }

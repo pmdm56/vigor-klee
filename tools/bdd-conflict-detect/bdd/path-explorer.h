@@ -13,32 +13,60 @@ class ReturnProcess;
 class ReturnRaw;
 class Node;
 
+
+typedef struct packet_chunk_t {
+  klee::ref<klee::Expr> in;
+  klee::ref<klee::Expr> out;
+
+  packet_chunk_t(klee::ref<klee::Expr> _in): in(_in) {}
+
+};
+
+typedef struct bdd_path_t {
+  std::vector<Node *> path;
+  std::vector<packet_chunk_t> packet;
+  klee::ConstraintManager constraints;
+  int layer;
+
+
+  bdd_path_t(): layer(-1) {}
+
+  void initializeFrom(bdd_path_t* path){
+    this->layer = path->layer;
+    for (Node *n : path->path)
+      this->path.push_back(n);
+    for(klee::ref<klee::Expr> c: path->constraints)
+      this->constraints.addConstraint(c);
+    for(packet_chunk_t pc: path->packet)
+      this->packet.push_back(pc);
+  }
+
+  void dump(){
+    std::cerr << "Path -> Len(" << path.size() << ") Constr("
+              << constraints.size() << ") Layer(" << layer << ") Packet(" << packet.size() << ")" << std::endl;
+  }
+};
+
 class PathExplorer {
 private:
-  std::vector<klee::ref<klee::Expr>> conditionStack;
-  std::vector<Node*> pathStack;
-  BDD* bdd;
+  std::vector<bdd_path_t *> paths;
+  BDD *bdd;
   klee::ExprBuilder *exprBuilder;
-  bool firstPath;
 
 public:
-  bool nextPath();  
-  PathExplorer(BDD* _bdd): firstPath(true) {
-    bdd = _bdd;
+  PathExplorer() {
     exprBuilder = klee::createDefaultExprBuilder();
   }
-  bool explore(Branch *node);
-  bool explore(Call *node);
-  bool explore(ReturnInit *node);
-  bool explore(ReturnProcess *node);
-  bool explore(ReturnRaw *node);
-  bool resetState();
-  static bool arePathsCompatible(klee::ref<klee::Expr> c1, klee::ref<klee::Expr> c2);
-  klee::ref<klee::Expr> getPathConstraint();
+  std::vector<bdd_path_t *> getPaths(BDD *bdd);
+  bool exploreBranch(Branch *node, bdd_path_t *path);
+  bool exploreCall(Call *node, bdd_path_t* path);
+  bool exploreRI(ReturnInit *node, bdd_path_t* path);
+  bool exploreRP(ReturnProcess *node, bdd_path_t* path);
+  bool exploreRW(ReturnRaw *node, bdd_path_t* path);
+  bool explore(Node *n, bdd_path_t *p);
 
 protected:
-  bool exploreInitRoot( Node *root);
-  bool exploreFalse(Branch *node);
-  bool exploreProcessRoot( Node *root);
+  bool exploreInitRoot( BDD* bdd);
+  bool exploreProcessRoot( BDD* bdd);
 };
 } // namespace BDD

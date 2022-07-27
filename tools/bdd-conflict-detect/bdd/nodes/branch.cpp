@@ -37,7 +37,6 @@ void Branch::recursive_update_ids(uint64_t &new_id) {
 }
 
 void Branch::visit(BDDVisitor &visitor) const { visitor.visit(this); }
-bool Branch::explore(PathExplorer &explorer)  { return explorer.explore(this); }
 
 std::string Branch::dump(bool one_liner) const {
   std::stringstream ss;

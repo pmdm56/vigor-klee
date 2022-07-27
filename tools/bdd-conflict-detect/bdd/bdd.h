@@ -9,7 +9,7 @@ class BDDVisitor;
 
 class BDD {
 public:
-  BDD(std::vector<call_path_t *> call_paths)
+    BDD(std::vector<call_path_t *> call_paths)
       : id(0), total_call_paths(call_paths.size()) {
     solver_toolbox.build();
 

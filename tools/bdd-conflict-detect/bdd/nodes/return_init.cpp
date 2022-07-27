@@ -14,7 +14,6 @@ void ReturnInit::recursive_update_ids(uint64_t &new_id) {
 }
 
 void ReturnInit::visit(BDDVisitor &visitor) const { visitor.visit(this); }
-bool ReturnInit::explore(PathExplorer &explorer) { return explorer.explore(this); }
 
 std::string ReturnInit::dump(bool one_liner) const {
   std::stringstream ss;

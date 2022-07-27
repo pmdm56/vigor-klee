@@ -3,129 +3,99 @@
 #include "path-explorer.h"
 
 namespace BDD {
-bool PathExplorer::explore(Branch *node) {
+
+bool PathExplorer::exploreBranch(Branch *node, bdd_path_t* path) { 
   if (!node)
     return false;
 
-  conditionStack.push_back(exprBuilder->True());
-  pathStack.push_back(node);
+  bdd_path_t *new_path = new bdd_path_t;
+  new_path->initializeFrom(path);
 
-  return node->get_on_true()->explore(*this);
+  path->constraints.addConstraint(node->get_condition());
+  path->path.push_back(node->clone(false).get());
+
+  new_path->constraints.addConstraint(exprBuilder->Not(node->get_condition()));
+  new_path->path.push_back(node->clone(false).get());
+
+  return this->explore(node->get_on_true().get(), path) &
+    this->explore(node->get_on_false().get(), new_path);
 }
 
-bool PathExplorer::exploreFalse(Branch *node) {
-  if (!node)
+bool PathExplorer::exploreCall(Call *node, bdd_path_t* path) {
+  if(!node)
     return false;
-
-  conditionStack.push_back(exprBuilder->False());
-  pathStack.push_back(node);
-
-  return node->get_on_false()->explore(*this);
-}
-
-bool PathExplorer::explore( Call *node) {
-  if (!node)
-    return false;
-  pathStack.push_back(node);
-  return node->get_next()->explore(*this);
-}
-
-bool PathExplorer::explore(ReturnInit *node) {
-  if (!node)
-    return true;
-  assert(!node->get_next());
-  pathStack.push_back(node);
-  return true;
-}
-
-bool PathExplorer::explore(ReturnProcess *node) {
-  if (!node)
-    return false;
-  assert(!node->get_next());
-  pathStack.push_back(node);
-  return true;
-}
-
-bool PathExplorer::explore(ReturnRaw *node) {
-  if (!node)
-    return false;
-  assert(!node->get_next());
-  pathStack.push_back(node);
-  return false;
-}
-
-bool PathExplorer::nextPath() {
-  bool ret;
-  assert(bdd->get_process());
   
-  if(firstPath){
-    firstPath = false;
-    ret =  exploreProcessRoot(bdd->get_process().get());  
-  } else {
+  path->path.push_back(node->clone(false).get());
+  
+  if(node->get_call().function_name == "packet_borrow_next_chunk"){
+    path->layer++;
 
-    //roll back until we find a branch evaluated to true
-    while(pathStack.size() && ((pathStack.back()->get_type() != Node::NodeType::BRANCH )
-          || (pathStack.back()->get_type() == Node::NodeType::BRANCH && conditionStack.back() == exprBuilder->False()))){
-      if(pathStack.back()->get_type() == Node::NodeType::BRANCH)
-        conditionStack.pop_back();
-      pathStack.pop_back();
-    }
+    auto in_packet_expr = node->get_call().extra_vars["the_chunk"].second;
 
-    //unique path or theres no more paths to explore
-    if(pathStack.empty())
-      return false;
+    packet_chunk_t new_chunk(in_packet_expr);
 
-    //now we need to populate the pathStack w/ on_false
-    //and remove its info from both stacks
-    Branch* currentBranch = (Branch*)pathStack.back();
-    conditionStack.pop_back();
-    pathStack.pop_back();
+    path->packet.push_back(new_chunk);
 
-    ret = exploreFalse(currentBranch);
+  } else if (node->get_call().function_name == "packet_return_chunk"){
 
+    auto out_packet_expr = node->get_call().args["the_chunk"].in;
+    path->packet[path->layer].out = out_packet_expr;
+
+    path->layer--;
   }
 
-  std::cerr << "Path has size " << pathStack.size() << " and " << conditionStack.size() << " conditions" << std::endl;
-
-  return ret;
+  return this->explore(node->get_next().get(), path);
 }
 
-bool PathExplorer::exploreInitRoot( Node *root) {
-  return root ? root->explore(*this) : false;
+bool PathExplorer::exploreRI(ReturnInit *node, bdd_path_t* path) { return false; }
+
+bool PathExplorer::exploreRP(ReturnProcess *node, bdd_path_t* path) {
+  if (!node)
+    return false;
+  path->path.push_back(node->clone(false).get());
+  paths.push_back(path);
+  return true;
 }
 
-bool PathExplorer::exploreProcessRoot( Node *root) {
-  return root ? root->explore(*this) : false; 
+bool PathExplorer::exploreRW(ReturnRaw *node, bdd_path_t* path) {
+  assert(false); //shoudln't reach this node
+  return false; 
 }
 
-bool PathExplorer::resetState() {
-  
-  while(!conditionStack.empty())
-    conditionStack.pop_back();
-  
-  while(!pathStack.empty())
-    pathStack.pop_back();
-  
-  firstPath = true;
+bool PathExplorer::exploreInitRoot(BDD* bdd) {
+  bdd_path_t *new_path = new bdd_path_t;
+  return bdd->get_init().get() ? this->explore(bdd->get_init().get(), new_path) : false;
 }
 
-klee::ref<klee::Expr> PathExplorer::getPathConstraint() {
-  klee::ref<klee::Expr> ret = exprBuilder->True();
-  int constraintNum = 0;
-
-  for (auto i = 0; i < pathStack.size(); i++)
-    if(pathStack[i]->get_type() == Node::NodeType::BRANCH){
-      klee::ref<klee::Expr> branchEval = conditionStack.at(constraintNum++);
-      if(branchEval == exprBuilder->True())
-        ret = exprBuilder->And(ret, ((Branch *)pathStack[i])->get_condition());
-      else
-        ret = exprBuilder->And(ret, exprBuilder->Not(((Branch *)pathStack[i])->get_condition()));
-    }
-
-  return ret;
+bool PathExplorer::exploreProcessRoot(BDD* bdd) {
+  bdd_path_t *new_path = new bdd_path_t;
+  return bdd->get_process().get() ? this->explore(bdd->get_process().get(), new_path) : false;
 }
 
-bool PathExplorer::arePathsCompatible(klee::ref<klee::Expr> c1, klee::ref<klee::Expr> c2){
+bool PathExplorer::explore(Node* n, bdd_path_t* p){
+  switch (n->get_type()) {
+  case Node::NodeType::BRANCH:
+    return this->exploreBranch((Branch*)n, p);
+    break;
+  case Node::NodeType::CALL:
+    return this->exploreCall((Call*)n, p);
+    break;
+  case Node::NodeType::RETURN_INIT:
+    return this->exploreRI((ReturnInit*)n, p);
+    break;
+  case Node::NodeType::RETURN_PROCESS:
+    return this->exploreRP((ReturnProcess*)n, p);
+    break;
+  default:
+    assert(false);
+    break;
+  };
+}
+
+std::vector<bdd_path_t*> PathExplorer::getPaths(BDD*  bdd){
+  paths.clear();
+  assert(this->exploreProcessRoot(bdd));
+  return paths;
 }
 
 } // namespace BDD
