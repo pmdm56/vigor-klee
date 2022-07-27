@@ -15,7 +15,6 @@ void ReturnRaw::recursive_update_ids(uint64_t &new_id) {
 }
 
 void ReturnRaw::visit(BDDVisitor &visitor) const { visitor.visit(this); }
-bool ReturnRaw::explore(PathExplorer &explorer) { return explorer.explore(this); }
 
 std::string ReturnRaw::dump(bool one_liner) const {
   std::stringstream ss;

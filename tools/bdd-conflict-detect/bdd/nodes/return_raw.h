@@ -27,7 +27,6 @@ public:
   virtual void recursive_update_ids(uint64_t &new_id) override;
 
   void visit(BDDVisitor &visitor) const override;
-  bool explore(PathExplorer &explorer) override;
   std::string dump(bool one_liner = false) const;
 };
 

@@ -36,7 +36,6 @@ void Call::recursive_update_ids(uint64_t &new_id) {
 }
 
 void Call::visit(BDDVisitor &visitor) const { visitor.visit(this); }
-bool Call::explore(PathExplorer &explorer) { return explorer.explore(this); }
 
 std::string Call::dump(bool one_liner) const {
   std::stringstream ss;
