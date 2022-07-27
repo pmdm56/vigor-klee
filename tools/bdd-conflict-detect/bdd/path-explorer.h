@@ -20,6 +20,11 @@ typedef struct packet_chunk_t {
 
   packet_chunk_t(klee::ref<klee::Expr> _in): in(_in) {}
 
+  bool isChanged(klee::ConstraintManager constraints) { 
+    auto eq = solver_toolbox.exprBuilder->Eq(in, out);
+    return !solver_toolbox.is_expr_always_true(constraints, eq);
+  }
+
 };
 
 typedef struct bdd_path_t {
@@ -43,7 +48,18 @@ typedef struct bdd_path_t {
 
   void dump(){
     std::cerr << "Path -> Len(" << path.size() << ") Constr("
-              << constraints.size() << ") Layer(" << layer << ") Packet(" << packet.size() << ")" << std::endl;
+              << constraints.size() << ") Layer(" 
+              << layer << ") Packet(" 
+              << packet.size() << ") Modified(" 
+              << (this->wasPacketModified() ? "yes":"no") << ")" << std::endl;
+  }
+
+  bool wasPacketModified(){
+      for(auto packet_chunk: packet){
+        if(packet_chunk.isChanged(this->constraints))
+          return true;
+      }
+      return false;
   }
 };
 
