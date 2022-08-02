@@ -98,4 +98,62 @@ std::vector<bdd_path_t*> PathExplorer::getPaths(BDD*  bdd){
   return paths;
 }
 
+
+//TODO: paths from different nfs!
+bool PathExplorer::arePathsCompatible(bdd_path_t* p1, bdd_path_t* p2){
+
+  if(!p1->constraints.size() || !p2->constraints.size()){
+    return true;
+  }
+
+  auto i = 0;
+  klee::ref<klee::Expr> expr_1;
+  klee::ref<klee::Expr> expr_2;
+  klee::ConstraintManager constraints;
+  RetrieveSymbols symbol_retriever1;
+  bool res1;
+
+
+  for (auto c = p1->constraints.begin(); c != p1->constraints.end(); c++, i++){
+    if(!i){
+      expr_1 = klee::ref<klee::Expr>(*c);
+    } else {
+      expr_1 = exprBuilder->And(expr_1, *c);
+    }
+  }
+
+  i = 0;
+  for (auto c = p2->constraints.begin(); c != p2->constraints.end(); c++, i++) {
+    if(!i){
+      expr_2 = klee::ref<klee::Expr>(*c);
+    } else {
+      expr_2 = exprBuilder->And(expr_2, *c);
+    }
+  }
+
+  symbol_retriever1.visit(expr_1);
+  auto symbols_expr_1 = symbol_retriever1.get_retrieved();
+  ReplaceSymbols symbol_replacer(symbols_expr_1);
+
+  klee::ref<klee::Expr> evaluate_expr =
+      exprBuilder->And(expr_1, symbol_replacer.visit(expr_2));
+
+  auto query = klee::Query(constraints, evaluate_expr);
+  solver_toolbox.solver->mayBeTrue(query, res1);
+  //solver_toolbox.solver->mayBeFalse(query, res2);
+  //solver_toolbox.solver->evaluate(query, val);
+
+  // paths are compatible if they may be true
+  return res1;
+}
+
+//TODO verify if paths are SAT/UNSAT
+
+//DROP FWD conflict
+bool PathExplorer::is_process_res_type_conflict(bdd_path_t* p1, bdd_path_t* p2){
+  ReturnProcess *p1_ret = (ReturnProcess*)p1->path.at(p1->path.size() - 1);
+  ReturnProcess *p2_ret = (ReturnProcess*)p2->path.at(p2->path.size() - 1);
+  return !(p1_ret->get_return_operation() == p2_ret->get_return_operation());
+}
+
 } // namespace BDD

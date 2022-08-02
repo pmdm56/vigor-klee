@@ -72,8 +72,12 @@ private:
 public:
   PathExplorer() {
     exprBuilder = klee::createDefaultExprBuilder();
+    solver_toolbox.build();
   }
+
   std::vector<bdd_path_t *> getPaths(BDD *bdd);
+  bool arePathsCompatible(bdd_path_t *p1, bdd_path_t *p2);
+  bool is_process_res_type_conflict(bdd_path_t *p1, bdd_path_t *p2);
   bool exploreBranch(Branch *node, bdd_path_t *path);
   bool exploreCall(Call *node, bdd_path_t* path);
   bool exploreRI(ReturnInit *node, bdd_path_t* path);

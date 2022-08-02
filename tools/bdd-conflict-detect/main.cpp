@@ -32,9 +32,33 @@ int main(int argc, char **argv) {
     all_paths.push_back(std::vector<BDD::bdd_path_t *>(explorer.getPaths(&bdd)));
   }
 
+  /*
   for(auto paths: all_paths)
     for(auto p: paths)
       p->dump();
+  */
 
-  return 0;
+  for (auto i = 0; i < all_paths.size(); i++){
+    auto bdd_paths_1 = all_paths[i];
+    for (auto j = i + 1; j < all_paths.size(); j++){
+      auto bdd_paths_2 = all_paths[j];
+
+      auto k = 0, l = 0;
+      for (auto p_1 = bdd_paths_1.begin(); p_1 != bdd_paths_1.end();
+           p_1++, k++) {
+        l = 0;
+        for (auto p_2 = bdd_paths_2.begin(); p_2 != bdd_paths_2.end();
+             p_2++, l++) {
+          if(explorer.arePathsCompatible(*p_1, *p_2)){
+            std::cerr << "-- paths [" << k << ":" << l << "] --" << std::endl;
+            std::cerr << "fwd conflict --> "
+                      << explorer.is_process_res_type_conflict(*p_1, *p_2)
+                      << std::endl;
+          }
+        }
+      }
+    }
+  }
+
+    return 0;
 }
