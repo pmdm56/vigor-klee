@@ -25,17 +25,19 @@ public:
 
   BDD(const BDD &bdd)
       : id(bdd.id), total_call_paths(bdd.total_call_paths),
-        nf_init(bdd.nf_init), nf_process(bdd.nf_process) {}
+        nf_init(bdd.nf_init), nf_process(bdd.nf_process), name(bdd.name) {}
 
   BDD(const std::string &file_path) : id(0), total_call_paths(0) {
     solver_toolbox.build();
     deserialize(file_path);
+    name = file_path;
   }
 
   BDD(const std::string &file_path, const int _id) : total_call_paths(0) {
     solver_toolbox.build();
     deserialize(file_path);
     id = _id;
+    name = file_path;
   }
 
   BDD &operator=(const BDD &) = default;
@@ -55,6 +57,8 @@ public:
 
   BDD clone() const;
 
+  std::string get_name() const { return name; }
+
   void visit(BDDVisitor &visitor) const;
   void serialize(std::string file_path) const;
 
@@ -64,6 +68,8 @@ private:
 
   BDDNode_ptr nf_init;
   BDDNode_ptr nf_process;
+  
+  std::string name;
 
   static std::vector<std::string> skip_conditions_with_symbol;
 

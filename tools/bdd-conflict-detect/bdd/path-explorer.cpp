@@ -4,97 +4,78 @@
 
 namespace BDD {
 
-bool PathExplorer::exploreBranch(Branch *node, bdd_path_t* path) { 
-  if (!node)
-    return false;
-
-  bdd_path_t *new_path = new bdd_path_t;
-  new_path->initializeFrom(path);
-
-  path->constraints.addConstraint(node->get_condition());
-  path->path.push_back(node->clone(false).get());
-
-  new_path->constraints.addConstraint(exprBuilder->Not(node->get_condition()));
-  new_path->path.push_back(node->clone(false).get());
-
-  return this->explore(node->get_on_true().get(), path) &
-    this->explore(node->get_on_false().get(), new_path);
-}
-
-bool PathExplorer::exploreCall(Call *node, bdd_path_t* path) {
-  if(!node)
-    return false;
+bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p){
+  Node *n = node.get();
   
-  path->path.push_back(node->clone(false).get());
-  
-  if(node->get_call().function_name == "packet_borrow_next_chunk"){
-    path->layer++;
-
-    auto in_packet_expr = node->get_call().extra_vars["the_chunk"].second;
-
-    packet_chunk_t new_chunk(in_packet_expr);
-
-    path->packet.push_back(new_chunk);
-
-  } else if (node->get_call().function_name == "packet_return_chunk"){
-
-    auto out_packet_expr = node->get_call().args["the_chunk"].in;
-    path->packet[path->layer].out = out_packet_expr;
-
-    path->layer--;
-  }
-
-  return this->explore(node->get_next().get(), path);
-}
-
-bool PathExplorer::exploreRI(ReturnInit *node, bdd_path_t* path) { return false; }
-
-bool PathExplorer::exploreRP(ReturnProcess *node, bdd_path_t* path) {
-  if (!node)
+  if(!n)
     return false;
-  path->path.push_back(node->clone(false).get());
-  paths.push_back(path);
-  return true;
-}
 
-bool PathExplorer::exploreRW(ReturnRaw *node, bdd_path_t* path) {
-  assert(false); //shoudln't reach this node
-  return false; 
-}
-
-bool PathExplorer::exploreInitRoot(BDD* bdd) {
-  bdd_path_t *new_path = new bdd_path_t;
-  return bdd->get_init().get() ? this->explore(bdd->get_init().get(), new_path) : false;
-}
-
-bool PathExplorer::exploreProcessRoot(BDD* bdd) {
-  bdd_path_t *new_path = new bdd_path_t;
-  return bdd->get_process().get() ? this->explore(bdd->get_process().get(), new_path) : false;
-}
-
-bool PathExplorer::explore(Node* n, bdd_path_t* p){
   switch (n->get_type()) {
-  case Node::NodeType::BRANCH:
-    return this->exploreBranch((Branch*)n, p);
-    break;
-  case Node::NodeType::CALL:
-    return this->exploreCall((Call*)n, p);
-    break;
-  case Node::NodeType::RETURN_INIT:
-    return this->exploreRI((ReturnInit*)n, p);
-    break;
-  case Node::NodeType::RETURN_PROCESS:
-    return this->exploreRP((ReturnProcess*)n, p);
-    break;
-  default:
-    assert(false);
-    break;
+    case Node::NodeType::BRANCH:
+    {
+      auto branch = static_cast<const Branch *>(n);
+
+      bdd_path_t *new_path = new bdd_path_t;
+      new_path->initializeFrom(p);
+
+      p->constraints.addConstraint(branch->get_condition());
+      p->path.push_back(branch->clone());
+
+      new_path->constraints.addConstraint(exprBuilder->Not(branch->get_condition()));
+      new_path->path.push_back(branch->clone());
+
+      return explore(branch->get_on_true(), p) &
+        explore(branch->get_on_false(), new_path);
+
+      break;
+    }
+    case Node::NodeType::CALL:
+    {
+      auto call = static_cast<const Call *>(n);
+
+      p->path.push_back(call->clone());
+  
+      if(call->get_call().function_name == "packet_borrow_next_chunk"){
+        p->layer++;
+
+        auto in_packet_expr = call->get_call().extra_vars["the_chunk"].second;
+
+        packet_chunk_t new_chunk(in_packet_expr);
+
+        p->packet.push_back(new_chunk);
+
+      } else if (call->get_call().function_name == "packet_return_chunk"){
+
+        auto out_packet_expr = call->get_call().args["the_chunk"].in;
+        p->packet[p->layer].out = out_packet_expr;
+
+        p->layer--;
+      }
+
+      return explore(node->get_next(), p);
+      
+      break;
+    }
+    case Node::NodeType::RETURN_INIT:
+      return false;
+      break;
+    case Node::NodeType::RETURN_PROCESS:
+    {
+      p->path.push_back(node->clone());
+      paths.push_back(p);
+      return true;
+      break;
+    }
+    default:
+      assert(false);
+      break;
   };
 }
 
-std::vector<bdd_path_t*> PathExplorer::getPaths(BDD*  bdd){
+std::vector<bdd_path_t*> PathExplorer::getPathsProcess(BDD bdd){
   paths.clear();
-  assert(this->exploreProcessRoot(bdd));
+  bdd_path_t *first_path = new bdd_path_t(bdd.get_name());
+  assert(explore(bdd.get_process(), first_path));
   return paths;
 }
 
@@ -149,11 +130,24 @@ bool PathExplorer::arePathsCompatible(bdd_path_t* p1, bdd_path_t* p2){
 
 //TODO verify if paths are SAT/UNSAT
 
-//DROP FWD conflict
+//return process type & value conflict
 bool PathExplorer::is_process_res_type_conflict(bdd_path_t* p1, bdd_path_t* p2){
-  ReturnProcess *p1_ret = (ReturnProcess*)p1->path.at(p1->path.size() - 1);
-  ReturnProcess *p2_ret = (ReturnProcess*)p2->path.at(p2->path.size() - 1);
-  return !(p1_ret->get_return_operation() == p2_ret->get_return_operation());
+  auto p1_ret = static_cast<ReturnProcess*>(p1->path.at(p1->path.size() - 1).get());
+  auto p2_ret = static_cast<ReturnProcess*>(p2->path.at(p2->path.size() - 1).get());
+  if(p1_ret->get_return_operation() != p2_ret->get_return_operation()){
+    std::cerr << "-- Packet forwarding conflict" << std::endl;
+    std::cerr << "  - path_1: " << p1_ret->dump() << std::endl;
+    std::cerr << "  - path_2: " << p2_ret->dump() << std::endl;
+    return true;
+  } else {
+    if(p1_ret->get_return_value() != p2_ret->get_return_value()){
+      std::cerr << "-- Packet device forwarding conflict" << std::endl;
+      std::cerr << "  - path_1: " << p1_ret->get_return_value() << std::endl;
+      std::cerr << "  - path_2: " << p2_ret->get_return_value() << std::endl;
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace BDD

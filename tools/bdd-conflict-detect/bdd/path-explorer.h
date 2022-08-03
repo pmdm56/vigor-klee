@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../solver-toolbox.h"
+#include "nodes/nodes.h"
 
 #include <assert.h>
 
@@ -28,17 +29,19 @@ typedef struct packet_chunk_t {
 };
 
 typedef struct bdd_path_t {
-  std::vector<Node *> path;
+  std::vector<BDDNode_ptr> path;
   std::vector<packet_chunk_t> packet;
   klee::ConstraintManager constraints;
   int layer;
+  std::string bdd_name;
 
-
+  bdd_path_t(std::string _bdd_name): layer(-1), bdd_name(_bdd_name) {}
   bdd_path_t(): layer(-1) {}
 
   void initializeFrom(bdd_path_t* path){
+    this->bdd_name = path->bdd_name;
     this->layer = path->layer;
-    for (Node *n : path->path)
+    for (auto n : path->path)
       this->path.push_back(n);
     for(klee::ref<klee::Expr> c: path->constraints)
       this->constraints.addConstraint(c);
@@ -47,7 +50,7 @@ typedef struct bdd_path_t {
   }
 
   void dump(){
-    std::cerr << "Path -> Len(" << path.size() << ") Constr("
+    std::cerr << "Path -> Len(" << this->path.size() << ") Constr("
               << constraints.size() << ") Layer(" 
               << layer << ") Packet(" 
               << packet.size() << ") Modified(" 
@@ -75,15 +78,10 @@ public:
     solver_toolbox.build();
   }
 
-  std::vector<bdd_path_t *> getPaths(BDD *bdd);
+  std::vector<bdd_path_t *> getPathsProcess(BDD bdd);
   bool arePathsCompatible(bdd_path_t *p1, bdd_path_t *p2);
   bool is_process_res_type_conflict(bdd_path_t *p1, bdd_path_t *p2);
-  bool exploreBranch(Branch *node, bdd_path_t *path);
-  bool exploreCall(Call *node, bdd_path_t* path);
-  bool exploreRI(ReturnInit *node, bdd_path_t* path);
-  bool exploreRP(ReturnProcess *node, bdd_path_t* path);
-  bool exploreRW(ReturnRaw *node, bdd_path_t* path);
-  bool explore(Node *n, bdd_path_t *p);
+  bool explore(const BDDNode_ptr &node, bdd_path_t *p);
 
 protected:
   bool exploreInitRoot( BDD* bdd);
