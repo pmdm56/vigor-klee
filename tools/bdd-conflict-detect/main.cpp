@@ -2,7 +2,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include <list>
 #include "bdd/path-explorer.h"
-#include "call-paths-to-bdd.h"
+#include "bdd-conflict-detect.h"
 
 namespace {
 llvm::cl::list<std::string> BDDFiles(llvm::cl::desc("<bdd files>"),
@@ -29,7 +29,9 @@ int main(int argc, char **argv) {
 
   
   for(auto bdd : bdds){
-    all_paths.push_back(std::vector<BDD::bdd_path_t *>(explorer.getPathsProcess(bdd)));
+    std::vector<BDD::bdd_path_t *> list_paths;
+    explorer.getPathsProcess(bdd, list_paths);
+    all_paths.push_back(list_paths);
   }
 
   for (auto i = 0; i < all_paths.size(); i++){

@@ -4,7 +4,7 @@
 
 namespace BDD {
 
-bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p){
+bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p, std::vector<bdd_path_t*>& paths){
   Node *n = node.get();
   
   if(!n)
@@ -18,22 +18,44 @@ bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p){
       bdd_path_t *new_path = new bdd_path_t;
       new_path->initializeFrom(p);
 
+      auto clone =
+      std::make_shared<Branch>(branch->get_id(), branch->get_condition());
+
+      klee::ConstraintManager current_contrs;
+      for(auto c = p->constraints.begin(); c != p->constraints.end(); c++)
+        current_contrs.addConstraint(*c);
+
+      std::vector<klee::ConstraintManager> c;
+      c.push_back(current_contrs);
+      clone->set_constraints(c);
+
       p->constraints.addConstraint(branch->get_condition());
-      p->path.push_back(branch->clone());
+      //p->path.push_back(branch->clone());
+      p->path.push_back(clone);
 
       new_path->constraints.addConstraint(exprBuilder->Not(branch->get_condition()));
-      new_path->path.push_back(branch->clone());
+      //new_path->path.push_back(branch->clone());
+      new_path->path.push_back(clone);
 
-      return explore(branch->get_on_true(), p) &
-        explore(branch->get_on_false(), new_path);
+      return explore(branch->get_on_true(), p, paths) &
+        explore(branch->get_on_false(), new_path, paths);
 
-      break;
     }
     case Node::NodeType::CALL:
     {
       auto call = static_cast<const Call *>(n);
 
-      p->path.push_back(call->clone());
+      auto clone =
+      std::make_shared<Call>(call->get_id(), call->get_call());
+      p->path.push_back(clone);
+
+      klee::ConstraintManager current_contrs;
+      for(auto c = p->constraints.begin(); c != p->constraints.end(); c++)
+        current_contrs.addConstraint(*c);
+
+      std::vector<klee::ConstraintManager> c;
+      c.push_back(current_contrs);
+      clone->set_constraints(c);
   
       if(call->get_call().function_name == "packet_borrow_next_chunk"){
         p->layer++;
@@ -49,22 +71,41 @@ bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p){
         auto out_packet_expr = call->get_call().args["the_chunk"].in;
         p->packet[p->layer].out = out_packet_expr;
 
+        /*
+        auto query_example = klee::Query(p->constraints, out_packet_expr);
+
+        klee::ref<klee::ConstantExpr> res;
+
+        solver_toolbox.solver->getValue(query_example, res);
+
+        std::string exam;
+        res->toString(exam);
+
+        std::cerr << "**\n";
+        res->dump();
+        std::cerr << "\n" << exam << "\n***" << std::endl;
+        */
         p->layer--;
       }
 
-      return explore(node->get_next(), p);
-      
-      break;
+      return explore(node->get_next(), p, paths);
+
     }
     case Node::NodeType::RETURN_INIT:
       return false;
-      break;
     case Node::NodeType::RETURN_PROCESS:
     {
-      p->path.push_back(node->clone());
+      auto rp = static_cast<const ReturnProcess *>(n);
+      auto clone = std::make_shared<ReturnProcess>(rp->get_id(), rp->get_return_value(), rp->get_return_operation());
+      klee::ConstraintManager current_contrs;
+      for(auto c = p->constraints.begin(); c != p->constraints.end(); c++)
+        current_contrs.addConstraint(*c);
+      std::vector<klee::ConstraintManager> c;
+      c.push_back(current_contrs);
+      clone->set_constraints(c);
+      p->path.push_back(clone);
       paths.push_back(p);
       return true;
-      break;
     }
     default:
       assert(false);
@@ -72,11 +113,9 @@ bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p){
   };
 }
 
-std::vector<bdd_path_t*> PathExplorer::getPathsProcess(BDD bdd){
-  paths.clear();
+void PathExplorer::getPathsProcess(BDD bdd, std::vector<bdd_path_t*>& paths){
   bdd_path_t *first_path = new bdd_path_t(bdd.get_name());
-  assert(explore(bdd.get_process(), first_path));
-  return paths;
+  explore(bdd.get_process(), first_path, paths);
 }
 
 
@@ -127,8 +166,6 @@ bool PathExplorer::arePathsCompatible(bdd_path_t* p1, bdd_path_t* p2){
   // paths are compatible if they may be true
   return res1;
 }
-
-//TODO verify if paths are SAT/UNSAT
 
 //return process type & value conflict
 bool PathExplorer::is_process_res_type_conflict(bdd_path_t* p1, bdd_path_t* p2){

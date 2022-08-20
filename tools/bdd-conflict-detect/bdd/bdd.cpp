@@ -7,6 +7,7 @@
 #include "nodes/return_process.h"
 #include "nodes/return_raw.h"
 
+
 namespace BDD {
 
 constexpr char BDD::INIT_CONTEXT_MARKER[];
@@ -559,5 +560,10 @@ void BDD::trim_constraints(BDDNode_ptr node) {
     }
   }
 }
+
+void BDD::addNode(const BDDNode_ptr& new_node, klee::ConstraintManager new_node_constraints) {
+  
+}
+
 
 } // namespace BDD

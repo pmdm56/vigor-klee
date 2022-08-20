@@ -68,7 +68,6 @@ typedef struct bdd_path_t {
 
 class PathExplorer {
 private:
-  std::vector<bdd_path_t *> paths;
   BDD *bdd;
   klee::ExprBuilder *exprBuilder;
 
@@ -78,13 +77,10 @@ public:
     solver_toolbox.build();
   }
 
-  std::vector<bdd_path_t *> getPathsProcess(BDD bdd);
+  void getPathsProcess(BDD bdd, std::vector<bdd_path_t*>& paths);
   bool arePathsCompatible(bdd_path_t *p1, bdd_path_t *p2);
   bool is_process_res_type_conflict(bdd_path_t *p1, bdd_path_t *p2);
-  bool explore(const BDDNode_ptr &node, bdd_path_t *p);
-
-protected:
-  bool exploreInitRoot( BDD* bdd);
-  bool exploreProcessRoot( BDD* bdd);
+  bool explore(const BDDNode_ptr &node, bdd_path_t *p, std::vector<bdd_path_t*>& paths);
+  
 };
 } // namespace BDD

@@ -258,4 +258,48 @@ bool solver_toolbox_t::are_calls_equal(call_t c1, call_t c2) const {
   return true;
 }
 
+bool solver_toolbox_t::are_constraints_compatible(klee::ConstraintManager c1, klee::ConstraintManager c2){
+  if(!c1.size() || !c2.size()){
+    return true;
+  }
+
+  auto i = 0;
+  klee::ref<klee::Expr> expr_1;
+  klee::ref<klee::Expr> expr_2;
+  klee::ConstraintManager constraints;
+  RetrieveSymbols symbol_retriever1;
+  bool res1;
+
+
+  for (auto c = c1.begin(); c != c1.end(); c++, i++){
+    if(!i){
+      expr_1 = klee::ref<klee::Expr>(*c);
+    } else {
+      expr_1 = solver_toolbox.exprBuilder->And(expr_1, *c);
+    }
+  }
+
+  i = 0;
+  for (auto c = c2.begin(); c != c2.end(); c++, i++) {
+    if(!i){
+      expr_2 = klee::ref<klee::Expr>(*c);
+    } else {
+      expr_2 = solver_toolbox.exprBuilder->And(expr_2, *c);
+    }
+  }
+
+  symbol_retriever1.visit(expr_1);
+  auto symbols_expr_1 = symbol_retriever1.get_retrieved();
+  ReplaceSymbols symbol_replacer(symbols_expr_1);
+
+  klee::ref<klee::Expr> evaluate_expr =
+      solver_toolbox.exprBuilder->And(expr_1, symbol_replacer.visit(expr_2));
+
+  auto query = klee::Query(constraints, evaluate_expr);
+  solver_toolbox.solver->mayBeTrue(query, res1);
+
+  return res1;
+}
+
+
 } // namespace BDD

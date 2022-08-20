@@ -35,10 +35,14 @@ public:
              _prev->call_paths_filenames, _prev->constraints),
         value(_value), operation(_operation) {}
 
+  ReturnProcess(uint64_t _id, int _value, Operation _operation)
+      : Node(_id, Node::NodeType::RETURN_PROCESS),
+        value(_value), operation(_operation) {}
+
   ReturnProcess(uint64_t _id, const BDDNode_ptr &_prev, int _value,
                 Operation _operation,
                 const std::vector<std::string> &_call_paths_filenames,
-                std::vector<klee::ConstraintManager> _constraints)
+                const std::vector<klee::ConstraintManager>& _constraints)
       : Node(_id, Node::NodeType::RETURN_PROCESS, nullptr, _prev,
              _call_paths_filenames, _constraints),
         value(_value), operation(_operation) {}

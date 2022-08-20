@@ -13,6 +13,10 @@ public:
          const std::vector<call_path_t *> &_call_paths)
       : Node(_id, Node::NodeType::BRANCH, _call_paths), condition(_condition),
         on_false(nullptr) {}
+  
+  Branch(uint64_t _id, klee::ref<klee::Expr> _condition)
+      : Node(_id, Node::NodeType::BRANCH), condition(_condition),
+        on_false(nullptr) {}
 
   Branch(uint64_t _id, klee::ref<klee::Expr> _condition,
          const BDDNode_ptr &_on_true, const BDDNode_ptr &_on_false,

@@ -1,6 +1,6 @@
 #include "call.h"
 
-#include "../../call-paths-to-bdd.h"
+#include "../../bdd-conflict-detect.h"
 #include "../visitor.h"
 
 namespace BDD {

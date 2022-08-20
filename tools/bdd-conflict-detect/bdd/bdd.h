@@ -2,6 +2,7 @@
 
 #include "nodes/node.h"
 #include "symbol-factory.h"
+#include "path-explorer.h"
 
 namespace BDD {
 
@@ -53,6 +54,9 @@ public:
 
   BDDNode_ptr get_init() const { return nf_init; }
   BDDNode_ptr get_process() const { return nf_process; }
+  void add_process(const BDDNode_ptr &_process) { nf_process = _process;  }
+  void add_init(const BDDNode_ptr &_init) { nf_process = _init;  }
+
   BDDNode_ptr get_node_by_id(uint64_t _id) const;
 
   BDD clone() const;
@@ -61,6 +65,9 @@ public:
 
   void visit(BDDVisitor &visitor) const;
   void serialize(std::string file_path) const;
+
+  // For deserialization
+  BDD() : id(0), total_call_paths(0) { solver_toolbox.build(); }
 
 private:
   uint64_t id;
@@ -75,9 +82,6 @@ private:
 
   static constexpr char INIT_CONTEXT_MARKER[] = "start_time";
   static constexpr char MAGIC_SIGNATURE[] = "===== VIGOR_BDD_SIG =====";
-
-  // For deserialization
-  BDD() : id(0), total_call_paths(0) { solver_toolbox.build(); }
 
   call_t get_successful_call(std::vector<call_path_t *> call_paths) const;
   BDDNode_ptr populate(call_paths_t call_paths);
@@ -109,9 +113,15 @@ private:
 
   void deserialize(const std::string &file_path);
 
+  BDDNode_ptr  find_local_root(const BDDNode_ptr &node, klee::ConstraintManager
+                       constraints);
+
+
 public:
   friend class CallPathsGroup;
   friend class Call;
+  void addNode(const BDDNode_ptr &new_node,
+               klee::ConstraintManager new_node_constraints);
 };
 
 } // namespace BDD
