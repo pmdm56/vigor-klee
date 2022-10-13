@@ -55,7 +55,7 @@ public:
   BDDNode_ptr get_init() const { return nf_init; }
   BDDNode_ptr get_process() const { return nf_process; }
   void add_process(const BDDNode_ptr &_process) { nf_process = _process;  }
-  void add_init(const BDDNode_ptr &_init) { nf_process = _init;  }
+  void add_init(const BDDNode_ptr &_init) { nf_init = _init;  }
 
   BDDNode_ptr get_node_by_id(uint64_t _id) const;
 

@@ -39,7 +39,7 @@ void BDDVisitor::visit(const ReturnProcess *node) {
     return;
 
   visitReturnProcess(node);
-  assert(!node->get_next());
+  //assert(!node->get_next());
 }
 
 void BDDVisitor::visit(const ReturnRaw *node) {

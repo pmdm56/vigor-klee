@@ -105,12 +105,13 @@ bool node_equals(BDD::BDDNode_ptr n1, BDD::BDDNode_ptr n2){
     if(!BDD::solver_toolbox.are_exprs_always_equal(*c_n1, *c_n2))
       return false;
 
-  switch(n1->get_type()){
+  switch(n2->get_type()){
     case BDD::Node::NodeType::RETURN_PROCESS:
     {
       auto rp1 = static_cast<BDD::ReturnProcess*>(n1.get());
       auto rp2 = static_cast<BDD::ReturnProcess*>(n2.get());
 
+      //global
       return (rp1->get_return_operation() == rp2->get_return_operation()) &&
               (rp1->get_return_value() == rp2->get_return_value());
     }
@@ -119,6 +120,7 @@ bool node_equals(BDD::BDDNode_ptr n1, BDD::BDDNode_ptr n2){
       auto b1 = static_cast<BDD::Branch*>(n1.get());
       auto b2 = static_cast<BDD::Branch*>(n2.get());
 
+      //TODO: branch from packet and from data structures
       return BDD::solver_toolbox.are_exprs_always_equal(b1->get_condition(), b2->get_condition());
     }
     case BDD::Node::NodeType::CALL:
@@ -126,7 +128,21 @@ bool node_equals(BDD::BDDNode_ptr n1, BDD::BDDNode_ptr n2){
       auto c1 = static_cast<BDD::Call*>(n1.get());
       auto c2 = static_cast<BDD::Call*>(n2.get());
 
-      return BDD::solver_toolbox.are_calls_equal(c1->get_call(), c2->get_call());
+      //global
+      if(c1->get_call().function_name == "packet_borrow_next_chunk")
+        return BDD::solver_toolbox.are_exprs_always_equal(
+            c1->get_call().args["length"].expr,
+            c2->get_call().args["length"].expr);
+
+      //global
+      if(c1->get_call().function_name == "packet_return_chunk"){
+          auto out_c1 = c1->get_call().args["the_chunk"].in;
+          auto out_c2 = c2->get_call().args["the_chunk"].in;
+          return out_c1->getWidth() == out_c2->getWidth();
+      }
+
+      return BDD::solver_toolbox.are_calls_equal(c1->get_call(), c2->get_call()) &&
+              c1->get_from() == c2->get_from();
     }
     default:
       assert(false && "Cannot compare two nodes with unkown types.");
@@ -135,6 +151,8 @@ bool node_equals(BDD::BDDNode_ptr n1, BDD::BDDNode_ptr n2){
 }
 
 
+
+//return process being added before another return process
 void addNode(BDD::BDDNode_ptr& root, BDD::BDDNode_ptr& new_node){
 
   if(node_equals(root, new_node))
@@ -220,11 +238,7 @@ int main(int argc, char **argv) {
   std::vector<BDD::bdd_path_t *> paths_in;
   e.getPathsProcess(in_bdds[0], paths_in);
 
-  std::vector<BDD::bdd_path_t *> paths_in_2;
-  e.getPathsProcess(in_bdds[1], paths_in_2);
- 
- /*
-  for (auto p: paths_in){
+for (auto p: paths_in){
     std::cerr << "-------------------------------------------------------------------------\n";
     for (auto node : p->path) {
       
@@ -239,42 +253,36 @@ int main(int argc, char **argv) {
 
     }
   }
-*/
 
-  for(auto p: paths_in){
-    for(auto p1: paths_in_2){
-      if(!e.arePathsCompatible(p, p1)){
-        std::cerr << "-------------------------------------------------------------------------\n";
-        for (auto node : p->path) {
-          if(out_bdd.get_process() == nullptr){
-            out_bdd.add_process(node);
-          } else {
-            auto process_node = out_bdd.get_process();
-            std::cerr << "**start add " << node << " of type " <<  node->get_type() << " **\n";
-            addNode(process_node, node);
-            std::cerr << "**end add**\n";
-          }
-        }
+  //inject test branch
+  auto new_symbol = BDD::solver_toolbox.create_new_symbol("test", 8);
+  auto inject =
+      std::make_shared<BDD::Branch>(0,new_symbol);
+  klee::ConstraintManager m;
+  std::vector<klee::ConstraintManager> v;
+  v.push_back(m);
+  inject->set_constraints(v);
 
-        for (auto node : p1->path) {
-          if(out_bdd.get_process() == nullptr){
-            out_bdd.add_process(node);
-          } else {
-            auto process_node = out_bdd.get_process();
-            std::cerr << "**start add " << node << " of type " <<  node->get_type() << " **\n";
-            addNode(process_node, node);
-            std::cerr << "**end add**\n";
-          }
-        }
-      }
-    }
-  }
+  auto node = dupNode(inject);
+  auto process_node = out_bdd.get_process();
+  addNode(process_node, node);
 
   std::vector<BDD::bdd_path_t *> paths_out;
   e.getPathsProcess(out_bdd, paths_out);
 
   for(auto p: paths_out)
     p->dump();
+
+  auto file = std::ofstream("out_bdd.bdd");
+  assert(file.is_open());
+
+  uint64_t new_id = 0;
+  out_bdd.get_process()->recursive_update_ids(new_id);
+
+
+
+  BDD::GraphvizGenerator graphviz_generator(file);
+  out_bdd.visit(graphviz_generator);
 
   return 0;
 }

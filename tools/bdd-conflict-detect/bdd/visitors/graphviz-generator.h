@@ -156,8 +156,8 @@ public:
     os << "\tnode [shape=box style=rounded border=0];\n";
 
     if (show_init_graph) {
-      assert(bdd.get_init());
-      visitInitRoot(bdd.get_init().get());
+      //assert(bdd.get_init());
+      //visitInitRoot(bdd.get_init().get());
     }
 
     assert(bdd.get_process());
@@ -168,11 +168,12 @@ public:
 
   Action visitBranch(const Branch *node) override {
     if (node->get_next()) {
-      assert(node->get_on_true()->get_prev());
+      /*assert(node->get_on_true()->get_prev());
       assert(node->get_on_true()->get_prev()->get_id() == node->get_id());
 
       assert(node->get_on_false()->get_prev());
       assert(node->get_on_false()->get_prev()->get_id() == node->get_id());
+      */
     }
 
     auto condition = node->get_condition();
@@ -223,8 +224,10 @@ public:
         std::cerr << "ERROR IN " << node->dump(true) << "\n";
         std::cerr << " => " << node->get_next()->dump(true) << "\n";
       }
-      assert(node->get_next()->get_prev());
+      /*assert(node->get_next()->get_prev());
+      std::cerr << "node->get_next()->get_prev()->get_id() -> " << node->get_next()->get_prev()->get_id() << "node->get_id() ->" << node->get_id() << std::endl;
       assert(node->get_next()->get_prev()->get_id() == node->get_id());
+      */
     }
     auto call = node->get_call();
 

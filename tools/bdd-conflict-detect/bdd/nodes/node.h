@@ -74,6 +74,9 @@ public:
   NodeType get_type() const { return type; }
   uint64_t get_id() const { return id; }
 
+  std::string get_from() const { return from; }
+  void set_from(std::string& _from) { from = _from; }
+
   const std::vector<std::string> &get_call_paths_filenames() const {
     return call_paths_filenames;
   }
@@ -109,6 +112,8 @@ protected:
 
   uint64_t id;
   NodeType type;
+
+  std::string from;
 
   BDDNode_ptr next;
   BDDNode_ptr prev;
