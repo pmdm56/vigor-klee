@@ -3,9 +3,52 @@
 
 #include <list>
 
+enum WritePolicyOpt {
+  w1, w2
+};
+
+enum ForwardPolicyOpt {
+  any_drop, both_drop, bdd1_drop, bdd2_drop
+};
+
+enum ForwardingDevPolicyOpt {
+ dev1, dev2
+};
+
 namespace {
-llvm::cl::list<std::string> BDDFiles(llvm::cl::desc("<bdd files>"),
-                                               llvm::cl::Positional);
+
+//input BDD files & output BDD
+llvm::cl::opt<std::string> BDD1("bdd1", llvm::cl::Required, 
+  llvm::cl::desc("First bdd"), llvm::cl::value_desc("<file>.bdd"));
+llvm::cl::opt<std::string> BDD2("bdd2", llvm::cl::Required, 
+  llvm::cl::desc("Second bdd"), llvm::cl::value_desc("<file>.bdd"));
+
+//handle write conflict
+llvm::cl::opt<WritePolicyOpt> WritePolicy("prior_changes", 
+llvm::cl::Required, llvm::cl::desc("Write conflict resolution:"),
+  llvm::cl::values(
+    clEnumVal(w1 , "Prioritize bdd1 packet writes"),
+    clEnumVal(w2 , "Prioritize bdd2 packet writes"),
+    clEnumValEnd));
+
+//handle forwarding conflict
+llvm::cl::opt<ForwardPolicyOpt> ForwardPolicy("drop_when", 
+llvm::cl::Required, llvm::cl::desc("Forward conflict resolution:"),
+  llvm::cl::values(
+    clEnumVal(any_drop, "Drop packet if at least one drops"),
+    clEnumVal(both_drop, "Drop packet if only both drop"),
+    clEnumVal(bdd1_drop, "Drop packet if bdd1 drops"),
+    clEnumVal(bdd2_drop, "Drop packet if bdd2 drops"),
+    clEnumValEnd));
+
+
+//handle forwarding device conflict
+llvm::cl::opt<ForwardingDevPolicyOpt> ForwardingDevPolicy("fwd_device", 
+llvm::cl::Required, llvm::cl::desc("Forwarding device conflict resolution:"),
+  llvm::cl::values(
+    clEnumVal(dev1, "Prioritize bdd1 devices"),
+    clEnumVal(dev2, "Prioritize bdd2 devices"),
+    clEnumValEnd));
 
 } // namespace
 
@@ -220,69 +263,31 @@ void addNode(BDD::BDDNode_ptr& root, BDD::BDDNode_ptr& new_node){
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
-  std::vector<BDD::BDD> in_bdds;
-  BDD::BDD out_bdd;
-
   BDD::solver_toolbox.build();
+  BDD::PathExplorer explorer;
+  int all_comb = 0;
+  int compat_combs = 0;
 
-  assert(BDDFiles.size() >= 1 &&
-         "Please provide either at least 1 bdd file");
+  BDD::BDD bdd1(BDD1);
+  BDD::BDD bdd2(BDD2);
   
-  for (auto bdd : BDDFiles) {
-    std::cerr << "Loading BDD: " << bdd << std::endl;
-    in_bdds.push_back(BDD::BDD(bdd, in_bdds.size()));
-  }
+  std::vector<BDD::bdd_path_t*> bdd1_paths;
+  std::vector<BDD::bdd_path_t*> bdd2_paths;
 
+  explorer.getPathsProcess(bdd1, bdd1_paths);
+  explorer.getPathsProcess(bdd2, bdd2_paths);
 
-  BDD::PathExplorer e;
-  std::vector<BDD::bdd_path_t *> paths_in;
-  e.getPathsProcess(in_bdds[0], paths_in);
-
-for (auto p: paths_in){
-    std::cerr << "-------------------------------------------------------------------------\n";
-    for (auto node : p->path) {
-      
-      if(out_bdd.get_process() == nullptr){
-        out_bdd.add_process(node);
-      } else {
-        auto process_node = out_bdd.get_process();
-        std::cerr << "**start add " << node << " of type " <<  node->get_type() << " **\n";
-        addNode(process_node, node);
-        std::cerr << "**end add**\n";
+  for(auto p1 : bdd1_paths){
+    for(auto p2 : bdd2_paths){
+      all_comb++;
+      if(explorer.arePathsCompatible(p1, p2)){
+        compat_combs++;
       }
-
     }
   }
 
-  //inject test branch
-  auto new_symbol = BDD::solver_toolbox.create_new_symbol("test", 8);
-  auto inject =
-      std::make_shared<BDD::Branch>(0,new_symbol);
-  klee::ConstraintManager m;
-  std::vector<klee::ConstraintManager> v;
-  v.push_back(m);
-  inject->set_constraints(v);
-
-  auto node = dupNode(inject);
-  auto process_node = out_bdd.get_process();
-  addNode(process_node, node);
-
-  std::vector<BDD::bdd_path_t *> paths_out;
-  e.getPathsProcess(out_bdd, paths_out);
-
-  for(auto p: paths_out)
-    p->dump();
-
-  auto file = std::ofstream("out_bdd.bdd");
-  assert(file.is_open());
-
-  uint64_t new_id = 0;
-  out_bdd.get_process()->recursive_update_ids(new_id);
-
-
-
-  BDD::GraphvizGenerator graphviz_generator(file);
-  out_bdd.visit(graphviz_generator);
+  std::cerr << "Number combinations: " << all_comb << std::endl;
+  std::cerr << "Compatible combinations: " << compat_combs << std::endl;
 
   return 0;
 }

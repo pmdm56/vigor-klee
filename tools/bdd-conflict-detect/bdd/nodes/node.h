@@ -77,6 +77,9 @@ public:
   std::string get_from() const { return from; }
   void set_from(std::string& _from) { from = _from; }
 
+  bool get_valid() const { return valid; }
+  void set_valid(bool& _valid) { valid = _valid; }
+
   const std::vector<std::string> &get_call_paths_filenames() const {
     return call_paths_filenames;
   }
@@ -114,6 +117,7 @@ protected:
   NodeType type;
 
   std::string from;
+  bool valid;
 
   BDDNode_ptr next;
   BDDNode_ptr prev;
