@@ -18,6 +18,10 @@ public:
       : Node(_id, Node::NodeType::BRANCH), condition(_condition),
         on_false(nullptr) {}
 
+  Branch(uint64_t _id, klee::ref<klee::Expr> _condition, int bdd_id, std::string bdd_name)
+      : Node(_id, Node::NodeType::BRANCH, bdd_id, bdd_name), condition(_condition),
+        on_false(nullptr) {}
+
   Branch(uint64_t _id, klee::ref<klee::Expr> _condition,
          const BDDNode_ptr &_on_true, const BDDNode_ptr &_on_false,
          const BDDNode_ptr &_prev,

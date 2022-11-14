@@ -28,6 +28,9 @@ public:
   Node(uint64_t _id, NodeType _type)
       : id(_id), type(_type), next(nullptr), prev(nullptr) {}
 
+  Node(uint64_t _id, NodeType _type, int _bdd_id, std::string _bdd_name)
+      : id(_id), type(_type), next(nullptr), prev(nullptr), from_id(_bdd_id), from(_bdd_name) {}
+
   Node(uint64_t _id, NodeType _type,
        const std::vector<call_path_t *> &_call_paths)
       : id(_id), type(_type), next(nullptr), prev(nullptr) {
@@ -77,8 +80,11 @@ public:
   std::string get_from() const { return from; }
   void set_from(std::string& _from) { from = _from; }
 
+  int get_from_id() const { return from_id; }
+  void set_from_id(int _from_id) { from = _from_id; }
+
   bool get_valid() const { return valid; }
-  void set_valid(bool& _valid) { valid = _valid; }
+  void set_valid(bool _valid) { valid = _valid; }
 
   const std::vector<std::string> &get_call_paths_filenames() const {
     return call_paths_filenames;
@@ -114,6 +120,7 @@ protected:
   friend class ReturnProcess;
 
   uint64_t id;
+  int from_id;
   NodeType type;
 
   std::string from;

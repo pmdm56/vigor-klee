@@ -41,6 +41,11 @@ public:
     name = file_path;
   }
 
+  void normalize() {
+    this->rename_symbols();
+    this->trim_constraints();
+  }
+
   BDD &operator=(const BDD &) = default;
 
   uint64_t get_id() const { return id; }

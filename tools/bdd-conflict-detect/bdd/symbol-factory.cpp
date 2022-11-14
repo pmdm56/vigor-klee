@@ -474,29 +474,26 @@ void SymbolFactory::translate(Node *current, Node *translation_source,
                               RenameSymbols renamer) {
   assert(current);
   std::vector<Node *> nodes{ current };
-
-  while (nodes.size()) {
+  while (nodes.size()){
     auto node = nodes[0];
     nodes.erase(nodes.begin());
     assert(node);
-
+    std::cerr << node;
     if (node->get_type() == Node::NodeType::BRANCH) {
       auto branch_node = static_cast<Branch *>(node);
-
+      
       auto condition = branch_node->get_condition();
       auto renamed_condition = renamer.rename(condition);
-
       branch_node->set_condition(renamed_condition);
 
       assert(branch_node->get_on_true());
       assert(branch_node->get_on_false());
-
+      std::cerr << branch_node->dump() << branch_node->get_on_true().get() << " " << branch_node->get_on_false().get() << "\n";
       nodes.push_back(branch_node->get_on_true().get());
       nodes.push_back(branch_node->get_on_false().get());
     } else if (node->get_type() == Node::NodeType::CALL) {
       auto call_node = static_cast<Call *>(node);
       auto call = call_node->get_call();
-
       auto found_it = call_processor_lookup_table.find(call.function_name);
 
       if (found_it == call_processor_lookup_table.end()) {
@@ -504,7 +501,6 @@ void SymbolFactory::translate(Node *current, Node *translation_source,
                   << " not found in lookup table.\n";
         exit(1);
       }
-
       auto call_processor = found_it->second;
       auto call_symbols =
           (this->*call_processor)(call, false, node->get_constraints());
@@ -519,7 +515,6 @@ void SymbolFactory::translate(Node *current, Node *translation_source,
           modified_renamer = true;
         }
       }
-
       if (modified_renamer) {
         translate(node, translation_source, renamer_modified);
         continue;
@@ -532,7 +527,6 @@ void SymbolFactory::translate(Node *current, Node *translation_source,
         arg.in = renamer.rename(arg.in);
         arg.out = renamer.rename(arg.out);
       }
-
       for (auto &extra_var_pair : call.extra_vars) {
         auto &extra_var = call.extra_vars[extra_var_pair.first];
 
@@ -544,13 +538,11 @@ void SymbolFactory::translate(Node *current, Node *translation_source,
 
       call_node->set_call(call);
       assert(node->get_next());
-
       nodes.push_back(node->get_next().get());
     }
 
     auto constraints = node->get_constraints();
     auto renamed_constraints = renamer.rename(constraints);
-
     node->set_constraints(renamed_constraints);
   }
 }

@@ -20,13 +20,20 @@ private:
   std::unordered_set<uint64_t> processed;
   const Node *next;
   bool show_init_graph;
-
+  int current_id;
   const char *COLOR_PROCESSED = "gray";
   const char *COLOR_NEXT = "cyan";
+  std::string color_0;
+  std::string color_1;
+  std::string bdd_0;
+  std::string bdd_1;
 
 public:
   GraphvizGenerator(std::ostream &_os)
       : os(_os), next(nullptr), show_init_graph(true) {}
+
+  GraphvizGenerator(std::ostream &_os, std::string _color_0, std::string _color_1, std::string _bdd_0, std::string _bdd_1)
+      : os(_os), next(nullptr), show_init_graph(true), color_0(_color_0), color_1(_color_1), bdd_0(_bdd_0), bdd_1(_bdd_1)  {}
 
   GraphvizGenerator(std::ostream &_os,
                     const std::unordered_set<uint64_t> &_processed,
@@ -153,11 +160,15 @@ public:
 
   void visit(const BDD &bdd) override {
     os << "digraph mygraph {\n";
+    os << "\tlabel = <<font point-size='40' color='"+ color_0 +"'>"+bdd_0+"</font><br/>";
+    os << "<font point-size='40' color='"+ color_1 + "'>"+bdd_1+"</font>>\n";
+    //os << "labelloc = \"top\";\n";
+    os << "\tlabeljust=left;\n";
     os << "\tnode [shape=box style=rounded border=0];\n";
 
     if (show_init_graph) {
-      //assert(bdd.get_init());
-      //visitInitRoot(bdd.get_init().get());
+      assert(bdd.get_init());
+      visitInitRoot(bdd.get_init().get());
     }
 
     assert(bdd.get_process());
@@ -167,22 +178,23 @@ public:
   }
 
   Action visitBranch(const Branch *node) override {
+  
     if (node->get_next()) {
-      /*assert(node->get_on_true()->get_prev());
+      assert(node->get_on_true()->get_prev());
       assert(node->get_on_true()->get_prev()->get_id() == node->get_id());
 
       assert(node->get_on_false()->get_prev());
       assert(node->get_on_false()->get_prev()->get_id() == node->get_id());
-      */
     }
-
+  
     auto condition = node->get_condition();
+   
+    
+    if(node->get_on_true())
+      node->get_on_true()->visit(*this);
 
-    assert(node->get_on_true());
-    node->get_on_true()->visit(*this);
-
-    assert(node->get_on_false());
-    node->get_on_false()->visit(*this);
+    if(node->get_on_false())
+      node->get_on_false()->visit(*this);
 
     os << "\t\t" << get_gv_name(node);
     os << " [shape=Mdiamond, label=\"";
@@ -200,20 +212,26 @@ public:
     } else if (next && node->get_id() == next->get_id()) {
       os << ", color=" << COLOR_NEXT;
     } else {
-      os << ", color=yellow";
+      if(node->get_from_id())
+        os << ", color=" << "\"" + color_1 + "\"";
+      else 
+        os << ", color=" << "\"" + color_0 + "\"";
     }
 
     os << "];\n";
 
-    os << "\t\t" << get_gv_name(node);
+    if(node->get_on_true())
+    {os << "\t\t" << get_gv_name(node);
     os << " -> ";
     os << get_gv_name(node->get_on_true().get());
-    os << " [label=\"True\"];\n";
+    os << " [label=\"True\"];\n";}
 
-    os << "\t\t" << get_gv_name(node);
+
+    if(node->get_on_false())
+    {os << "\t\t" << get_gv_name(node);
     os << " -> ";
     os << get_gv_name(node->get_on_false().get());
-    os << " [label=\"False\"];\n";
+    os << " [label=\"False\"];\n";}
 
     return STOP;
   }
@@ -224,15 +242,14 @@ public:
         std::cerr << "ERROR IN " << node->dump(true) << "\n";
         std::cerr << " => " << node->get_next()->dump(true) << "\n";
       }
-      /*assert(node->get_next()->get_prev());
-      std::cerr << "node->get_next()->get_prev()->get_id() -> " << node->get_next()->get_prev()->get_id() << "node->get_id() ->" << node->get_id() << std::endl;
+      assert(node->get_next()->get_prev());
       assert(node->get_next()->get_prev()->get_id() == node->get_id());
-      */
     }
     auto call = node->get_call();
 
     assert(node->get_next());
-    node->get_next()->visit(*this);
+    if(node->get_next())
+      node->get_next()->visit(*this);
 
     os << "\t\t" << get_gv_name(node);
     os << " [label=\"";
@@ -241,7 +258,7 @@ public:
     os << node->get_id() << ":";
     os << call.function_name;
     os << "(";
-
+  
     i = 0;
     for (const auto &pair : call.args) {
       if (call.args.size() > 1) {
@@ -283,7 +300,7 @@ public:
 
       i++;
     }
-
+ 
     os << ")\\l";
 
     i = 0;
@@ -298,16 +315,20 @@ public:
     } else if (next && node->get_id() == next->get_id()) {
       os << "color=" << COLOR_NEXT;
     } else {
-      os << "color=cornflowerblue";
+      if(node->get_from_id())
+        os << "color=" << "\"" + color_1 + "\"";
+      else 
+        os << "color=" << "\"" + color_0 + "\"";
     }
 
     os << "];\n";
 
-    os << "\t\t" << get_gv_name(node);
-    os << " -> ";
-    os << get_gv_name(node->get_next().get());
-    os << ";\n";
-
+    os << "\t\t"; 
+    if(node->get_next()){
+      os << get_gv_name(node) << " -> ";
+      os << get_gv_name(node->get_next().get());
+      os << ";\n";
+    }
     return STOP;
   }
 
@@ -324,7 +345,10 @@ public:
       } else if (next && node->get_id() == next->get_id()) {
         os << " [color=" << COLOR_NEXT << "]";
       } else {
-        os << " [color=chartreuse2]";
+        if(node->get_from_id())
+            os << "[color=" << "\"" + color_1 + "\"" << "]";
+        else 
+            os << "[color=" << "\"" + color_0 + "\"" << "]";
       }
 
       break;
@@ -337,7 +361,10 @@ public:
       } else if (next && node->get_id() == next->get_id()) {
         os << " [color=" << COLOR_NEXT << "]";
       } else {
-        os << " [color=brown1]";
+        if(node->get_from_id())
+            os << "[color=" << "\"" + color_1 + "\"" << "]";
+        else 
+            os << "[color=" << "\"" + color_0 + "\"" << "]";
       }
 
       break;
@@ -374,7 +401,10 @@ public:
       } else if (next && node->get_id() == next->get_id()) {
         os << " color=" << COLOR_NEXT << "]";
       } else {
-        os << "color=chartreuse2]";
+        if(node->get_from_id())
+            os << "color=" << "\"" + color_1 + "\"" << "]";
+        else 
+            os << "color=" << "\"" + color_0 + "\"" << "]";
       }
 
       break;
@@ -389,7 +419,10 @@ public:
       } else if (next && node->get_id() == next->get_id()) {
         os << " color=" << COLOR_NEXT << "]";
       } else {
-        os << "color=brown1]";
+         if(node->get_from_id())
+            os << "color=" << "\"" + color_1 + "\"" << "]";
+        else 
+            os << "color=" << "\"" + color_0 + "\"" << "]";
       }
 
       break;
@@ -404,7 +437,10 @@ public:
       } else if (next && node->get_id() == next->get_id()) {
         os << " color=" << COLOR_NEXT << "]";
       } else {
-        os << "color=purple]";
+         if(node->get_from_id())
+            os << "color=" << "\"" + color_1 + "\"" << "]";
+        else 
+            os << "color=" << "\"" + color_0 + "\"" << "]";
       }
 
       break;

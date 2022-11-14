@@ -32,6 +32,7 @@ symbols_t Call::get_generated_symbols() const {
 void Call::recursive_update_ids(uint64_t &new_id) {
   update_id(new_id);
   new_id++;
+  if(next)
   next->recursive_update_ids(new_id);
 }
 

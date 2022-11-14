@@ -33,11 +33,12 @@ symbols_t Node::get_all_generated_symbols() const {
 }
 
 void Node::update_id(uint64_t new_id) {
+
   SymbolFactory factory;
   auto symbols = factory.get_symbols(this);
 
   id = new_id;
-
+/* 
   if (symbols.size() == 0) {
     return;
   }
@@ -57,7 +58,7 @@ void Node::update_id(uint64_t new_id) {
     return;
   }
 
-  factory.translate(this, this, renamer);
+  factory.translate(this, this, renamer);  */
 }
 
 std::string Node::process_call_path_filename(std::string call_path_filename) {

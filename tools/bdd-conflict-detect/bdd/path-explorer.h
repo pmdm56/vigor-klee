@@ -34,11 +34,13 @@ typedef struct bdd_path_t {
   klee::ConstraintManager constraints;
   int layer;
   std::string bdd_name;
+  int bdd_id;
 
   bdd_path_t(std::string _bdd_name): layer(-1), bdd_name(_bdd_name) {}
   bdd_path_t(): layer(-1) {}
 
   void initializeFrom(bdd_path_t* path){
+    this->bdd_id = path->bdd_id;
     this->bdd_name = path->bdd_name;
     this->layer = path->layer;
     for (auto n : path->path)
@@ -53,8 +55,8 @@ typedef struct bdd_path_t {
     std::cerr << "Path -> Len(" << this->path.size() << ") Constr("
               << constraints.size() << ") Layer(" 
               << layer << ") Packet(" 
-              << packet.size() << ") Modified(" 
-              << (this->wasPacketModified() ? "yes":"no") << ")" << std::endl;
+              << packet.size() << ") Modified(" << std::endl;
+              //<< (this->wasPacketModified() ? "yes":"no") << ")" << std::endl;
   }
 
   bool wasPacketModified(){

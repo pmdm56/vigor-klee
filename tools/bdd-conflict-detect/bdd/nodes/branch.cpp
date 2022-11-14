@@ -32,7 +32,9 @@ BDDNode_ptr Branch::clone(bool recursive) const {
 void Branch::recursive_update_ids(uint64_t &new_id) {
   update_id(new_id);
   new_id++;
+  if(next)
   next->recursive_update_ids(new_id);
+  if(on_false)
   on_false->recursive_update_ids(new_id);
 }
 

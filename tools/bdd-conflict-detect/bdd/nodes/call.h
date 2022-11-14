@@ -15,6 +15,9 @@ public:
   
   Call(uint64_t _id, call_t _call)
       : Node(_id, Node::NodeType::CALL), call(_call) {}
+  
+  Call(uint64_t _id, call_t _call, int bdd_id, std::string bdd_name)
+      : Node(_id, Node::NodeType::CALL, bdd_id, bdd_name), call(_call) {}
 
   Call(uint64_t _id, call_t _call, const BDDNode_ptr &_next,
        const BDDNode_ptr &_prev, const std::vector<call_path_t *> &_call_paths)

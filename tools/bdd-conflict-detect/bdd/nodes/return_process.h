@@ -38,6 +38,10 @@ public:
   ReturnProcess(uint64_t _id, int _value, Operation _operation)
       : Node(_id, Node::NodeType::RETURN_PROCESS),
         value(_value), operation(_operation) {}
+  
+  ReturnProcess(uint64_t _id, int _value, Operation _operation, int bdd_id, std::string bdd_name)
+      : Node(_id, Node::NodeType::RETURN_PROCESS, bdd_id, bdd_name),
+        value(_value), operation(_operation) {}
 
   ReturnProcess(uint64_t _id, const BDDNode_ptr &_prev, int _value,
                 Operation _operation,
@@ -48,7 +52,9 @@ public:
         value(_value), operation(_operation) {}
 
   int get_return_value() const { return value; }
+  void set_return_value(int& _value) { value = _value; }
   Operation get_return_operation() const { return operation; }
+  void set_return_operation(Operation _operation) { operation = _operation; }
 
   virtual BDDNode_ptr clone(bool recursive = false) const override;
   virtual void recursive_update_ids(uint64_t &new_id) override;

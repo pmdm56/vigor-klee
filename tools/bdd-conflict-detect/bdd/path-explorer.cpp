@@ -19,8 +19,7 @@ bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p, std::vector<b
       new_path->initializeFrom(p);
 
       auto clone =
-      std::make_shared<Branch>(branch->get_id(), branch->get_condition());
-      clone->set_from(p->bdd_name);
+      std::make_shared<Branch>(branch->get_id(), branch->get_condition(), p->bdd_id, p->bdd_name);
 
       klee::ConstraintManager current_contrs;
       for(auto c = p->constraints.begin(); c != p->constraints.end(); c++)
@@ -47,9 +46,8 @@ bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p, std::vector<b
       auto call = static_cast<const Call *>(n);
 
       auto clone =
-      std::make_shared<Call>(call->get_id(), call->get_call());
+      std::make_shared<Call>(call->get_id(), call->get_call(),p->bdd_id, p->bdd_name);
       p->path.push_back(clone);
-      clone->set_from(p->bdd_name);
 
       klee::ConstraintManager current_contrs;
       for(auto c = p->constraints.begin(); c != p->constraints.end(); c++)
@@ -98,8 +96,7 @@ bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p, std::vector<b
     case Node::NodeType::RETURN_PROCESS:
     {
       auto rp = static_cast<const ReturnProcess *>(n);
-      auto clone = std::make_shared<ReturnProcess>(rp->get_id(), rp->get_return_value(), rp->get_return_operation());
-      clone->set_from(p->bdd_name);
+      auto clone = std::make_shared<ReturnProcess>(rp->get_id(), rp->get_return_value(), rp->get_return_operation(),p->bdd_id, p->bdd_name);
       klee::ConstraintManager current_contrs;
       for(auto c = p->constraints.begin(); c != p->constraints.end(); c++)
         current_contrs.addConstraint(*c);
@@ -118,6 +115,7 @@ bool PathExplorer::explore(const BDDNode_ptr &node, bdd_path_t* p, std::vector<b
 
 void PathExplorer::getPathsProcess(BDD bdd, std::vector<bdd_path_t*>& paths){
   bdd_path_t *first_path = new bdd_path_t(bdd.get_name());
+  first_path->bdd_id = bdd.get_id();
   explore(bdd.get_process(), first_path, paths);
 }
 
